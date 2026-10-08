@@ -1,9 +1,6 @@
 pub mod blame;
 pub mod commit;
-pub mod git_host_credentials;
 mod hosting_provider;
-mod lathe_repository;
-mod pull_requests;
 mod remote;
 pub mod repository;
 pub mod stash;
@@ -86,8 +83,6 @@ actions!(
         UnstageAll,
         /// Stashes all changes in the repository, including untracked files.
         StashAll,
-        /// Stashes the currently selected file's changes.
-        StashFile,
         /// Stashes tracked changes in the repository, leaving untracked files in place.
         StashTracked,
         /// Stashes staged changes in the repository, leaving unstaged changes in place.
@@ -116,20 +111,6 @@ actions!(
         Fetch,
         /// Fetches changes from a specific remote.
         FetchFrom,
-        /// Fetches every repository in the workspace concurrently.
-        FetchAllRepositories,
-        /// Pulls every repository in the workspace concurrently. Repositories
-        /// whose current branch has no tracked upstream are skipped.
-        PullAllRepositories,
-        /// Initializes and updates every submodule recursively in the active repo.
-        SubmoduleUpdate,
-        /// Fetches LFS-tracked content for the active repo.
-        LfsFetch,
-        /// Pulls LFS-tracked content for the active repo (fetch + checkout).
-        LfsPull,
-        /// Opens a picker listing pull requests for the active repository's
-        /// hosting provider.
-        ListPullRequests,
         /// Creates a new commit with staged changes.
         Commit,
         /// Runs the next commit with `git commit --no-verify`.
@@ -145,6 +126,8 @@ actions!(
         /// Toggles whether the commit message editor fills all the available
         /// vertical space within the git panel.
         ToggleFillCommitEditor,
+        /// Toggles whether the commit message editor is shown in the git panel.
+        ToggleCommitEditor,
         /// Generates a commit message using AI.
         GenerateCommitMessage,
         /// Initializes a new git repository.
@@ -162,11 +145,8 @@ actions!(
         AddToGitInfoExclude,
         /// Copies the current branch name to the clipboard.
         CopyBranchName,
-        /// Opens the conflicted files of the in-progress operation in the merge
-        /// editor.
-        ResolveConflicts,
-        /// Opens the current file in the merge editor.
-        OpenMergeEditor,
+        /// Creates a tag at HEAD.
+        CreateTagAtHead,
     ]
 );
 

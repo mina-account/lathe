@@ -200,34 +200,15 @@ pub struct SettingsContent {
 
     pub git_panel: Option<GitPanelSettingsContent>,
 
-    /// Absolute paths to "pinned" external git repositories surfaced in the
-    /// git panel's collapsible Repositories strip below the workspace's own
-    /// repositories. Click-to-open opens each path in a new workspace.
-    pub repository_dashboard_pinned_repos: Option<Vec<String>>,
-
-    /// Settings for the pull request sidebar panel.
-    pub pull_request_panel: Option<PullRequestPanelSettingsContent>,
-
-    /// Settings for the git activity feed panel (live in-flight git commands).
-    pub git_activity_panel: Option<PanelSettingsContent>,
-
-    /// Settings for the mobile development panel.
-    pub mobile_dev_panel: Option<PanelSettingsContent>,
-
     pub tabs: Option<ItemSettingsContent>,
     pub tab_bar: Option<TabBarSettingsContent>,
+    pub tab_switcher: Option<TabSwitcherSettingsContent>,
     pub status_bar: Option<StatusBarSettingsContent>,
 
     pub preview_tabs: Option<PreviewTabsSettingsContent>,
 
     pub agent: Option<AgentSettingsContent>,
     pub agent_servers: Option<AllAgentServersSettings>,
-
-    /// Workspace-bound AI agent account selection: maps agent IDs (e.g. `"claude-acp"`)
-    /// to AI account IDs registered in Lathe's accounts index. Used to inject the agent's
-    /// config-dir env var (e.g. `CLAUDE_CONFIG_DIR`) at ACP spawn time so that multiple
-    /// subscription-authenticated identities can be used per-workspace.
-    pub ai_accounts: Option<AiAccountsMap>,
 
     /// Configuration of audio in Zed.
     pub audio: Option<AudioSettingsContent>,
@@ -290,6 +271,8 @@ pub struct SettingsContent {
 
     pub language_models: Option<AllLanguageModelSettingsContent>,
 
+    pub copilot: Option<CopilotSettingsContent>,
+
     pub outline_panel: Option<OutlinePanelSettingsContent>,
 
     pub project_panel: Option<ProjectPanelSettingsContent>,
@@ -304,31 +287,6 @@ pub struct SettingsContent {
     ///
     /// Default: off
     pub reduce_motion: Option<ReduceMotionMode>,
-
-    /// Whether Lathe may download executables from the internet on your behalf,
-    /// such as its own copy of Node.js or a language server for a file you just
-    /// opened. When `false`, Lathe only uses binaries already on your `$PATH` or
-    /// configured explicitly via `node.path` or `lsp.<server>.binary.path`, and
-    /// reports an error instead of fetching anything.
-    ///
-    /// Default: `true`
-    pub allow_binary_downloads: Option<bool>,
-
-    /// When `allow_binary_downloads` is `false`, whether to ask before each download instead of
-    /// refusing it outright. Approving a download records it in `approved_binary_downloads`.
-    /// Has no effect while `allow_binary_downloads` is `true`.
-    ///
-    /// Default: `false`
-    pub prompt_before_binary_downloads: Option<bool>,
-
-    /// Downloads you have already approved, as a map of item name to the approved version.
-    /// A version of `"*"` approves the item permanently, including future updates; any other
-    /// value only approves that exact version, so an update asks again.
-    ///
-    /// Written by the download prompt, and safe to edit or pre-populate by hand.
-    ///
-    /// Default: `{}`
-    pub approved_binary_downloads: Option<BTreeMap<String, String>>,
 
     /// The URL of the Zed server to connect to.
     pub server_url: Option<String>,
@@ -394,7 +352,9 @@ pub struct InstrumentationSettingsContent {
 #[with_fallible_options]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct PerformanceProfilerSettingsContent {
-    /// Whether to collect timing data for foreground and background executor tasks.
+    /// Whether to collect timing data for foreground and background executor
+    /// tasks. Enabling this may lead to increased memory usage, hence it's
+    /// disabled by default for regular builds.
     ///
     /// Default: false
     pub enabled: Option<bool>,
@@ -436,36 +396,6 @@ impl std::ops::DerefMut for FeatureFlagsMap {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
-#[serde(transparent)]
-pub struct AiAccountsMap(pub HashMap<String, String>);
-
-impl JsonSchema for AiAccountsMap {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "AiAccountsMap".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "type": "object",
-            "additionalProperties": { "type": "string" }
-        })
-    }
-}
-
-impl std::ops::Deref for AiAccountsMap {
-    type Target = HashMap<String, String>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for AiAccountsMap {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 impl SettingsContent {
     pub fn languages_mut(&mut self) -> &mut HashMap<String, LanguageSettingsContent> {
         &mut self.project.all_languages.languages.0
@@ -475,15 +405,12 @@ impl SettingsContent {
 fallible_options::flattened_deserialize!(SettingsContent {
     sections: { project, theme, extension, workspace, editor, remote },
     options: {
-        call_hierarchy, command_palette, file_finder, git_panel, repository_dashboard_pinned_repos,
-        pull_request_panel, git_activity_panel, mobile_dev_panel, tabs, tab_bar, status_bar,
-        preview_tabs, agent, agent_servers, ai_accounts, audio, auto_update, base_keymap,
-        collaboration_panel, debugger, diagnostics, git,
+        call_hierarchy, command_palette, file_finder, git_panel, tabs, tab_bar, tab_switcher, status_bar, preview_tabs, agent,
+        agent_servers, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
+        git,
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
-        journal, log, line_indicator_format, language_models, outline_panel, project_panel,
-        node, proxy, reduce_motion, allow_binary_downloads, prompt_before_binary_downloads,
-        approved_binary_downloads, server_url, credentials_url, session,
-        telemetry, terminal,
+        journal, log, line_indicator_format, language_models, copilot, outline_panel, project_panel,
+        node, proxy, reduce_motion, server_url, credentials_url, session, telemetry, terminal,
         title_bar, vim_mode, calls, which_key, vim, modeline_lines, feature_flags,
         instrumentation,
     },
@@ -621,7 +548,7 @@ pub enum BaseKeymapContent {
 
 impl strum::VariantNames for BaseKeymapContent {
     const VARIANTS: &'static [&'static str] = &[
-        "Lathe",
+        "Zed",
         "VSCode",
         "JetBrains",
         "Sublime Text",
@@ -803,33 +730,6 @@ pub struct CallSettingsContent {
 
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
-pub struct PullRequestPanelSettingsContent {
-    /// Whether to show the panel button in the status bar.
-    ///
-    /// Default: true
-    pub button: Option<bool>,
-    /// Where to dock the panel.
-    ///
-    /// Default: right
-    pub dock: Option<DockPosition>,
-    /// Default width of the panel in pixels.
-    ///
-    /// Default: 360
-    pub default_width: Option<PixelSetting>,
-    /// Whether to periodically reload pull requests while the panel is visible.
-    ///
-    /// Default: true
-    pub auto_refresh: Option<bool>,
-    /// How long to wait between automatic reloads, in seconds. Values below 30
-    /// are clamped to 30 so a misconfigured setting cannot hammer the host's
-    /// API.
-    ///
-    /// Default: 300
-    pub auto_refresh_interval_seconds: Option<u64>,
-}
-
-#[with_fallible_options]
-#[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
 pub struct GitPanelSettingsContent {
     /// Whether to show the panel button in the status bar.
     ///
@@ -914,6 +814,34 @@ pub struct GitPanelSettingsContent {
     ///
     /// Default: project_diff
     pub entry_primary_click_action: Option<GitPanelClickBehavior>,
+
+    /// Whether the commit message editor is shown in the Git panel by default.
+    ///
+    /// Default: expanded
+    pub commit_editor: Option<GitPanelCommitEditor>,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    PartialEq,
+    Eq,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum GitPanelCommitEditor {
+    /// Show the commit message editor.
+    #[default]
+    Expanded,
+    /// Hide the commit message editor, leaving only the commit button row.
+    Collapsed,
 }
 
 #[derive(
@@ -1063,6 +991,11 @@ pub struct FileFinderSettingsContent {
     ///
     /// Default: false
     pub include_channels: Option<bool>,
+    /// Whether to pre-fill the file finder's query with the text selected in the
+    /// focused item (e.g. an editor or a terminal) when it is opened.
+    ///
+    /// Default: true
+    pub prefill_query_from_selection: Option<bool>,
 }
 
 #[derive(
@@ -1405,6 +1338,12 @@ pub struct MarkdownPreviewSettingsContent {
     /// The theme to use for the markdown preview.
     /// Falls back to the main editor theme if unset.
     pub theme: Option<ThemeSelection>,
+    /// The weight of headings (H1 through H6) in the markdown preview, in CSS
+    /// units from 100 to 900. Also applies to rendered Markdown cells in
+    /// notebooks, which share the preview typography.
+    ///
+    /// Default: 600
+    pub heading_font_weight: Option<FontWeightContent>,
     /// Whether to automatically open Markdown files in the preview.
     ///
     /// Default: false
@@ -1565,6 +1504,17 @@ pub struct ReplSettingsContent {
     ///
     /// Default: 0
     pub output_max_height_lines: Option<usize>,
+}
+
+/// Settings for configuring the tab switcher behaviour.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct TabSwitcherSettingsContent {
+    /// When false, files are not shown while cycling through the tab switcher.
+    /// Only the confirmed file (when the modifier key is released) is shown and
+    /// recorded in the MRU history.
+    ///
+    /// Default: true
+    pub show_file_preview: Option<bool>,
 }
 
 /// Settings for configuring the which-key popup behaviour.

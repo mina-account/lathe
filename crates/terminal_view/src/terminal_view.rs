@@ -1,7 +1,4 @@
-mod floating_terminal;
 mod persistence;
-mod terminal_awaiting_input;
-mod terminal_bell;
 pub mod terminal_element;
 pub mod terminal_panel;
 mod terminal_path_like_target;
@@ -12,17 +9,19 @@ use editor::{
     ui_scrollbar_settings_from_raw,
 };
 use gpui::{
-    Action, AnyElement, App, ClipboardEntry, DismissEvent, Entity, EventEmitter, ExternalPaths,
-    FocusHandle, Focusable, Font, Hsla, KeyContext, KeyDownEvent, Keystroke, MouseButton,
-    MouseDownEvent, Pixels, Point as GpuiPoint, Render, ScrollWheelEvent, Styled, Subscription,
-    Task, TaskExt, WeakEntity, WindowId, actions, anchored, deferred, div, hsla,
+    Action, AnyElement, App, ClipboardEntry, Corners, DismissEvent, Entity, EventEmitter,
+    ExternalPaths, FocusHandle, Focusable, Font, KeyContext, KeyDownEvent, Keystroke, MouseButton,
+    MouseDownEvent, Pixels, Point as GpuiPoint, Rems, Render, ScrollWheelEvent, Styled,
+    Subscription, Task, TaskExt, WeakEntity, actions, anchored, deferred, div,
 };
 use menu;
 use persistence::TerminalDb;
 use project::{Project, ProjectEntryId, search::SearchQuery};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use settings::{SeedQuerySetting, Settings, SettingsStore, TerminalBlink, WorkingDirectory};
+use settings::{
+    SeedQuerySetting, Settings, SettingsStore, TerminalBell, TerminalBlink, WorkingDirectory,
+};
 use std::{
     any::Any,
     cmp,
@@ -30,20 +29,18 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use task::TaskId;
 use terminal::{
-    Clear, Copy, Event, HoveredWord, InteractivePromptKind, MaybeNavigationTarget, Modes,
-    MouseInputMode, Paste, PasteText, Point, Range, ScrollLineDown, ScrollLineUp, ScrollPageDown,
-    ScrollPageUp, ScrollToBottom, ScrollToTop, Search, ShowCharacterPalette, TaskState, TaskStatus,
-    Terminal, TerminalBounds, ToggleViMode,
+    Clear, Copy, Event, HoveredWord, MaybeNavigationTarget, Modes, MouseInputMode, Paste,
+    PasteText, Point, Range, ScrollLineDown, ScrollLineUp, ScrollPageDown, ScrollPageUp,
+    ScrollToBottom, ScrollToTop, Search, ShowCharacterPalette, TaskState, TaskStatus, Terminal,
+    TerminalBounds, ToggleViMode,
     terminal_settings::{CursorShape, TerminalSettings},
 };
 use terminal_element::TerminalElement;
-use terminal_panel::{
-    MoveTerminalToNewWindow, MoveTerminalToWindow, ReturnTerminalToWorkspace, TerminalPanel,
-};
+use terminal_panel::TerminalPanel;
 use terminal_path_like_target::{hover_path_like_target, open_path_like_target};
 use terminal_scrollbar::TerminalScrollHandle;
 use ui::{
@@ -58,7 +55,6 @@ use workspace::{
     item::{
         HighlightedText, Item, ItemEvent, SerializableItem, TabContentParams, TabTooltipContent,
     },
-    notifications::{NotificationId, simple_message_notification::MessageNotification},
     register_serializable_item,
     searchable::{
         Direction, SearchEvent, SearchOptions, SearchToken, SearchableItem, SearchableItemHandle,
@@ -68,6 +64,16 @@ use zed_actions::{agent::AddSelectionToThread, assistant::InlineAssist};
 
 struct ImeState {
     marked_text: String,
+}
+
+fn viewport_line_for_point(point: Point, display_offset: usize) -> Option<usize> {
+    let display_offset = i32::try_from(display_offset).unwrap_or(i32::MAX);
+    let line = point.line.saturating_add(display_offset);
+    if line < 0 {
+        None
+    } else {
+        usize::try_from(line).ok()
+    }
 }
 
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
@@ -129,15 +135,18 @@ pub struct TerminalView {
     focus_handle: FocusHandle,
     //Currently using iTerm bell, show bell emoji in tab until input is received
     has_bell: bool,
-    awaiting_input: Option<InteractivePromptKind>,
-    has_had_input: bool,
-    idle_timer: Task<()>,
-    idle_timer_pending: bool,
-    last_output_at: Instant,
     context_menu: Option<(Entity<ContextMenu>, GpuiPoint<Pixels>, Subscription)>,
     cursor_shape: CursorShape,
     blink_manager: Entity<BlinkManager>,
     mode: TerminalMode,
+    /// Corner radii for the terminal's background, for when it's embedded in a
+    /// container with rounded corners.
+    ///
+    /// GPUI can't clip children to rounded corners, so without this the square
+    /// background paints over the container's corners. Only the background is
+    /// rounded, terminal content isn't clipped.
+    background_corner_radii: Option<Corners<Rems>>,
+    content_top_padding: Rems,
     read_only: bool,
     // Explicit override for whether workspace-specific context menu actions are shown.
     // When `None`, visibility is derived from `mode` (hidden for embedded terminals).
@@ -283,11 +292,6 @@ impl TerminalView {
             workspace: workspace_handle,
             project,
             has_bell: false,
-            awaiting_input: None,
-            has_had_input: false,
-            idle_timer: Task::ready(()),
-            idle_timer_pending: false,
-            last_output_at: cx.background_executor().now(),
             focus_handle,
             context_menu: None,
             cursor_shape,
@@ -296,6 +300,8 @@ impl TerminalView {
             hover: None,
             hover_tooltip_update: Task::ready(()),
             mode: TerminalMode::Standalone,
+            background_corner_radii: None,
+            content_top_padding: Rems::ZERO,
             read_only: false,
             show_workspace_actions: None,
             workspace_id,
@@ -324,6 +330,36 @@ impl TerminalView {
             max_lines_when_unfocused,
         };
         cx.notify();
+    }
+
+    /// Rounds the background without clipping terminal content to the corners.
+    pub fn set_background_corner_radii(
+        &mut self,
+        corner_radii: Option<Corners<Rems>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.background_corner_radii = corner_radii;
+        cx.notify();
+    }
+
+    pub fn set_content_top_padding(&mut self, padding: Rems, cx: &mut Context<Self>) {
+        self.content_top_padding = padding;
+        cx.notify();
+    }
+
+    fn content_background_corner_radii(
+        &self,
+        content_mode: &ContentMode,
+        cx: &App,
+    ) -> Corners<Rems> {
+        let mut radii = self.background_corner_radii.unwrap_or_default();
+        if content_mode.is_scrollable()
+            && TerminalScrollbarSettingsWrapper.visibility(cx) != scrollbars::ShowScrollbar::Never
+        {
+            radii.top_right = Rems::ZERO;
+            radii.bottom_right = Rems::ZERO;
+        }
+        radii
     }
 
     pub fn is_read_only(&self) -> bool {
@@ -497,145 +533,6 @@ impl TerminalView {
         self.focus_handle.focus(window, cx);
     }
 
-    #[cfg(test)]
-    pub(crate) fn workspace_id(&self) -> Option<WorkspaceId> {
-        self.workspace_id
-    }
-
-    #[cfg(test)]
-    pub(crate) fn awaiting_input(&self) -> Option<InteractivePromptKind> {
-        self.awaiting_input
-    }
-
-    /// Drives the awaiting-input indicator directly. The real signal comes from
-    /// an idle timer over live terminal state, which a test cannot reproduce
-    /// deterministically.
-    #[cfg(test)]
-    pub(crate) fn set_awaiting_input_for_test(&mut self, kind: Option<InteractivePromptKind>) {
-        self.awaiting_input = kind;
-    }
-
-    /// Whether this terminal lives in a floating window. That covers both a
-    /// terminal moved into a window of its own and one started inside a window
-    /// opened for some other item, so neither can be moved out again.
-    fn is_floating(&self, cx: &App) -> bool {
-        self.workspace
-            .upgrade()
-            .is_some_and(|workspace| workspace.read(cx).is_floating())
-    }
-
-    /// Whether this is the terminal that was moved into `window`, and so has a
-    /// workspace waiting to take it back.
-    fn can_return_to_workspace(&self, window: &Window, cx: &App) -> bool {
-        floating_terminal::is_transferred_terminal(
-            window.window_handle().window_id(),
-            &self.self_handle,
-            cx,
-        )
-    }
-
-    fn can_move_to_new_window(&self, cx: &App) -> bool {
-        self.shows_workspace_actions() && !self.is_floating(cx)
-    }
-
-    /// The floating windows this terminal could be moved into, each with the
-    /// label the menus name it by.
-    ///
-    /// The window the terminal is already in is left out, as are windows
-    /// belonging to a different project: those are someone else's workspace
-    /// arrangement, and naming them by whatever file they happen to show would
-    /// only make the list harder to read.
-    fn move_targets(&self, window: &Window, cx: &App) -> Vec<(WindowId, SharedString)> {
-        if !self.can_move_to_new_window(cx) {
-            return Vec::new();
-        }
-        let Some(project) = self
-            .workspace
-            .upgrade()
-            .map(|workspace| workspace.read(cx).project().clone())
-        else {
-            return Vec::new();
-        };
-        workspace::floating_window_targets(&project, window, cx)
-    }
-
-    pub fn move_to_new_window(
-        &mut self,
-        _: &MoveTerminalToNewWindow,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.move_to(floating_terminal::MoveTarget::NewWindow, window, cx);
-    }
-
-    pub fn move_to_window(
-        &mut self,
-        action: &MoveTerminalToWindow,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.move_to(
-            floating_terminal::MoveTarget::ExistingWindow(WindowId::from(action.0)),
-            window,
-            cx,
-        );
-    }
-
-    fn move_to(
-        &mut self,
-        target: floating_terminal::MoveTarget,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.can_move_to_new_window(cx) {
-            return;
-        }
-        let Some(workspace) = self.workspace.upgrade() else {
-            return;
-        };
-        let terminal_view = cx.entity();
-        // Deferred because moving the terminal re-adds it to a pane, which
-        // updates this entity while it is already being updated here.
-        window.defer(cx, move |window, cx| {
-            if let Err(error) = floating_terminal::move_terminal_to_window(
-                terminal_view,
-                workspace.clone(),
-                target,
-                window,
-                cx,
-            ) {
-                workspace.update(cx, |workspace, cx| {
-                    struct MoveTerminalToWindowFailed;
-
-                    workspace.show_notification(
-                        NotificationId::unique::<MoveTerminalToWindowFailed>(),
-                        cx,
-                        |cx| {
-                            cx.new(|cx| {
-                                MessageNotification::new(
-                                    format!("Could not move the terminal to a window: {error}"),
-                                    cx,
-                                )
-                            })
-                        },
-                    );
-                });
-            }
-        });
-    }
-
-    pub fn return_to_workspace(
-        &mut self,
-        _: &ReturnTerminalToWorkspace,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.can_return_to_workspace(window, cx) {
-            return;
-        }
-        floating_terminal::return_from_window(window, cx);
-    }
-
     pub fn rename_terminal(
         &mut self,
         _: &RenameTerminal,
@@ -690,6 +587,7 @@ impl TerminalView {
     pub fn deploy_context_menu(
         &mut self,
         position: GpuiPoint<Pixels>,
+        has_selection: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -698,16 +596,6 @@ impl TerminalView {
             .upgrade()
             .and_then(|workspace| workspace.read(cx).panel::<TerminalPanel>(cx))
             .is_some_and(|terminal_panel| terminal_panel.read(cx).assistant_enabled());
-        let has_selection = self
-            .terminal
-            .read(cx)
-            .last_content
-            .selection_text
-            .as_ref()
-            .is_some_and(|text| !text.is_empty());
-        let can_move_to_new_window = self.can_move_to_new_window(cx);
-        let move_targets = self.move_targets(window, cx);
-        let can_return_to_workspace = self.can_return_to_workspace(window, cx);
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
@@ -743,27 +631,6 @@ impl TerminalView {
                             })
                     },
                 )
-                .when(can_move_to_new_window, |menu| {
-                    let menu = menu.separator();
-                    if move_targets.is_empty() {
-                        menu.action("Move to New Window", Box::new(MoveTerminalToNewWindow))
-                    } else {
-                        let move_targets = move_targets.clone();
-                        menu.submenu("Move to Window", move |menu, _, _| {
-                            let menu = menu.action("New Window", Box::new(MoveTerminalToNewWindow));
-                            move_targets.iter().fold(menu, |menu, (window_id, label)| {
-                                menu.action(
-                                    label.clone(),
-                                    Box::new(MoveTerminalToWindow(window_id.as_u64())),
-                                )
-                            })
-                        })
-                    }
-                })
-                .when(can_return_to_workspace, |menu| {
-                    menu.separator()
-                        .action("Return to Workspace", Box::new(ReturnTerminalToWorkspace))
-                })
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.separator().action(
                         "Close Terminal Tab",
@@ -1106,6 +973,18 @@ impl TerminalView {
         cx.notify();
     }
 
+    /// Specific handler for the [`editor::actions::Copy`] action in order for
+    /// the `Edit > Copy` menu item to not be disabled, as the app expects a
+    /// handler for this action in order to enable/disable the menu item.
+    fn editor_copy(
+        &mut self,
+        _: &editor::actions::Copy,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.copy(&Copy, window, cx);
+    }
+
     ///Attempt to paste the clipboard into the terminal
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only {
@@ -1129,18 +1008,6 @@ impl TerminalView {
                 }
             }
         }
-    }
-
-    /// Specific handler for the [`editor::actions::Copy`] action in order for
-    /// the `Edit > Copy` menu item to not be disabled, as the app expects a
-    /// handler for this action in order to enable/disable the menu item.
-    fn editor_copy(
-        &mut self,
-        _: &editor::actions::Copy,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.copy(&Copy, window, cx);
     }
 
     /// Specific handler for the [`editor::actions::Paste`] action in order for
@@ -1302,10 +1169,6 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<TerminalView>,
     ) {
-        self.awaiting_input = None;
-        self.has_had_input = false;
-        self.idle_timer = Task::ready(());
-        self.idle_timer_pending = false;
         self._terminal_subscriptions =
             subscribe_for_terminal_events(&terminal, self.workspace.clone(), window, cx);
         self.terminal = terminal;
@@ -1360,14 +1223,6 @@ fn subscribe_for_terminal_events(
 
             match event {
                 Event::Wakeup => {
-                    if terminal_view.awaiting_input.is_some() {
-                        let prompt_kind = terminal.read(cx).interactive_prompt_kind();
-                        if prompt_kind.is_none() {
-                            terminal_awaiting_input::clear(terminal_view, cx);
-                        }
-                    } else {
-                        terminal_awaiting_input::start_idle_timer(terminal_view, cx);
-                    }
                     cx.notify();
                     window.invalidate_character_coordinates();
                     cx.emit(Event::Wakeup);
@@ -1375,8 +1230,25 @@ fn subscribe_for_terminal_events(
                     cx.emit(SearchEvent::MatchesInvalidated);
                 }
 
+                Event::OutputReplaced => {
+                    terminal_view.hover = None;
+                    terminal_view.hover_tooltip_update = Task::ready(());
+                    terminal_view.scroll_top = Pixels::ZERO;
+                    terminal_view.scroll_handle.future_display_offset.set(None);
+                    terminal_view.scroll_handle.update(terminal.read(cx));
+                    terminal_view.block_below_cursor = None;
+                    window.invalidate_character_coordinates();
+                    cx.emit(SearchEvent::MatchesInvalidated);
+                    cx.emit(SearchEvent::ActiveMatchChanged);
+                    cx.emit(ItemEvent::UpdateTab);
+                    cx.notify();
+                }
+
                 Event::Bell => {
-                    terminal_bell::handle(terminal_view, window, cx);
+                    terminal_view.has_bell = true;
+                    if let TerminalBell::System = TerminalSettings::get_global(cx).bell {
+                        window.play_system_bell();
+                    }
                     cx.emit(Event::Wakeup);
                 }
 
@@ -1470,16 +1342,6 @@ fn subscribe_for_terminal_events(
     vec![terminal_subscription, terminal_events_subscription]
 }
 
-fn viewport_line_for_point(point: Point, display_offset: usize) -> Option<usize> {
-    let display_offset = i32::try_from(display_offset).unwrap_or(i32::MAX);
-    let line = point.line.saturating_add(display_offset);
-    if line < 0 {
-        None
-    } else {
-        usize::try_from(line).ok()
-    }
-}
-
 fn regex_search_for_query(query: &SearchQuery) -> Option<Search> {
     let str = query.as_str();
     if query.is_regex() {
@@ -1531,8 +1393,6 @@ impl TerminalView {
 
     fn key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.clear_bell(cx);
-        terminal_awaiting_input::clear(self, cx);
-        self.has_had_input = true;
         self.pause_cursor_blinking(window, cx);
 
         if event.prefer_character_input
@@ -1548,7 +1408,6 @@ impl TerminalView {
     }
 
     fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        terminal_awaiting_input::clear(self, cx);
         self.terminal.update(cx, |terminal, _| {
             terminal.set_cursor_shape(self.cursor_shape);
             if !self.read_only {
@@ -1602,6 +1461,8 @@ impl Render for TerminalView {
         let terminal_view_handle = cx.entity();
 
         let focused = self.focus_handle.is_focused(window);
+        let content_mode = self.content_mode(window, cx);
+        let content_corner_radii = self.content_background_corner_radii(&content_mode, cx);
 
         div()
             .id("terminal-view")
@@ -1612,8 +1473,8 @@ impl Render for TerminalView {
             .on_action(cx.listener(TerminalView::send_text))
             .on_action(cx.listener(TerminalView::send_keystroke))
             .on_action(cx.listener(TerminalView::copy))
-            .on_action(cx.listener(TerminalView::paste))
             .on_action(cx.listener(TerminalView::editor_copy))
+            .on_action(cx.listener(TerminalView::paste))
             .on_action(cx.listener(TerminalView::editor_paste))
             .on_action(cx.listener(TerminalView::paste_text))
             .on_action(cx.listener(TerminalView::clear))
@@ -1628,9 +1489,6 @@ impl Render for TerminalView {
             .on_action(cx.listener(TerminalView::select_all))
             .on_action(cx.listener(TerminalView::rerun_task))
             .on_action(cx.listener(TerminalView::rename_terminal))
-            .on_action(cx.listener(TerminalView::move_to_new_window))
-            .on_action(cx.listener(TerminalView::move_to_window))
-            .on_action(cx.listener(TerminalView::return_to_workspace))
             .on_key_down(cx.listener(Self::key_down))
             .on_mouse_down(
                 MouseButton::Right,
@@ -1640,12 +1498,21 @@ impl Render for TerminalView {
                         .read(cx)
                         .mouse_mode(event.modifiers.shift, this.mouse_input_mode())
                     {
-                        if this.terminal.read(cx).last_content.selection.is_none() {
+                        let had_selection = this.terminal.read(cx).last_content.selection.is_some();
+                        if !had_selection {
                             this.terminal.update(cx, |terminal, _| {
                                 terminal.select_word_at_event_position(event);
                             });
-                        };
-                        this.deploy_context_menu(event.position, window, cx);
+                        }
+                        let has_selection = !had_selection
+                            || this
+                                .terminal
+                                .read(cx)
+                                .last_content
+                                .selection_text
+                                .as_ref()
+                                .is_some_and(|text| !text.is_empty());
+                        this.deploy_context_menu(event.position, has_selection, window, cx);
                         cx.notify();
                     }
                 }),
@@ -1656,17 +1523,33 @@ impl Render for TerminalView {
                     .id("terminal-view-container")
                     .size_full()
                     .bg(cx.theme().colors().editor_background)
-                    .child(TerminalElement::new(
-                        terminal_handle,
-                        terminal_view_handle,
-                        self.workspace.clone(),
-                        self.focus_handle.clone(),
-                        focused,
-                        self.should_show_cursor(focused, cx),
-                        self.block_below_cursor.clone(),
-                        self.mode.clone(),
-                    ))
-                    .when(self.content_mode(window, cx).is_scrollable(), |div| {
+                    .when_some(self.background_corner_radii, |this, radii| {
+                        this.rounded_tl(radii.top_left)
+                            .rounded_tr(radii.top_right)
+                            .rounded_bl(radii.bottom_left)
+                            .rounded_br(radii.bottom_right)
+                    })
+                    .child(
+                        div()
+                            .size_full()
+                            .pt(self.content_top_padding)
+                            .bg(cx.theme().colors().terminal_background)
+                            .rounded_tl(content_corner_radii.top_left)
+                            .rounded_tr(content_corner_radii.top_right)
+                            .rounded_bl(content_corner_radii.bottom_left)
+                            .rounded_br(content_corner_radii.bottom_right)
+                            .child(TerminalElement::new(
+                                terminal_handle,
+                                terminal_view_handle,
+                                self.workspace.clone(),
+                                self.focus_handle.clone(),
+                                focused,
+                                self.should_show_cursor(focused, cx),
+                                self.block_below_cursor.clone(),
+                                self.mode.clone(),
+                            )),
+                    )
+                    .when(content_mode.is_scrollable(), |div| {
                         let colors = cx.theme().colors();
                         div.custom_scrollbars(
                             Scrollbars::for_settings::<TerminalScrollbarSettingsWrapper>()
@@ -1696,22 +1579,6 @@ impl Render for TerminalView {
 impl Item for TerminalView {
     type Event = ItemEvent;
 
-    fn activated(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Whether an activated item takes focus is the pane's decision, and it
-        // has already acted on it by the time this runs: a terminal that
-        // finishes starting in the background is activated without focus so it
-        // cannot pull the user out of a modal they have open. Taking focus here
-        // would override that.
-        //
-        // `focus_in` still runs for the focused case, where re-activating a tab
-        // that already holds focus fires no focus change of its own, so the
-        // awaiting-input indicator would otherwise stay lit on a terminal the
-        // user is looking at.
-        if self.focus_handle.is_focused(window) {
-            self.focus_in(window, cx);
-        }
-    }
-
     fn tab_tooltip_content(&self, cx: &App) -> Option<TabTooltipContent> {
         Some(TabTooltipContent::Custom(Box::new(Tooltip::element({
             let terminal = self.terminal().read(cx);
@@ -1722,7 +1589,7 @@ impl Item for TerminalView {
                 v_flex()
                     .gap_1()
                     .child(Label::new(title.clone()))
-                    .child(h_flex().flex_grow(1.0).child(Divider::horizontal()))
+                    .child(h_flex().flex_grow_1().child(Divider::horizontal()))
                     .child(
                         Label::new(format!("Process ID (PID): {}", pid))
                             .color(Color::Muted)
@@ -1742,9 +1609,30 @@ impl Item for TerminalView {
             .cloned()
             .unwrap_or_else(|| terminal.title(true));
 
-        let is_awaiting = self.awaiting_input.is_some();
-        let (icon, icon_color, rerun_button) =
-            terminal_awaiting_input::tab_icon_state(self, terminal.task(), is_awaiting);
+        let (icon, icon_color, rerun_button) = match terminal.task() {
+            Some(terminal_task) => match &terminal_task.status {
+                TaskStatus::Running => (
+                    IconName::PlayFilled,
+                    Color::Disabled,
+                    self.rerun_button(terminal_task),
+                ),
+                TaskStatus::Unknown => (
+                    IconName::Warning,
+                    Color::Warning,
+                    self.rerun_button(terminal_task),
+                ),
+                TaskStatus::Completed { success } => {
+                    let rerun_button = self.rerun_button(terminal_task);
+
+                    if *success {
+                        (IconName::Check, Color::Success, rerun_button)
+                    } else {
+                        (IconName::XCircle, Color::Error, rerun_button)
+                    }
+                }
+            },
+            None => (IconName::Terminal, Color::Muted, None),
+        };
 
         let self_handle = self.self_handle.clone();
         h_flex()
@@ -1761,12 +1649,13 @@ impl Item for TerminalView {
             .child(
                 h_flex()
                     .group("term-tab-icon")
-                    .child(terminal_awaiting_input::tab_icon(
-                        icon,
-                        icon_color,
-                        is_awaiting,
-                        rerun_button.is_some(),
-                    ))
+                    .child(
+                        div()
+                            .when(rerun_button.is_some(), |this| {
+                                this.hover(|style| style.invisible().w_0())
+                            })
+                            .child(Icon::new(icon).color(icon_color)),
+                    )
                     .when_some(rerun_button, |this, rerun_button| {
                         this.child(
                             div()
@@ -1980,34 +1869,15 @@ impl Item for TerminalView {
 
     fn tab_extra_context_menu_actions(
         &self,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<(SharedString, Box<dyn gpui::Action>)> {
-        let mut actions: Vec<(SharedString, Box<dyn gpui::Action>)> = Vec::new();
-        if self.terminal.read(cx).task().is_none() {
-            actions.push(("Rename".into(), Box::new(RenameTerminal)));
+        let terminal = self.terminal.read(cx);
+        if terminal.task().is_none() {
+            vec![("Rename".into(), Box::new(RenameTerminal))]
+        } else {
+            Vec::new()
         }
-        if self.can_move_to_new_window(cx) {
-            actions.push((
-                "Move to New Window".into(),
-                Box::new(MoveTerminalToNewWindow),
-            ));
-            // The tab menu takes label/action pairs and cannot nest, so the
-            // windows are listed flat here rather than under a submenu like the
-            // terminal's own context menu.
-            for (window_id, label) in self.move_targets(window, cx) {
-                actions.push((
-                    format!("Move to Window: {label}").into(),
-                    Box::new(MoveTerminalToWindow(window_id.as_u64())),
-                ));
-            }
-        } else if self.can_return_to_workspace(window, cx) {
-            actions.push((
-                "Return to Workspace".into(),
-                Box::new(ReturnTerminalToWorkspace),
-            ));
-        }
-        actions
     }
 
     fn buffer_kind(&self, _: &App) -> workspace::item::ItemBufferKind {
@@ -2053,38 +1923,8 @@ impl Item for TerminalView {
     fn is_dirty(&self, cx: &App) -> bool {
         match self.terminal.read(cx).task() {
             Some(task) => task.status == TaskStatus::Running,
-            None => self.has_bell() || self.awaiting_input.is_some(),
+            None => self.has_bell(),
         }
-    }
-
-    fn close_confirmation(&self, cx: &App) -> Option<workspace::item::CloseConfirmation> {
-        self.terminal
-            .read(cx)
-            .has_running_process()
-            .then_some(workspace::item::CloseConfirmation {
-                message: "Close running terminal?",
-                detail: "Closing this terminal will stop its running process.",
-                confirm_label: "Close Terminal",
-            })
-    }
-
-    fn tab_bg_override(&self, is_active: bool, _cx: &App) -> Option<Hsla> {
-        if is_active {
-            // Green background with low alpha to subtly distinguish active terminal tabs
-            Some(hsla(0.38, 0.7, 0.45, 0.15))
-        } else {
-            None
-        }
-    }
-
-    fn is_awaiting_input(&self, _cx: &App) -> bool {
-        self.awaiting_input.is_some()
-    }
-
-    fn awaiting_input_tooltip(&self, _cx: &App) -> &'static str {
-        self.awaiting_input
-            .map(|kind| kind.tooltip_text())
-            .unwrap_or("Terminal awaiting input")
     }
 
     fn has_conflict(&self, _cx: &App) -> bool {
@@ -2127,10 +1967,6 @@ impl Item for TerminalView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // A terminal can be transferred between workspaces (for instance when
-        // it is moved into a window of its own), so its workspace-scoped
-        // actions must follow it rather than keep pointing at where it started.
-        self.workspace = workspace.weak_handle();
         if self.terminal().read(cx).task().is_none() {
             if let Some((new_id, old_id)) = workspace.database_id().zip(self.workspace_id) {
                 log::debug!(
@@ -2424,7 +2260,7 @@ impl SearchableItem for TerminalView {
 /// Falls back to home directory when no project directory is available.
 ///
 /// For remote projects, local-only resolution (home dir fallback, shell expansion,
-/// local `is_dir` checks) is skipped, returning `None` lets the remote shell
+/// local `is_dir` checks) is skipped -- returning `None` lets the remote shell
 /// open in the remote user's home directory by default.
 pub fn default_working_directory(workspace: &Workspace, cx: &App) -> Option<PathBuf> {
     let is_remote = workspace.project().read(cx).is_remote();
@@ -2525,6 +2361,56 @@ mod tests {
 
     // CSI `1;2A` = cursor-up with the xterm Shift modifier (`1 + 1` for Shift).
     const SHIFT_UP_ESCAPE: &[u8] = b"\x1b[1;2A";
+
+    #[gpui::test]
+    async fn replacing_output_resets_view_scrolling_hover_and_search(cx: &mut TestAppContext) {
+        let (project, _workspace, window_handle) = init_test_with_window(cx).await;
+        let (_pane, terminal, terminal_view) =
+            add_display_only_terminal(&project, window_handle, false, true, cx);
+        let mut cx = VisualTestContext::from_window(window_handle.into(), cx);
+        terminal.update(&mut cx, |terminal, cx| {
+            terminal.write_raw_output(b"\x1b[1 q", cx);
+        });
+        cx.run_until_parked();
+        assert!(terminal_view.read_with(&cx, |view, _| view.blinking_terminal_enabled));
+        cx.update(|_, cx| {
+            terminal_view.update(cx, |view, _| {
+                view.scroll_top = px(25.);
+                view.scroll_handle.future_display_offset.set(Some(3));
+                view.hover = Some(HoverTarget {
+                    tooltip: "stale".into(),
+                    hovered_word: HoveredWord {
+                        word: "stale".into(),
+                        word_match: Range::new(
+                            terminal::Point::new(0, 0),
+                            terminal::Point::new(0, 5),
+                        ),
+                        id: 0,
+                    },
+                });
+            });
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_raw_output(b"old", cx);
+                terminal.matches.push(Range::new(
+                    terminal::Point::new(0, 0),
+                    terminal::Point::new(0, 3),
+                ));
+                terminal
+                    .replace_display_output(b"new", cx)
+                    .expect("replace");
+            });
+        });
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            let view = terminal_view.read(cx);
+            assert_eq!(view.scroll_top, Pixels::ZERO);
+            assert!(view.scroll_handle.future_display_offset.get().is_none());
+            assert!(view.hover.is_none());
+            assert!(view.is_read_only());
+            assert!(!view.blinking_terminal_enabled);
+            assert!(terminal.read(cx).matches.is_empty());
+        });
+    }
 
     #[gpui::test]
     async fn edit_menu_copy_and_paste_are_available_when_terminal_is_focused(
@@ -3310,44 +3196,11 @@ mod tests {
             })
             .unwrap();
 
-        let (active_pane, terminal, terminal_view, tab_item) = window_handle
-            .update(cx, |multi_workspace, window, cx| {
-                let workspace = multi_workspace.workspace().clone();
-                let active_pane = workspace.read(cx).active_pane().clone();
+        let (active_pane, terminal, terminal_view) =
+            add_display_only_terminal(&project, window_handle, false, false, cx);
 
-                let terminal = cx.new(|cx| {
-                    terminal::TerminalBuilder::new_display_only(
-                        CursorShape::default(),
-                        terminal::terminal_settings::AlternateScroll::On,
-                        None,
-                        0,
-                        cx.background_executor(),
-                        PathStyle::local(),
-                    )
-                    .subscribe(cx)
-                });
-                let terminal_view = cx.new(|cx| {
-                    TerminalView::new(
-                        terminal.clone(),
-                        workspace.downgrade(),
-                        None,
-                        project.downgrade(),
-                        window,
-                        cx,
-                    )
-                });
-
-                active_pane.update(cx, |pane, cx| {
-                    pane.add_item(
-                        Box::new(terminal_view.clone()),
-                        true,
-                        false,
-                        None,
-                        window,
-                        cx,
-                    );
-                });
-
+        let tab_item = window_handle
+            .update(cx, |_, window, cx| {
                 let tab_project_item = cx.new(|_| TestProjectItem {
                     entry_id: Some(second_entry.id),
                     project_path: Some(ProjectPath {
@@ -3361,8 +3214,7 @@ mod tests {
                 active_pane.update(cx, |pane, cx| {
                     pane.add_item(Box::new(tab_item.clone()), true, false, None, window, cx);
                 });
-
-                (active_pane, terminal, terminal_view, tab_item)
+                tab_item
             })
             .unwrap();
 

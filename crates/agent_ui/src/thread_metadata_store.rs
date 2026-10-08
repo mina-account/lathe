@@ -4,7 +4,7 @@ use std::{
 };
 
 use agent::{ThreadStore, ZED_AGENT_ID};
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use anyhow::Context as _;
 use chrono::{DateTime, Utc};
 use collections::{HashMap, HashSet};
@@ -25,8 +25,8 @@ pub use project::WorktreePaths;
 use project::{AgentId, linked_worktree_short_name};
 use remote::{RemoteConnectionOptions, same_remote_connection_identity};
 use ui::{App, Context, SharedString, ThreadItemWorktreeInfo, WorktreeKind};
-use util::ResultExt as _;
-use workspace::{PathList, SerializedWorkspaceLocation, WorkspaceDb, WorkspaceId};
+use util::{ResultExt as _, paths::PathStyle};
+use workspace::{PathList, SerializedWorkspaceLocation, WorkspaceDb};
 
 use crate::DEFAULT_THREAD_TITLE;
 
@@ -139,7 +139,6 @@ fn migrate_thread_metadata(cx: &mut App) -> Task<anyhow::Result<()>> {
                         updated_at: entry.updated_at,
                         created_at: entry.created_at,
                         interacted_at: None,
-                        workspace_id: None,
                         worktree_paths: WorktreePaths::from_folder_paths(&entry.folder_paths),
                         remote_connection: None,
                         archived: true,
@@ -321,7 +320,6 @@ pub struct ThreadMetadata {
     /// When a user last interacted to send a message (including queueing).
     /// Doesn't include the time when a queued message is fired.
     pub interacted_at: Option<DateTime<Utc>>,
-    pub workspace_id: Option<WorkspaceId>,
     pub worktree_paths: WorktreePaths,
     pub remote_connection: Option<RemoteConnectionOptions>,
     pub archived: bool,
@@ -386,7 +384,8 @@ pub fn worktree_info_from_thread_paths<S: std::hash::BuildHasher>(
         let is_linked = main_path != folder_path;
 
         if is_linked {
-            let short_name = linked_worktree_short_name(main_path, folder_path).unwrap_or_default();
+            let short_name = linked_worktree_short_name(main_path, folder_path, PathStyle::local())
+                .unwrap_or_default();
             let project_name = main_path
                 .file_name()
                 .map(|n| SharedString::from(n.to_string_lossy().to_string()))
@@ -1272,7 +1271,6 @@ impl ThreadMetadataStore {
     ) {
         let view = conversation_view.read(cx);
         let thread_id = view.thread_id;
-        let workspace_id = view.workspace_id(cx);
         let Some(thread) = view.root_thread(cx) else {
             return;
         };
@@ -1280,9 +1278,6 @@ impl ThreadMetadataStore {
         let thread_ref = thread.read(cx);
         // Collab-hosted threads don't own their metadata locally.
         if thread_ref.project().read(cx).is_via_collab() {
-            return;
-        }
-        if thread_ref.is_restored_session() {
             return;
         }
         let is_draft = thread_ref.is_draft_thread();
@@ -1352,7 +1347,6 @@ impl ThreadMetadataStore {
             title_override,
             created_at: Some(created_at),
             interacted_at,
-            workspace_id,
             updated_at,
             worktree_paths,
             remote_connection,
@@ -1469,9 +1463,6 @@ impl Domain for ThreadMetadataDb {
         sql!(
             ALTER TABLE sidebar_threads ADD COLUMN title_override TEXT;
         ),
-        sql!(
-            ALTER TABLE sidebar_threads ADD COLUMN workspace_id INTEGER;
-        ),
     ];
 }
 
@@ -1488,7 +1479,7 @@ impl ThreadMetadataDb {
 
     const LIST_QUERY: &str = "SELECT thread_id, session_id, agent_id, title, updated_at, \
         created_at, interacted_at, folder_paths, folder_paths_order, archived, main_worktree_paths, \
-        main_worktree_paths_order, remote_connection, title_override, workspace_id \
+        main_worktree_paths_order, remote_connection, title_override \
         FROM sidebar_threads \
         ORDER BY updated_at DESC";
 
@@ -1539,13 +1530,12 @@ impl ThreadMetadataDb {
             .transpose()
             .context("serialize thread metadata remote connection")?;
         let title_override = row.title_override.as_ref().map(|t| t.to_string());
-        let workspace_id = row.workspace_id;
         let thread_id = row.thread_id;
         let archived = row.archived;
 
         self.write(move |conn| {
-            let sql = "INSERT INTO sidebar_threads(thread_id, session_id, agent_id, title, updated_at, created_at, interacted_at, folder_paths, folder_paths_order, archived, main_worktree_paths, main_worktree_paths_order, remote_connection, title_override, workspace_id) \
-                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
+            let sql = "INSERT INTO sidebar_threads(thread_id, session_id, agent_id, title, updated_at, created_at, interacted_at, folder_paths, folder_paths_order, archived, main_worktree_paths, main_worktree_paths_order, remote_connection, title_override) \
+                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
                        ON CONFLICT(thread_id) DO UPDATE SET \
                            session_id = excluded.session_id, \
                            agent_id = excluded.agent_id, \
@@ -1559,8 +1549,7 @@ impl ThreadMetadataDb {
                            main_worktree_paths = excluded.main_worktree_paths, \
                            main_worktree_paths_order = excluded.main_worktree_paths_order, \
                            remote_connection = excluded.remote_connection, \
-                           title_override = excluded.title_override, \
-                           workspace_id = excluded.workspace_id";
+                           title_override = excluded.title_override";
             let mut stmt = Statement::prepare(conn, sql)?;
             let mut i = stmt.bind(&thread_id, 1)?;
             i = stmt.bind(&session_id, i)?;
@@ -1575,8 +1564,7 @@ impl ThreadMetadataDb {
             i = stmt.bind(&main_worktree_paths, i)?;
             i = stmt.bind(&main_worktree_paths_order, i)?;
             i = stmt.bind(&remote_connection, i)?;
-            i = stmt.bind(&title_override, i)?;
-            stmt.bind(&workspace_id, i)?;
+            stmt.bind(&title_override, i)?;
             stmt.exec()
         })
         .await
@@ -1734,7 +1722,6 @@ impl Column for ThreadMetadata {
         let (remote_connection_json, next): (Option<String>, i32) =
             Column::column(statement, next)?;
         let (title_override, next): (Option<String>, i32) = Column::column(statement, next)?;
-        let (workspace_id, next): (Option<WorkspaceId>, i32) = Column::column(statement, next)?;
 
         let agent_id = agent_id
             .map(|id| AgentId::new(id))
@@ -1798,7 +1785,6 @@ impl Column for ThreadMetadata {
                 updated_at,
                 created_at,
                 interacted_at,
-                workspace_id,
                 worktree_paths,
                 remote_connection,
                 archived,
@@ -1839,7 +1825,7 @@ mod tests {
     use acp_thread::StubAgentConnection;
     use action_log::ActionLog;
     use agent::DbThread;
-    use agent_client_protocol::schema::v1 as acp;
+    use agent_client_protocol::schema::{v1 as acp_v1, v2 as acp};
     use gpui::{TestAppContext, VisualTestContext};
     use project::FakeFs;
     use project::Project;
@@ -1890,7 +1876,6 @@ mod tests {
             updated_at,
             created_at: Some(updated_at),
             interacted_at: None,
-            workspace_id: None,
             worktree_paths: WorktreePaths::from_folder_paths(&folder_paths),
             remote_connection: None,
         }
@@ -1924,7 +1909,7 @@ mod tests {
             .unwrap();
         let mut vcx = VisualTestContext::from_window(multi_workspace.into(), cx);
         let panel = workspace_entity.update_in(&mut vcx, |workspace, window, cx| {
-            cx.new(|cx| crate::AgentPanel::new(workspace, None, window, cx))
+            cx.new(|cx| crate::AgentPanel::new(workspace, window, cx))
         });
         (panel, vcx)
     }
@@ -1963,6 +1948,52 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_database_preserves_legacy_session_ids(_cx: &mut TestAppContext) {
+        let legacy_session_id = acp_v1::SessionId::new("legacy/session:opaque-☃");
+        let thread_id = ThreadId::new();
+        let db = ThreadMetadataDb(gpui::block_on(db::open_test_db::<ThreadMetadataDb>(
+            "THREAD_METADATA_DB_LEGACY_SESSION_IDS",
+        )));
+
+        db.write({
+            let session_id = legacy_session_id.0.clone();
+            move |connection| {
+                connection.exec_bound::<(ThreadId, Arc<str>)>(
+                    "INSERT INTO sidebar_threads \
+                     (thread_id, session_id, title, updated_at, archived) \
+                     VALUES (?1, ?2, 'Legacy thread', '2025-01-15T10:00:00Z', 0)",
+                )?((thread_id, session_id))
+            }
+        })
+        .await
+        .expect("legacy session should be stored as plain text");
+
+        let mut metadata = db
+            .list()
+            .expect("legacy metadata should load")
+            .pop()
+            .expect("legacy thread should exist");
+        assert_eq!(
+            metadata.session_id,
+            Some(acp::SessionId::new(legacy_session_id.0.clone()))
+        );
+        assert_eq!(metadata.thread_id, thread_id);
+
+        metadata.title_override = Some("Renamed legacy thread".into());
+        db.save(metadata)
+            .await
+            .expect("v2 session metadata should save");
+        let stored_session_id = db
+            .select_row_bound::<ThreadId, Arc<str>>(
+                "SELECT session_id FROM sidebar_threads WHERE thread_id = ?1",
+            )
+            .expect("session ID query should prepare")(thread_id)
+        .expect("session ID query should succeed")
+        .expect("stored session ID should exist");
+        assert_eq!(acp_v1::SessionId::new(stored_session_id), legacy_session_id);
+    }
+
+    #[gpui::test]
     async fn test_database_round_trips_title_override(_cx: &mut TestAppContext) {
         let now = Utc::now();
         let mut metadata = make_metadata(
@@ -1972,7 +2003,6 @@ mod tests {
             PathList::new(&[Path::new("/project-a")]),
         );
         metadata.title_override = Some("User Title".into());
-        metadata.workspace_id = Some(WorkspaceId::from_i64(42));
 
         let thread = std::thread::current();
         let test_name = thread.name().unwrap_or("unknown_test");
@@ -1988,7 +2018,6 @@ mod tests {
         assert_eq!(rows[0].title.as_deref(), Some("Agent Generated Title"));
         assert_eq!(rows[0].title_override.as_deref(), Some("User Title"));
         assert_eq!(rows[0].title().as_deref(), Some("User Title"));
-        assert_eq!(rows[0].workspace_id, Some(WorkspaceId::from_i64(42)));
     }
 
     #[gpui::test]
@@ -2186,7 +2215,6 @@ mod tests {
             updated_at: updated_time,
             created_at: Some(updated_time),
             interacted_at: None,
-            workspace_id: None,
             worktree_paths: WorktreePaths::from_folder_paths(&second_paths),
             remote_connection: None,
             archived: false,
@@ -2272,7 +2300,6 @@ mod tests {
             updated_at: now - chrono::Duration::seconds(10),
             created_at: Some(now - chrono::Duration::seconds(10)),
             interacted_at: None,
-            workspace_id: None,
             worktree_paths: WorktreePaths::from_folder_paths(&project_a_paths),
             remote_connection: None,
             archived: false,
@@ -2399,7 +2426,6 @@ mod tests {
             updated_at: existing_updated_at,
             created_at: Some(existing_updated_at),
             interacted_at: None,
-            workspace_id: None,
             worktree_paths: WorktreePaths::from_folder_paths(&project_paths),
             remote_connection: None,
             archived: false,
@@ -3145,7 +3171,6 @@ mod tests {
             updated_at: now,
             created_at: Some(now),
             interacted_at: None,
-            workspace_id: None,
             worktree_paths: linked_worktree_paths.clone(),
             remote_connection: None,
         };
@@ -3160,7 +3185,6 @@ mod tests {
             updated_at: now - chrono::Duration::seconds(1),
             created_at: Some(now - chrono::Duration::seconds(1)),
             interacted_at: None,
-            workspace_id: None,
             worktree_paths: linked_worktree_paths,
             remote_connection: Some(remote_a.clone()),
         };
