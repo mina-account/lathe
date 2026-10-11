@@ -6,7 +6,7 @@ use agent_client_protocol::schema::v2 as acp_v2;
 use agent_settings::AgentSettings;
 use collections::{HashMap, HashSet};
 use editor::{
-    Editor, EditorEvent, EditorMode, MinimapVisibility, HiddenUnstagedDiffHunkRenderer,
+    Editor, EditorEvent, EditorMode, HiddenUnstagedDiffHunkRenderer, MinimapVisibility,
     SizingBehavior,
 };
 use gpui::{
