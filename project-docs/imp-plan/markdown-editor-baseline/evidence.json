@@ -1,0 +1,2256 @@
+{
+  "browser": "155.0.4283.45",
+  "vditor": "3.11.2",
+  "comparison": {
+    "media-src/src/preload.ts": {
+      "equal": true,
+      "publishedSha256": "833342f72c693003f0efdb09cf011fe243cdcc1cba92c726ad573a653645260f",
+      "sourceSha256": "833342f72c693003f0efdb09cf011fe243cdcc1cba92c726ad573a653645260f"
+    },
+    "media-src/src/utils.ts": {
+      "equal": true,
+      "publishedSha256": "ef00520c039cbce59bb50f4ef4dc7d61246863b7ca2a9e49057234f9b6718537",
+      "sourceSha256": "ef00520c039cbce59bb50f4ef4dc7d61246863b7ca2a9e49057234f9b6718537"
+    },
+    "media-src/src/main.ts": {
+      "equal": true,
+      "publishedSha256": "e7a1acca19cf199ef6a1cc85982f07012ace0b77575c725fea7ab8ea2cc8b1f4",
+      "sourceSha256": "e7a1acca19cf199ef6a1cc85982f07012ace0b77575c725fea7ab8ea2cc8b1f4"
+    },
+    "media-src/src/lang.ts": {
+      "equal": true,
+      "publishedSha256": "55326305501448515ac73541ee514034435994f339be011c7df9f94e3112476a",
+      "sourceSha256": "55326305501448515ac73541ee514034435994f339be011c7df9f94e3112476a"
+    },
+    "media-src/src/toolbar.ts": {
+      "equal": true,
+      "publishedSha256": "e98c2f9e071da3434ccea178ed84986f2c0008b7448f8814007068479bdc3b21",
+      "sourceSha256": "e98c2f9e071da3434ccea178ed84986f2c0008b7448f8814007068479bdc3b21"
+    },
+    "media-src/src/fix-table-ir.ts": {
+      "equal": true,
+      "publishedSha256": "f325ea840da216721ce91fe67a50fcb4c0781c1d8645289bad2452c6f465d059",
+      "sourceSha256": "f325ea840da216721ce91fe67a50fcb4c0781c1d8645289bad2452c6f465d059"
+    },
+    "media-src/src/search.ts": {
+      "equal": true,
+      "publishedSha256": "beadd268d71ccdb4667fae45c2a21aca4d02f0634648c0e3cd18b88430d8af71",
+      "sourceSha256": "beadd268d71ccdb4667fae45c2a21aca4d02f0634648c0e3cd18b88430d8af71"
+    }
+  },
+  "baselines": {
+    "published": {
+      "toolbar": [
+        "save",
+        "emoji",
+        "headings",
+        "bold",
+        "italic",
+        "strike",
+        "link",
+        "list",
+        "ordered-list",
+        "check",
+        "outdent",
+        "indent",
+        "quote",
+        "line",
+        "code",
+        "inline-code",
+        "insert-before",
+        "insert-after",
+        "upload",
+        "table",
+        "table-wrap",
+        "undo",
+        "redo",
+        "find",
+        "edit-mode",
+        "more",
+        "both",
+        "code-theme",
+        "content-theme",
+        "ant-design",
+        "dark",
+        "light",
+        "wechat",
+        "outline",
+        "preview",
+        "copy-markdown",
+        "copy-html",
+        "reset-config",
+        "devtools",
+        "info",
+        "help"
+      ],
+      "options": {
+        "mode": "ir",
+        "preview": {
+          "actions": [
+            "desktop",
+            "tablet",
+            "mobile",
+            "mp-wechat",
+            "zhihu"
+          ],
+          "delay": 1000,
+          "hljs": {
+            "enable": true,
+            "lineNumber": false,
+            "defaultLang": "",
+            "style": "github"
+          },
+          "markdown": {
+            "autoSpace": false,
+            "gfmAutoLink": true,
+            "codeBlockPreview": true,
+            "fixTermTypo": false,
+            "footnotes": true,
+            "linkBase": "",
+            "linkPrefix": "",
+            "listStyle": false,
+            "mark": false,
+            "mathBlockPreview": true,
+            "paragraphBeginningSpace": false,
+            "sanitize": true,
+            "toc": false
+          },
+          "math": {
+            "engine": "KaTeX",
+            "inlineDigit": true,
+            "macros": {}
+          },
+          "maxWidth": 800,
+          "mode": "both",
+          "theme": {
+            "current": "light",
+            "list": {
+              "ant-design": "Ant Design",
+              "dark": "Dark",
+              "light": "Light",
+              "wechat": "WeChat"
+            },
+            "path": "https://unpkg.com/vditor@3.11.2/dist/css/content-theme"
+          },
+          "render": {
+            "media": {
+              "enable": true
+            }
+          }
+        },
+        "toolbar": [
+          {
+            "hotkey": "⌘s",
+            "name": "save",
+            "tipPosition": "s",
+            "tip": "Save",
+            "className": "save",
+            "icon": "<svg viewBox=\"0 0 1024 1024\" xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\"><path d=\"M810.667 938.667H213.333a128 128 0 01-128-128V213.333a128 128 0 01128-128h469.334a42.667 42.667 0 0130.293 12.374L926.293 311.04a42.667 42.667 0 0112.374 30.293v469.334a128 128 0 01-128 128zm-597.334-768a42.667 42.667 0 00-42.666 42.666v597.334a42.667 42.667 0 0042.666 42.666h597.334a42.667 42.667 0 0042.666-42.666v-451.84l-188.16-188.16z\"/><path d=\"M725.333 938.667A42.667 42.667 0 01682.667 896V597.333H341.333V896A42.667 42.667 0 01256 896V554.667A42.667 42.667 0 01298.667 512h426.666A42.667 42.667 0 01768 554.667V896a42.667 42.667 0 01-42.667 42.667zM640 384H298.667A42.667 42.667 0 01256 341.333V128a42.667 42.667 0 0185.333 0v170.667H640A42.667 42.667 0 01640 384z\"/></svg>"
+          },
+          {
+            "hotkey": "⌘E",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-emoji\"></use></svg>",
+            "name": "emoji",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘H",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-headings\"></use></svg>",
+            "name": "headings",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘B",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-bold\"></use></svg>",
+            "name": "bold",
+            "prefix": "**",
+            "suffix": "**",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘I",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-italic\"></use></svg>",
+            "name": "italic",
+            "prefix": "*",
+            "suffix": "*",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘D",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-strike\"></use></svg>",
+            "name": "strike",
+            "prefix": "~~",
+            "suffix": "~~",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘K",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-link\"></use></svg>",
+            "name": "link",
+            "prefix": "[",
+            "suffix": "](https://)",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘L",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-list\"></use></svg>",
+            "name": "list",
+            "prefix": "* ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘O",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-ordered-list\"></use></svg>",
+            "name": "ordered-list",
+            "prefix": "1. ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘J",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-check\"></use></svg>",
+            "name": "check",
+            "prefix": "* [ ] ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘I",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-outdent\"></use></svg>",
+            "name": "outdent",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘O",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-indent\"></use></svg>",
+            "name": "indent",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘;",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-quote\"></use></svg>",
+            "name": "quote",
+            "prefix": "> ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘H",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-line\"></use></svg>",
+            "name": "line",
+            "prefix": "---",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘U",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-code\"></use></svg>",
+            "name": "code",
+            "prefix": "```",
+            "suffix": "\n```",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘G",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-inline-code\"></use></svg>",
+            "name": "inline-code",
+            "prefix": "`",
+            "suffix": "`",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘B",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-before\"></use></svg>",
+            "name": "insert-before",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘E",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-after\"></use></svg>",
+            "name": "insert-after",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "icon": "<svg><use xlink:href=\"#vditor-icon-upload\"></use></svg>",
+            "name": "upload",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘M",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-table\"></use></svg>",
+            "name": "table",
+            "prefix": "| col1",
+            "suffix": " | col2 | col3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |",
+            "tipPosition": "s"
+          },
+          {
+            "name": "table-wrap",
+            "tipPosition": "s",
+            "tip": "Toggle table cell wrapping (on: fits the editor width like the preview; off: original nowrap/horizontal-scroll)",
+            "icon": "<svg viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M4 19h6v-2H4v2zM20 5H4v2h16V5zm-3 6H4v2h13.25c1.1 0 2 .9 2 2s-.9 2-2 2H15v-2l-3 3 3 3v-2h2c2.21 0 4-1.79 4-4s-1.79-4-4-4z\"/></svg>"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘Z",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-undo\"></use></svg>",
+            "name": "undo",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘Y",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-redo\"></use></svg>",
+            "name": "redo",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "name": "find",
+            "tipPosition": "s",
+            "tip": "Find (Ctrl+F)",
+            "icon": "<svg viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z\"/></svg>"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "icon": "<svg><use xlink:href=\"#vditor-icon-edit\"></use></svg>",
+            "name": "edit-mode",
+            "tipPosition": "e"
+          },
+          {
+            "icon": "<svg><use xlink:href=\"#vditor-icon-more\"></use></svg>",
+            "name": "more",
+            "tipPosition": "e",
+            "toolbar": [
+              {
+                "hotkey": "⌘P",
+                "icon": "<svg><use xlink:href=\"#vditor-icon-both\"></use></svg>",
+                "name": "both",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-code-theme\"></use></svg>",
+                "name": "code-theme",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-theme\"></use></svg>",
+                "name": "content-theme",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-align-center\"></use></svg>",
+                "name": "outline",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-preview\"></use></svg>",
+                "name": "preview",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "name": "copy-markdown",
+                "icon": "Copy Markdown",
+                "level": 2
+              },
+              {
+                "name": "copy-html",
+                "icon": "Copy HTML",
+                "level": 2
+              },
+              {
+                "name": "reset-config",
+                "icon": "Reset config",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-bug\"></use></svg>",
+                "name": "devtools",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-info\"></use></svg>",
+                "name": "info",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-help\"></use></svg>",
+                "name": "help",
+                "tipPosition": "nw",
+                "level": 2
+              }
+            ]
+          }
+        ],
+        "methods": [
+          "constructor",
+          "showErrorTip",
+          "updateToolbarConfig",
+          "setTheme",
+          "getValue",
+          "getCurrentMode",
+          "focus",
+          "blur",
+          "disabled",
+          "enable",
+          "getSelection",
+          "renderPreview",
+          "getCursorPosition",
+          "isUploading",
+          "clearCache",
+          "disabledCache",
+          "enableCache",
+          "html2md",
+          "exportJSON",
+          "getHTML",
+          "tip",
+          "setPreviewMode",
+          "deleteValue",
+          "updateValue",
+          "insertValue",
+          "insertMD",
+          "setValue",
+          "insertEmptyBlock",
+          "clearStack",
+          "destroy",
+          "getCommentIds",
+          "hlCommentIds",
+          "unHlCommentIds",
+          "removeCommentIds",
+          "init"
+        ]
+      },
+      "roundTrips": [
+        {
+          "id": "references",
+          "mode": "ir",
+          "input": "[label][id]\n\n[id]: https://example.com \"Title\"\n",
+          "output": "[label][id]\n\n[id]: https://example.com\n",
+          "identical": false,
+          "html": "<p><a href=\"https://example.com\">label</a></p>\n"
+        },
+        {
+          "id": "references",
+          "mode": "wysiwyg",
+          "input": "[label][id]\n\n[id]: https://example.com \"Title\"\n",
+          "output": "[label][id]\n\n[id]: https://example.com\n",
+          "identical": false,
+          "html": "<p><a href=\"https://example.com\">label</a></p>\n"
+        },
+        {
+          "id": "references",
+          "mode": "sv",
+          "input": "[label][id]\n\n[id]: https://example.com \"Title\"\n",
+          "output": "[label][id]\n\n[id]: https://example.com\n\n",
+          "identical": false,
+          "html": "<p><a href=\"https://example.com\">label</a></p>\n"
+        },
+        {
+          "id": "front-matter",
+          "mode": "ir",
+          "input": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n",
+          "output": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n# Heading\n",
+          "identical": false,
+          "html": "<pre class=\"vditor-yml-front-matter\"><code class=\"language-yaml\">title: &quot;Quoted&quot;\ncustom: [one, two]</code></pre>\n<h1>Heading</h1>\n"
+        },
+        {
+          "id": "front-matter",
+          "mode": "wysiwyg",
+          "input": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n",
+          "output": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n# Heading\n",
+          "identical": false,
+          "html": "<pre class=\"vditor-yml-front-matter\"><code class=\"language-yaml\">title: &quot;Quoted&quot;\ncustom: [one, two]</code></pre>\n<h1>Heading</h1>\n"
+        },
+        {
+          "id": "front-matter",
+          "mode": "sv",
+          "input": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n",
+          "output": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n\n",
+          "identical": false,
+          "html": "<pre class=\"vditor-yml-front-matter\"><code class=\"language-yaml\">title: &quot;Quoted&quot;\ncustom: [one, two]</code></pre>\n<h1>Heading</h1>\n"
+        },
+        {
+          "id": "raw-html",
+          "mode": "ir",
+          "input": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n",
+          "output": "<div class=\"custom\">\n  <span data-value=\"x\">Raw & HTML</span>\n</div>\n",
+          "identical": false,
+          "html": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n"
+        },
+        {
+          "id": "raw-html",
+          "mode": "wysiwyg",
+          "input": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n",
+          "output": "<div class=\"custom\">\n  <span data-value=\"x\">Raw & HTML</span>\n</div>\n",
+          "identical": false,
+          "html": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n"
+        },
+        {
+          "id": "raw-html",
+          "mode": "sv",
+          "input": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n",
+          "output": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n\n",
+          "identical": false,
+          "html": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n"
+        },
+        {
+          "id": "math",
+          "mode": "ir",
+          "input": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "output": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "identical": true,
+          "html": "<p>Inline <span class=\"language-math\">2x+1</span> and escaped $5.</p>\n<div class=\"language-math\">a^2+b^2=c^2</div>\n"
+        },
+        {
+          "id": "math",
+          "mode": "wysiwyg",
+          "input": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "output": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "identical": true,
+          "html": "<p>Inline <span class=\"language-math\">​2x+1</span> and escaped $5.</p>\n<div class=\"language-math\">a^2+b^2=c^2</div>\n"
+        },
+        {
+          "id": "math",
+          "mode": "sv",
+          "input": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "output": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n\n",
+          "identical": false,
+          "html": "<p>Inline <span class=\"language-math\">2x+1</span> and escaped $5.</p>\n<div class=\"language-math\">a^2+b^2=c^2</div>\n"
+        },
+        {
+          "id": "unknown-fence",
+          "mode": "ir",
+          "input": "```unknown-engine extra\n  untouched < & >\n```\n",
+          "output": "```unknown-engine\n  untouched < & >\n```\n",
+          "identical": false,
+          "html": "<pre><code class=\"language-unknown-engine\">  untouched &lt; &amp; &gt;\n</code></pre>\n"
+        },
+        {
+          "id": "unknown-fence",
+          "mode": "wysiwyg",
+          "input": "```unknown-engine extra\n  untouched < & >\n```\n",
+          "output": "```unknown-engine\n  untouched < & >\n```\n",
+          "identical": false,
+          "html": "<pre><code class=\"language-unknown-engine\">  untouched &lt; &amp; &gt;\n</code></pre>\n"
+        },
+        {
+          "id": "unknown-fence",
+          "mode": "sv",
+          "input": "```unknown-engine extra\n  untouched < & >\n```\n",
+          "output": "```unknown-engine\nuntouched < & >\n```\n\n",
+          "identical": false,
+          "html": "<pre><code class=\"language-unknown-engine\">untouched &lt; &amp; &gt;\n</code></pre>\n"
+        },
+        {
+          "id": "unicode",
+          "mode": "ir",
+          "input": "Café é 中文 😀 👩‍💻\n",
+          "output": "Café é 中文 😀 👩‍💻\n",
+          "identical": true,
+          "html": "<p>Café é 中文 😀 👩‍💻</p>\n"
+        },
+        {
+          "id": "unicode",
+          "mode": "wysiwyg",
+          "input": "Café é 中文 😀 👩‍💻\n",
+          "output": "Café é 中文 😀 👩‍💻\n",
+          "identical": true,
+          "html": "<p>Café é 中文 😀 👩‍💻</p>\n"
+        },
+        {
+          "id": "unicode",
+          "mode": "sv",
+          "input": "Café é 中文 😀 👩‍💻\n",
+          "output": "Café é 中文 😀 👩‍💻\n\n",
+          "identical": false,
+          "html": "<p>Café é 中文 😀 👩‍💻</p>\n"
+        },
+        {
+          "id": "crlf",
+          "mode": "ir",
+          "input": "# Windows\r\n\r\nBody\r\n",
+          "output": "# Windows\n\nBody\n",
+          "identical": false,
+          "html": "<h1>Windows</h1>\n<p>Body</p>\n"
+        },
+        {
+          "id": "crlf",
+          "mode": "wysiwyg",
+          "input": "# Windows\r\n\r\nBody\r\n",
+          "output": "# Windows\n\nBody\n",
+          "identical": false,
+          "html": "<h1>Windows</h1>\n<p>Body</p>\n"
+        },
+        {
+          "id": "crlf",
+          "mode": "sv",
+          "input": "# Windows\r\n\r\nBody\r\n",
+          "output": "# Windows\n\nBody\n\n",
+          "identical": false,
+          "html": "<h1>Windows</h1>\n<p>Body</p>\n"
+        },
+        {
+          "id": "no-final-newline",
+          "mode": "ir",
+          "input": "# No newline\n\nLast line",
+          "output": "# No newline\n\nLast line\n",
+          "identical": false,
+          "html": "<h1>No newline</h1>\n<p>Last line</p>\n"
+        },
+        {
+          "id": "no-final-newline",
+          "mode": "wysiwyg",
+          "input": "# No newline\n\nLast line",
+          "output": "# No newline\n\nLast line\n",
+          "identical": false,
+          "html": "<h1>No newline</h1>\n<p>Last line</p>\n"
+        },
+        {
+          "id": "no-final-newline",
+          "mode": "sv",
+          "input": "# No newline\n\nLast line",
+          "output": "# No newline\n\nLast line\n\n",
+          "identical": false,
+          "html": "<h1>No newline</h1>\n<p>Last line</p>\n"
+        },
+        {
+          "id": "commonmark",
+          "mode": "ir",
+          "input": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n- [x] done\n- [ ] todo\n\n1. ordered\n\n<https://example.com>\n\n| left | right |\n| :--- | ---: |\n| A | B |\n",
+          "output": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n\n- [X]  done\n- [ ]  todo\n\n1. ordered\n\n[https://example.com](https://example.com)\n\n\n| left | right |\n| :--- | ----: |\n| A    |     B |\n",
+          "identical": false,
+          "html": "<h1>Heading</h1>\n<p><strong>Bold</strong> <em>italic</em> <del>strike</del> <code>code</code> *escaped*.</p>\n<blockquote>\n<p>Quote</p>\n</blockquote>\n<ul>\n<li>outer\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ul>\n<li class=\"vditor-task vditor-task--done\"><input checked=\"\" disabled=\"\" type=\"checkbox\" /> done</li>\n<li class=\"vditor-task\"><input disabled=\"\" type=\"checkbox\" /> todo</li>\n</ul>\n<ol>\n<li>ordered</li>\n</ol>\n<p><a href=\"https://example.com\">https://example.com</a></p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">left</th>\n<th align=\"right\">right</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">A</td>\n<td align=\"right\">B</td>\n</tr>\n</tbody>\n</table>\n"
+        },
+        {
+          "id": "commonmark",
+          "mode": "wysiwyg",
+          "input": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n- [x] done\n- [ ] todo\n\n1. ordered\n\n<https://example.com>\n\n| left | right |\n| :--- | ---: |\n| A | B |\n",
+          "output": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n\n- [X] done\n- [ ] todo\n\n1. ordered\n\n[https://example.com](https://example.com)\n\n| left | right |\n| :--- | ----: |\n| A    |     B |\n",
+          "identical": false,
+          "html": "<h1>Heading</h1>\n<p><strong>Bold</strong> <em>italic</em> <del>strike</del> <code>code</code> *escaped*.</p>\n<blockquote>\n<p>Quote</p>\n</blockquote>\n<ul>\n<li>outer\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ul>\n<li class=\"vditor-task vditor-task--done\"><input checked=\"\" disabled=\"\" type=\"checkbox\" /> done</li>\n<li class=\"vditor-task\"><input disabled=\"\" type=\"checkbox\" /> todo</li>\n</ul>\n<ol>\n<li>ordered</li>\n</ol>\n<p><a href=\"https://example.com\">https://example.com</a></p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">left</th>\n<th align=\"right\">right</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">A</td>\n<td align=\"right\">B</td>\n</tr>\n</tbody>\n</table>\n"
+        },
+        {
+          "id": "commonmark",
+          "mode": "sv",
+          "input": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n- [x] done\n- [ ] todo\n\n1. ordered\n\n<https://example.com>\n\n| left | right |\n| :--- | ---: |\n| A | B |\n",
+          "output": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n\n- [x] done\n- [ ] todo\n\n1. ordered\n\n[https://example.com](https://example.com)\n\n| left | right |\n| :--- | ---: |\n| A | B |\n\n",
+          "identical": false,
+          "html": "<h1>Heading</h1>\n<p><strong>Bold</strong> <em>italic</em> <del>strike</del> <code>code</code> *escaped*.</p>\n<blockquote>\n<p>Quote</p>\n</blockquote>\n<ul>\n<li>outer\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ul>\n<li class=\"vditor-task vditor-task--done\"><input checked=\"\" disabled=\"\" type=\"checkbox\" /> done</li>\n<li class=\"vditor-task\"><input disabled=\"\" type=\"checkbox\" /> todo</li>\n</ul>\n<ol>\n<li>ordered</li>\n</ol>\n<p><a href=\"https://example.com\">https://example.com</a></p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">left</th>\n<th align=\"right\">right</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">A</td>\n<td align=\"right\">B</td>\n</tr>\n</tbody>\n</table>\n"
+        },
+        {
+          "id": "extensions",
+          "mode": "ir",
+          "input": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "output": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "identical": true,
+          "html": "<p>[toc]</p>\n<h1>Heading</h1>\n<p>Footnote<sup class=\"footnotes-ref\" id=\"footnotes-ref-1\"><a href=\"#footnotes-def-1\">1</a></sup>.</p>\n<div class=\"footnotes-defs-div\"><hr class=\"footnotes-defs-hr\" />\n<ol class=\"footnotes-defs-ol\"><li id=\"footnotes-def-1\"><p>Footnote text. <a href=\"#footnotes-ref-1\" class=\"vditor-footnotes__goto-ref\">↩</a></p>\n</li>\n</ol></div>"
+        },
+        {
+          "id": "extensions",
+          "mode": "wysiwyg",
+          "input": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "output": "[toc]\n\n# Heading\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "identical": false,
+          "html": "<p>[toc]</p>\n<h1>Heading</h1>\n<p>Footnote<sup class=\"footnotes-ref\" id=\"footnotes-ref-1\"><a href=\"#footnotes-def-1\">1</a></sup>.</p>\n<div class=\"footnotes-defs-div\"><hr class=\"footnotes-defs-hr\" />\n<ol class=\"footnotes-defs-ol\"><li id=\"footnotes-def-1\"><p>Footnote text. <a href=\"#footnotes-ref-1\" class=\"vditor-footnotes__goto-ref\">↩</a></p>\n</li>\n</ol></div>"
+        },
+        {
+          "id": "extensions",
+          "mode": "sv",
+          "input": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "output": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n\n",
+          "identical": false,
+          "html": "<p>[toc]</p>\n<h1>Heading</h1>\n<p>Footnote<sup class=\"footnotes-ref\" id=\"footnotes-ref-1\"><a href=\"#footnotes-def-1\">1</a></sup>.</p>\n<div class=\"footnotes-defs-div\"><hr class=\"footnotes-defs-hr\" />\n<ol class=\"footnotes-defs-ol\"><li id=\"footnotes-def-1\"><p>Footnote text. <a href=\"#footnotes-ref-1\" class=\"vditor-footnotes__goto-ref\">↩</a></p>\n</li>\n</ol></div>"
+        }
+      ],
+      "htmlPaste": {
+        "dispatched": true,
+        "output": "Pasted **bold** [link](https://example.com)Paste here\n"
+      },
+      "interactions": {
+        "findOpen": true,
+        "findCount": "1/3",
+        "tableTogglePreservedSource": true,
+        "modeSwitches": [
+          {
+            "mode": "wysiwyg",
+            "value": "Find find FIND\n\n| long cell                  | B |\n| -------------------------- | - |\n| repeated repeated repeated | B |\n"
+          },
+          {
+            "mode": "sv",
+            "value": "Find find FIND\n\n| long cell                  | B |\n| -------------------------- | - |\n| repeated repeated repeated | B |\n\n"
+          },
+          {
+            "mode": "ir",
+            "value": "Find find FIND\n\n\n| long cell                  | B |\n| -------------------------- | - |\n| repeated repeated repeated | B |\n"
+          }
+        ]
+      },
+      "renderers": [
+        {
+          "language": "mermaid",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .error-icon{fill:#552222;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .error-text{fill:#552222;stroke:#552222;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-thickness-normal{stroke-width:1px;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-thickness-thick{stroke-width:3.5px;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-pattern-solid{stroke-dasharray:0;}#mermaid529e93d5-1106-48f4-a33d-3eb580a",
+          "html": "<div class=\"language-mermaid\" data-processed=\"true\"><svg id=\"mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4\" width=\"100%\" xmlns=\"http://www.w3.org/2000/svg\" class=\"flowchart\" style=\"max-width: 86.671875px;\" viewBox=\"0 0 86.671875 174\" role=\"graphics-document document\" aria-roledescription=\"flowchart-v2\"><style>#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .error-icon{fill:#552222;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .error-text{fill:#552222;stroke:#552222;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-thickness-normal{stroke-width:1px;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-thickness-thick{stroke-width:3.5px;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-pattern-solid{stroke-dasharray:0;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-pattern-dashed{stroke-dasharray:3;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .edge-pattern-dotted{stroke-dasharray:2;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .marker{fill:#333333;stroke:#333333;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .marker.cross{stroke:#333333;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 svg{font-family:sans-serif;font-size:16px;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 p{margin:0;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .label{font-family:sans-serif;color:#333;}#mermaid529e93d5-1106-48f4-a33d-3eb580afe4e4 .cluster-label text{fill:#3",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "mermaid",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "#mermaid119c0376-11dc-408c-8cfb-af65441cc51c{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .error-icon{fill:#552222;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .error-text{fill:#552222;stroke:#552222;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-thickness-normal{stroke-width:1px;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-thickness-thick{stroke-width:3.5px;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-pattern-solid{stroke-dasharray:0;}#mermaid119c0376-11dc-408c-8cfb-af65441",
+          "html": "<div class=\"language-mermaid\" data-processed=\"true\"><svg id=\"mermaid119c0376-11dc-408c-8cfb-af65441cc51c\" width=\"100%\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 2412 512\" style=\"max-width: 512px;\" role=\"graphics-document document\" aria-roledescription=\"error\"><style>#mermaid119c0376-11dc-408c-8cfb-af65441cc51c{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .error-icon{fill:#552222;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .error-text{fill:#552222;stroke:#552222;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-thickness-normal{stroke-width:1px;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-thickness-thick{stroke-width:3.5px;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-pattern-solid{stroke-dasharray:0;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-pattern-dashed{stroke-dasharray:3;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .edge-pattern-dotted{stroke-dasharray:2;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .marker{fill:#333333;stroke:#333333;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c .marker.cross{stroke:#333333;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c svg{font-family:sans-serif;font-size:16px;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c p{margin:0;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c :root{--mermaid-font-family:sans-serif;}#mermaid119c0376-11dc-408c-8cfb-af65441cc51c :root{--mermaid-alt-font-family:sans-serif;}</style><g></g><g><pa",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "graphviz",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n\n%0\n\n\n\nA\n\nA\n\n\n\nB\n\nB\n\n\n\nA->B\n\n\n\n\n\n",
+          "html": "<div class=\"language-graphviz\" data-processed=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"62pt\" height=\"116pt\" viewBox=\"0.00 0.00 62.00 116.00\">\n<g id=\"graph0\" class=\"graph\" transform=\"scale(1 1) rotate(0) translate(4 112)\">\n<title>%0</title>\n<polygon fill=\"#ffffff\" stroke=\"transparent\" points=\"-4,4 -4,-112 58,-112 58,4 -4,4\"></polygon>\n<!-- A -->\n<g id=\"node1\" class=\"node\">\n<title>A</title>\n<ellipse fill=\"none\" stroke=\"#000000\" cx=\"27\" cy=\"-90\" rx=\"27\" ry=\"18\"></ellipse>\n<text text-anchor=\"middle\" x=\"27\" y=\"-85.8\" font-family=\"Times,serif\" font-size=\"14.00\" fill=\"#000000\">A</text>\n</g>\n<!-- B -->\n<g id=\"node2\" class=\"node\">\n<title>B</title>\n<ellipse fill=\"none\" stroke=\"#000000\" cx=\"27\" cy=\"-18\" rx=\"27\" ry=\"18\"></ellipse>\n<text text-anchor=\"middle\" x=\"27\" y=\"-13.8\" font-family=\"Times,serif\" font-size=\"14.00\" fill=\"#000000\">B</text>\n</g>\n<!-- A&#45;&gt;B -->\n<g id=\"edge1\" class=\"edge\">\n<title>A-&gt;B</title>\n<path fill=\"none\" stroke=\"#000000\" d=\"M27,-71.8314C27,-64.131 27,-54.9743 27,-46.4166\"></path>\n<polygon fill=\"#000000\" stroke=\"#000000\" points=\"30.5001,-46.4132 27,-36.4133 23.5001,-46.4133 30.5001,-46.4132\"></polygon>\n</g>\n</g>\n</svg></div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "graphviz",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [
+            "graphviz render error: Error: syntax error in line 1 near '{'\n"
+          ],
+          "processed": 1,
+          "text": "graphviz render error: Error: syntax error in line 1 near '{'\n\n",
+          "html": "<div class=\"vditor-reset--error\" data-processed=\"true\">graphviz render error: <br>Error: syntax error in line 1 near '{'\n</div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "echarts",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 1,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<div class=\"language-echarts\" _echarts_instance_=\"ec_1791789707493\" data-processed=\"true\" style=\"user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"><div style=\"position: relative; width: 534px; height: 420px; padding: 0px; margin: 0px; border-width: 0px;\"><canvas data-zr-dom-id=\"zr_0\" width=\"534\" height=\"420\" style=\"position: absolute; left: 0px; top: 0px; width: 534px; height: 420px; user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); padding: 0px; margin: 0px; border-width: 0px;\"></canvas></div></div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "echarts",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [
+            "echarts render error: SyntaxError: Unexpected token '-'"
+          ],
+          "processed": 0,
+          "text": "echarts render error: SyntaxError: Unexpected token '-'\n",
+          "html": "<div class=\"vditor-reset--error\">echarts render error: <br>SyntaxError: Unexpected token '-'</div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "abc",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "Sheet Music for \"Scale\"Scale\n",
+          "html": "<div class=\"language-abc\" data-processed=\"true\" style=\"overflow: auto hidden; height: 153.542px;\"><svg xmlns:xlink=\"http://www.w3.org/1999/xlink\" role=\"img\" width=\"755\" height=\"153.542\"><title>Sheet Music for \"Scale\"</title><path d=\"M 68.846 110.14500000000001 L 82.656 110.14500000000001 L 82.656 110.845 L 68.846 110.845 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><g><path d=\"M 15 71.39500000000001 L 422.2572549695428 71.39500000000001 L 422.2572549695428 72.095 L 15 72.095 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 79.14500000000001 L 422.2572549695428 79.14500000000001 L 422.2572549695428 79.845 L 15 79.845 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 86.89500000000001 L 422.2572549695428 86.89500000000001 L 422.2572549695428 87.595 L 15 87.595 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 94.64500000000001 L 422.2572549695428 94.64500000000001 L 422.2572549695428 95.345 L 15 95.345 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 102.39500000000001 L 422.2572549695428 102.39500000000001 L 422.2572549695428 103.095 L 15 103.095 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path></g><path d=\"M 0 59.65 L 100 59.65 L 100 60.35 L 0 60.35 z\" stroke=\"none\" fill=\"rgba(0,0,0,0)\" fill-opacity=\"0\" class=\"\" data-vertical=\"60\"></path><text font-size=\"26.666666666666668\" font-style=\"normal\" font-family=\"&quot;Times New Roman&quot;\" font-weight=\"normal\" text-decoration=\"none\" class=\"\" font=\"\" text-anchor=\"middle\" x=\"385\" y=\"29.56\" dy=\"0.5em\"><tspan x=\"385\">Scale</tspan></text><path d=\"m 29.689999999999998 57.58500000000001c 0.09 -0.09 0.24 -0.06 0.36 0c 0.12 0.09 0.57 0.6 0.96 1.11c 1.77 2.34 3.21 5.85 3.57 8.73c 0.21 1.56 0.03 3.27 -0.45 4.86c -0.69 2.31 -1.92 4.47 -4.23 7.44c -0.3 0.39 -0.57 0.72 -0.6 0.75c -0.03 0.06 0 0.15 0.18 0.78c 0.54 1.68 1.38 4.44 1.68 5.49l 0.09 0.42l 0.39 0c 1.47 0.09 2.76 0.51 3.96 1.29c 1.83 1.23 3.06 3.21 3.39 5.52c 0.09 0.45 0.12 1.29 0.06 1.74c -0.09 1.02 -0.33 1.83 -0.75 2.73c -",
+          "versions": {
+            "abcjs": "abcjs-basic v5.10.3"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "abc",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "Sheet Music\n",
+          "html": "<div class=\"language-abc\" data-processed=\"true\" style=\"overflow: auto hidden; height: 123.732px;\"><svg xmlns:xlink=\"http://www.w3.org/1999/xlink\" role=\"img\" width=\"755\" height=\"123.732\"><title>Sheet Music</title><g><path d=\"M 15 33.835 L 115.79334614174766 33.835 L 115.79334614174766 34.535000000000004 L 15 34.535000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 41.585 L 115.79334614174766 41.585 L 115.79334614174766 42.285000000000004 L 15 42.285000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 49.335 L 115.79334614174766 49.335 L 115.79334614174766 50.035000000000004 L 15 50.035000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 57.085 L 115.79334614174766 57.085 L 115.79334614174766 57.785000000000004 L 15 57.785000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 64.83500000000001 L 115.79334614174766 64.83500000000001 L 115.79334614174766 65.535 L 15 65.535 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path></g><path d=\"M 0 22.65 L 100 22.65 L 100 23.35 L 0 23.35 z\" stroke=\"none\" fill=\"rgba(0,0,0,0)\" fill-opacity=\"0\" class=\"\" data-vertical=\"23\"></path><path d=\"m 29.689999999999998 20.025000000000006c 0.09 -0.09 0.24 -0.06 0.36 0c 0.12 0.09 0.57 0.6 0.96 1.11c 1.77 2.34 3.21 5.85 3.57 8.73c 0.21 1.56 0.03 3.27 -0.45 4.86c -0.69 2.31 -1.92 4.47 -4.23 7.44c -0.3 0.39 -0.57 0.72 -0.6 0.75c -0.03 0.06 0 0.15 0.18 0.78c 0.54 1.68 1.38 4.44 1.68 5.49l 0.09 0.42l 0.39 0c 1.47 0.09 2.76 0.51 3.96 1.29c 1.83 1.23 3.06 3.21 3.39 5.52c 0.09 0.45 0.12 1.29 0.06 1.74c -0.09 1.02 -0.33 1.83 -0.75 2.73c -0.84 1.71 -2.28 3.06 -4.02 3.72l -0.33 0.12l 0.03 1.26c 0 1.74 -0.06 3.63 -0.21 4.62c -0.45 3.06 -2.19 5.49 -4.47 6.21c -0.57 0.18 -0.9 0.21 -1.59 0.21c -0.69 0 -1.02 -0.03 -1.65 -0.21c -1.14 -0.27 -2.13 -0.84 -2.94 -1.65c -0.99 -0.99 -1.56 -2.16 -1.71 -3.54c -0.09 -0.81 0.06 -1.53 0.45 -2.13c 0.63 -0.99 1.83 -1.56 3 -1.53c 1.5 0.09 2.64 1.32 2.73 2.94c 0.06 1.47 -0.93 2.7 -2.37 2.97c -",
+          "versions": {
+            "abcjs": "abcjs-basic v5.10.3"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "flowchart",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "Created with RaphaÃ«l 2.3.0StartEnd\n",
+          "html": "<div class=\"language-flowchart\" data-processed=\"true\"><svg height=\"137\" version=\"1.1\" width=\"59.67578125\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" style=\"overflow: hidden; position: relative; left: -0.5px;\" viewBox=\"0 0 59.67578125 137\" preserveAspectRatio=\"xMidYMid meet\"><desc style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\">Created with RaphaÃ«l 2.3.0</desc><defs style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"><path stroke-linecap=\"round\" d=\"M5,0 0,2.5 5,5z\" id=\"raphael-marker-block\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"></path><marker id=\"raphael-marker-endblock33-obj7zr9o\" markerHeight=\"3\" markerWidth=\"3\" orient=\"auto\" refX=\"1.5\" refY=\"1.5\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"><use xlink:href=\"#raphael-marker-block\" transform=\"rotate(180 1.5 1.5) scale(0.6,0.6)\" stroke-width=\"1.6667\" fill=\"black\" stroke=\"none\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"></use></marker></defs><rect x=\"0\" y=\"0\" width=\"50.67578125\" height=\"36\" rx=\"20\" ry=\"20\" fill=\"#ffffff\" stroke=\"#000000\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\" stroke-width=\"3\" class=\"flowchart\" id=\"st\" transform=\"matrix(1,0,0,1,6,6)\"></rect><text x=\"10\" y=\"18\" text-anchor=\"start\" font-family=\"&quot;Arial&quot;\" font-size=\"14px\" stroke=\"none\" fill=\"#000000\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-family: Arial; font-size: 14px;\" id=\"stt\" class=\"flowchartt\" transform=\"matrix(1,0,0,1,6,6)\" stroke-width=\"1\"><tspan dy=\"5\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\">Start</tspan></text><rect x=\"0\" y=\"0\" width=\"45.1240234375\" height=\"36\" rx=\"20\" ry=\"20\" fill=\"#ffffff\" stroke=\"#000000\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\" stroke-width=\"3\" class=\"flowchart\" id=\"e\" transform=\"matrix(1,0,0,1,8.7759,98)\"></rect><text x=\"10\" y=\"18\" text-anchor=\"start\" font-family=\"&quot;Arial&quot;\" font-size=\"14px\" stroke=\"none\" fill=\"#000000\" style=\"-webkit-tap-hi",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "flowchart",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{ INVALID -> ???\n\n",
+          "html": "<div class=\"language-flowchart\">{ INVALID -&gt; ???\n</div>\n",
+          "versions": {},
+          "pageErrors": [
+            "Cannot set properties of undefined (setting 'next')"
+          ]
+        },
+        {
+          "language": "plantuml",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [
+            "https://www.plantuml.com/plantuml/svg/~1UDfpA2v9B2efpStXSip9J4vLqBLJSCfFibBmICt9oUToICrB0Se10EyN3800"
+          ],
+          "errors": [],
+          "processed": 0,
+          "text": "\n",
+          "html": "<div class=\"language-plantuml\"><object type=\"image/svg+xml\" data=\"https://www.plantuml.com/plantuml/svg/~1UDfpA2v9B2efpStXSip9J4vLqBLJSCfFibBmICt9oUToICrB0Se10EyN3800\"></object></div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "plantuml",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [
+            "https://www.plantuml.com/plantuml/svg/~1UDghLl3q2tFqyNHHqBLJiBUt1m0bBWGB"
+          ],
+          "errors": [],
+          "processed": 0,
+          "text": "\n",
+          "html": "<div class=\"language-plantuml\"><object type=\"image/svg+xml\" data=\"https://www.plantuml.com/plantuml/svg/~1UDghLl3q2tFqyNHHqBLJiBUt1m0bBWGB\"></object></div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "markmap",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": ".markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node>circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)>code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}ChildRoot\n",
+          "html": "<pre><div class=\"language-markmap\"><svg style=\"width:100%\" class=\"markmap mm-2r2omi-1\"><style>.markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node&gt;circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)&gt;code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}</style><g transform=\"translate(-78.25,75) scale(2)\"><path class=\"markmap-link\" data-depth=\"1\" data-path=\"1.2\" d=\"M131,10C171,10,171,10,211,10\" stroke=\"rgb(255, 127, 14)\" stroke-width=\"2\"></path><g data-depth=\"1\" data-path=\"1.2\" transform=\"translate(211, -10)\" class=\"markmap-node\"><line x1=\"-1\" x2=\"56\" y1=\"20\" y2=\"20\" stroke=\"rgb(255, 127, 14)\" stroke-width=\"2\"></line><foreignObject class=\"markmap-foreign\" x=\"8\" y=\"0\" width=\"38\" height=\"20\" style=\"opacity: 1;\"><div xmlns=\"http://www.w3.org/1999/xhtml\">Child</div></foreignObject></g><g data-depth=\"0\" data-path=\"1\" transform=\"translate(80,-10)\" class=\"markmap-node\"><line x1=\"-1\" x2=\"53\" y1=\"20\" y2=\"20\" stroke=\"rgb(31, 119, 180)\" stroke-width=\"4\"></line><circle stroke-width=\"1.5\" cx=\"51\" cy=\"20\" r=\"6\" stroke=\"rgb(31, 119, 180)\" fill=\"rgb(255, 255, 255)\"></circle><foreignObject class=\"markmap-foreign\" x=\"8\" y=\"0\" width=\"35\" height=\"20\" style=\"opacity: 1;\"><div xmlns=\"http://www.w3.org/1999/xhtml\">Root</div></foreignObject></g></g></svg></div></pre>\n",
+          "versions": {
+            "katex": "0.16.0"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "markmap",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": ".markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node>circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)>code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}{ INVALID -> ???\n",
+          "html": "<pre><div class=\"language-markmap\"><svg style=\"width:100%\" class=\"markmap mm-6gl53n-1\"><style>.markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node&gt;circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)&gt;code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}</style><g transform=\"translate(-32.25,75) scale(2)\"><g data-depth=\"0\" data-path=\"1\" transform=\"translate(80,-10)\" class=\"markmap-node\"><line x1=\"-1\" x2=\"141\" y1=\"20\" y2=\"20\" stroke=\"rgb(31, 119, 180)\" stroke-width=\"4\"></line><foreignObject class=\"markmap-foreign\" x=\"8\" y=\"0\" width=\"123\" height=\"20\" style=\"opacity: 1;\"><div xmlns=\"http://www.w3.org/1999/xhtml\">{ INVALID -&gt; ???</div></foreignObject></g></g></svg></div></pre>\n",
+          "versions": {
+            "katex": "0.16.0"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "smiles",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n                .element {\n                    font: 11pt Arial, Helvetica, sans-serif;\n                }\n                .sub {\n                    font: 3pt Arial, Helvetica, sans-serif;\n                }\n            HO\n",
+          "html": "<pre><code class=\"language-smiles\" data-processed=\"true\"><svg id=\"smilesd586ea1f-539c-4a06-ace1-9e97c482368f\" viewBox=\"5.999999999999986 6.380770858731577 85.96152422705454 85.96152422705454\"><style>\n                .element {\n                    font: 11pt Arial, Helvetica, sans-serif;\n                }\n                .sub {\n                    font: 3pt Arial, Helvetica, sans-serif;\n                }\n            </style><defs><linearGradient id=\"KWWLk-line-0\" gradientUnits=\"userSpaceOnUse\" x1=\"55.98077221160382\" y1=\"36.961541717451375\" x2=\"81.96152422705453\" y2=\"51.96155920782964\"><stop stop-color=\"#222\" offset=\"20%\"></stop><stop stop-color=\"#222\" offset=\"100%\"></stop></linearGradient><linearGradient id=\"KWWLk-line-1\" gradientUnits=\"userSpaceOnUse\" x1=\"29.999999999999986\" y1=\"51.96152422706632\" x2=\"55.98077221160382\" y2=\"36.961541717451375\"><stop stop-color=\"#e74c3c\" offset=\"20%\"></stop><stop stop-color=\"#222\" offset=\"100%\"></stop></linearGradient></defs><mask id=\"KWWLk-text-mask\"><rect x=\"5.999999999999986\" y=\"26.961541717451375\" width=\"85.96152422705454\" height=\"44.79998250961494\" fill=\"white\"></rect><circle cx=\"29.999999999999986\" cy=\"51.96152422706632\" r=\"8.25\" fill=\"black\"></circle></mask><g style=\"transform: translateX(5.999999999999986px) translateY(26.961541717451375px)\"></g><g></g><g mask=\"url(#KWWLk-text-mask)\"><line x1=\"55.98077221160382\" y1=\"36.961541717451375\" x2=\"81.96152422705453\" y2=\"51.96155920782964\" style=\"stroke-width:1;stroke-linecap:round;stroke-dasharray:none\" stroke=\"url('#KWWLk-line-0')\"></line><line x1=\"29.999999999999986\" y1=\"51.96152422706632\" x2=\"55.98077221160382\" y2=\"36.961541717451375\" style=\"stroke-width:1;stroke-linecap:round;stroke-dasharray:none\" stroke=\"url('#KWWLk-line-1')\"></line></g><g><g style=\"transform: translateX(35.999999999999986px) translateY(51.96152422706632px)\"><text class=\"element\" fill=\"#ffffff\" data-direction=\"left\" dominant-baseline=\"alphabetic\" y=\"0.36em\" text-anchor=\"end\"><tspan fill=\"#666\">H</tspan><tspan f",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "smiles",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<pre><code class=\"language-smiles\" data-processed=\"true\"><svg id=\"smiles78d00c29-f7c4-468a-a882-cf3f00aec5b5\"></svg></code></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "math",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "a2+b2=c2\n",
+          "html": "<pre><code class=\"language-math\" data-math=\"a^2+b^2=c^2\n\"><span class=\"katex\"><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.8974em;vertical-align:-0.0833em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">a</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8141em;\"><span style=\"top:-3.063em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span><span class=\"mbin\">+</span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.8141em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">b</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8141em;\"><span style=\"top:-3.063em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span><span class=\"mspace\" style=\"margin-right:0.2778em;\"></span><span class=\"mrel\">=</span><span class=\"mspace\" style=\"margin-right:0.2778em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.8141em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">c</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8141em;\"><span style=\"top:-3.063em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span></span></span></span></code></pre>\n",
+          "versions": {
+            "katex": "0.16.9"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "math",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [
+            "KaTeX parse error: Expected '}', got 'EOF' at end of input: …INVALID -> ???\n"
+          ],
+          "processed": 0,
+          "text": "KaTeX parse error: Expected '}', got 'EOF' at end of input: …INVALID -> ???\n\n",
+          "html": "<pre><code class=\"language-math vditor-reset--error\" data-math=\"{ INVALID -&gt; ???\n\">KaTeX parse error: Expected '}', got 'EOF' at end of input: …INVALID -&gt; ???\n</code></pre>\n",
+          "versions": {
+            "katex": "0.16.9"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "mindmap",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 1,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<div data-code=\"%7B%7D\" class=\"language-mindmap\" _echarts_instance_=\"ec_1791789735425\" data-processed=\"true\" style=\"user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); position: relative;\"><div style=\"position: relative; width: 534px; height: 420px; padding: 0px; margin: 0px; border-width: 0px;\"><canvas data-zr-dom-id=\"zr_0\" width=\"534\" height=\"420\" style=\"position: absolute; left: 0px; top: 0px; width: 534px; height: 420px; user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); padding: 0px; margin: 0px; border-width: 0px;\"></canvas></div><div class=\"\"></div></div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "mindmap",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 1,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<div data-code=\"%7B%7D\" class=\"language-mindmap\" _echarts_instance_=\"ec_1791789737431\" data-processed=\"true\" style=\"user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); position: relative;\"><div style=\"position: relative; width: 534px; height: 420px; padding: 0px; margin: 0px; border-width: 0px;\"><canvas data-zr-dom-id=\"zr_0\" width=\"534\" height=\"420\" style=\"position: absolute; left: 0px; top: 0px; width: 534px; height: 420px; user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); padding: 0px; margin: 0px; border-width: 0px;\"></canvas></div><div class=\"\"></div></div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "wavedrom",
+          "validity": "valid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{\"signal\":[{\"name\":\"clock\",\"wave\":\"p...\"}]}\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-wavedrom hljs\" style=\"max-height: 680px;\">{\"signal\":[{\"name\":\"clock\",\"wave\":\"p...\"}]}\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "wavedrom",
+          "validity": "invalid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{ INVALID -> ???\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-wavedrom hljs\" style=\"max-height: 680px;\">{ INVALID -&gt; ???\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "sequence",
+          "validity": "valid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "Alice->Bob: Hello\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-sequence hljs\" style=\"max-height: 680px;\">Alice-&gt;Bob: Hello\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "sequence",
+          "validity": "invalid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{ INVALID -> ???\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-sequence hljs\" style=\"max-height: 680px;\">{ INVALID -&gt; ???\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        }
+      ],
+      "requests": [
+        "https://unpkg.com/vditor@3.11.2/dist/css/content-theme/light.css",
+        "https://unpkg.com/vditor@3.11.2/dist/js/abcjs/abcjs_basic.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/echarts/echarts.min.js?v=5.5.1",
+        "https://unpkg.com/vditor@3.11.2/dist/js/flowchart.js/flowchart.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/graphviz/full.render.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/graphviz/viz.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/highlight.js/highlight.min.js?v=11.7.0",
+        "https://unpkg.com/vditor@3.11.2/dist/js/highlight.js/styles/github.min.css",
+        "https://unpkg.com/vditor@3.11.2/dist/js/highlight.js/third-languages.js?v=1.0.1",
+        "https://unpkg.com/vditor@3.11.2/dist/js/i18n/en_US.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/icons/ant.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/fonts/KaTeX_Main-Regular.woff2",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/fonts/KaTeX_Math-Italic.woff2",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/katex.min.css?v=0.16.9",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/katex.min.js?v=0.16.9",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/mhchem.min.js?v=0.16.9",
+        "https://unpkg.com/vditor@3.11.2/dist/js/lute/lute.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/markmap/markmap.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/mermaid/mermaid.min.js?v=11.6.0",
+        "https://unpkg.com/vditor@3.11.2/dist/js/plantuml/plantuml-encoder.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/smiles-drawer/smiles-drawer.min.js?v=2.1.7",
+        "https://www.plantuml.com/plantuml/svg/~1UDfpA2v9B2efpStXSip9J4vLqBLJSCfFibBmICt9oUToICrB0Se10EyN3800",
+        "https://www.plantuml.com/plantuml/svg/~1UDghLl3q2tFqyNHHqBLJiBUt1m0bBWGB"
+      ],
+      "errors": [
+        "Cannot set properties of undefined (setting 'next')"
+      ]
+    },
+    "pinned-source": {
+      "toolbar": [
+        "save",
+        "emoji",
+        "headings",
+        "bold",
+        "italic",
+        "strike",
+        "link",
+        "list",
+        "ordered-list",
+        "check",
+        "outdent",
+        "indent",
+        "quote",
+        "line",
+        "code",
+        "inline-code",
+        "insert-before",
+        "insert-after",
+        "upload",
+        "table",
+        "table-wrap",
+        "undo",
+        "redo",
+        "find",
+        "edit-mode",
+        "more",
+        "both",
+        "code-theme",
+        "content-theme",
+        "ant-design",
+        "dark",
+        "light",
+        "wechat",
+        "outline",
+        "preview",
+        "copy-markdown",
+        "copy-html",
+        "reset-config",
+        "devtools",
+        "info",
+        "help"
+      ],
+      "options": {
+        "mode": "ir",
+        "preview": {
+          "actions": [
+            "desktop",
+            "tablet",
+            "mobile",
+            "mp-wechat",
+            "zhihu"
+          ],
+          "delay": 1000,
+          "hljs": {
+            "enable": true,
+            "lineNumber": false,
+            "defaultLang": "",
+            "style": "github"
+          },
+          "markdown": {
+            "autoSpace": false,
+            "gfmAutoLink": true,
+            "codeBlockPreview": true,
+            "fixTermTypo": false,
+            "footnotes": true,
+            "linkBase": "",
+            "linkPrefix": "",
+            "listStyle": false,
+            "mark": false,
+            "mathBlockPreview": true,
+            "paragraphBeginningSpace": false,
+            "sanitize": true,
+            "toc": false
+          },
+          "math": {
+            "engine": "KaTeX",
+            "inlineDigit": true,
+            "macros": {}
+          },
+          "maxWidth": 800,
+          "mode": "both",
+          "theme": {
+            "current": "light",
+            "list": {
+              "ant-design": "Ant Design",
+              "dark": "Dark",
+              "light": "Light",
+              "wechat": "WeChat"
+            },
+            "path": "https://unpkg.com/vditor@3.11.2/dist/css/content-theme"
+          },
+          "render": {
+            "media": {
+              "enable": true
+            }
+          }
+        },
+        "toolbar": [
+          {
+            "hotkey": "⌘s",
+            "name": "save",
+            "tipPosition": "s",
+            "tip": "Save",
+            "className": "save",
+            "icon": "<svg viewBox=\"0 0 1024 1024\" xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\"><path d=\"M810.667 938.667H213.333a128 128 0 01-128-128V213.333a128 128 0 01128-128h469.334a42.667 42.667 0 0130.293 12.374L926.293 311.04a42.667 42.667 0 0112.374 30.293v469.334a128 128 0 01-128 128zm-597.334-768a42.667 42.667 0 00-42.666 42.666v597.334a42.667 42.667 0 0042.666 42.666h597.334a42.667 42.667 0 0042.666-42.666v-451.84l-188.16-188.16z\"/><path d=\"M725.333 938.667A42.667 42.667 0 01682.667 896V597.333H341.333V896A42.667 42.667 0 01256 896V554.667A42.667 42.667 0 01298.667 512h426.666A42.667 42.667 0 01768 554.667V896a42.667 42.667 0 01-42.667 42.667zM640 384H298.667A42.667 42.667 0 01256 341.333V128a42.667 42.667 0 0185.333 0v170.667H640A42.667 42.667 0 01640 384z\"/></svg>"
+          },
+          {
+            "hotkey": "⌘E",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-emoji\"></use></svg>",
+            "name": "emoji",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘H",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-headings\"></use></svg>",
+            "name": "headings",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘B",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-bold\"></use></svg>",
+            "name": "bold",
+            "prefix": "**",
+            "suffix": "**",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘I",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-italic\"></use></svg>",
+            "name": "italic",
+            "prefix": "*",
+            "suffix": "*",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘D",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-strike\"></use></svg>",
+            "name": "strike",
+            "prefix": "~~",
+            "suffix": "~~",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘K",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-link\"></use></svg>",
+            "name": "link",
+            "prefix": "[",
+            "suffix": "](https://)",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘L",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-list\"></use></svg>",
+            "name": "list",
+            "prefix": "* ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘O",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-ordered-list\"></use></svg>",
+            "name": "ordered-list",
+            "prefix": "1. ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘J",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-check\"></use></svg>",
+            "name": "check",
+            "prefix": "* [ ] ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘I",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-outdent\"></use></svg>",
+            "name": "outdent",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘O",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-indent\"></use></svg>",
+            "name": "indent",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘;",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-quote\"></use></svg>",
+            "name": "quote",
+            "prefix": "> ",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘H",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-line\"></use></svg>",
+            "name": "line",
+            "prefix": "---",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘U",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-code\"></use></svg>",
+            "name": "code",
+            "prefix": "```",
+            "suffix": "\n```",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘G",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-inline-code\"></use></svg>",
+            "name": "inline-code",
+            "prefix": "`",
+            "suffix": "`",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘B",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-before\"></use></svg>",
+            "name": "insert-before",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⇧⌘E",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-after\"></use></svg>",
+            "name": "insert-after",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "icon": "<svg><use xlink:href=\"#vditor-icon-upload\"></use></svg>",
+            "name": "upload",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘M",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-table\"></use></svg>",
+            "name": "table",
+            "prefix": "| col1",
+            "suffix": " | col2 | col3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |",
+            "tipPosition": "s"
+          },
+          {
+            "name": "table-wrap",
+            "tipPosition": "s",
+            "tip": "Toggle table cell wrapping (on: fits the editor width like the preview; off: original nowrap/horizontal-scroll)",
+            "icon": "<svg viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M4 19h6v-2H4v2zM20 5H4v2h16V5zm-3 6H4v2h13.25c1.1 0 2 .9 2 2s-.9 2-2 2H15v-2l-3 3 3 3v-2h2c2.21 0 4-1.79 4-4s-1.79-4-4-4z\"/></svg>"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘Z",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-undo\"></use></svg>",
+            "name": "undo",
+            "tipPosition": "s"
+          },
+          {
+            "hotkey": "⌘Y",
+            "icon": "<svg><use xlink:href=\"#vditor-icon-redo\"></use></svg>",
+            "name": "redo",
+            "tipPosition": "s"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "name": "find",
+            "tipPosition": "s",
+            "tip": "Find (Ctrl+F)",
+            "icon": "<svg viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z\"/></svg>"
+          },
+          {
+            "name": "|",
+            "tipPosition": "s"
+          },
+          {
+            "icon": "<svg><use xlink:href=\"#vditor-icon-edit\"></use></svg>",
+            "name": "edit-mode",
+            "tipPosition": "e"
+          },
+          {
+            "icon": "<svg><use xlink:href=\"#vditor-icon-more\"></use></svg>",
+            "name": "more",
+            "tipPosition": "e",
+            "toolbar": [
+              {
+                "hotkey": "⌘P",
+                "icon": "<svg><use xlink:href=\"#vditor-icon-both\"></use></svg>",
+                "name": "both",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-code-theme\"></use></svg>",
+                "name": "code-theme",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-theme\"></use></svg>",
+                "name": "content-theme",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-align-center\"></use></svg>",
+                "name": "outline",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-preview\"></use></svg>",
+                "name": "preview",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "name": "copy-markdown",
+                "icon": "Copy Markdown",
+                "level": 2
+              },
+              {
+                "name": "copy-html",
+                "icon": "Copy HTML",
+                "level": 2
+              },
+              {
+                "name": "reset-config",
+                "icon": "Reset config",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-bug\"></use></svg>",
+                "name": "devtools",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-info\"></use></svg>",
+                "name": "info",
+                "tipPosition": "nw",
+                "level": 2
+              },
+              {
+                "icon": "<svg><use xlink:href=\"#vditor-icon-help\"></use></svg>",
+                "name": "help",
+                "tipPosition": "nw",
+                "level": 2
+              }
+            ]
+          }
+        ],
+        "methods": [
+          "constructor",
+          "showErrorTip",
+          "updateToolbarConfig",
+          "setTheme",
+          "getValue",
+          "getCurrentMode",
+          "focus",
+          "blur",
+          "disabled",
+          "enable",
+          "getSelection",
+          "renderPreview",
+          "getCursorPosition",
+          "isUploading",
+          "clearCache",
+          "disabledCache",
+          "enableCache",
+          "html2md",
+          "exportJSON",
+          "getHTML",
+          "tip",
+          "setPreviewMode",
+          "deleteValue",
+          "updateValue",
+          "insertValue",
+          "insertMD",
+          "setValue",
+          "insertEmptyBlock",
+          "clearStack",
+          "destroy",
+          "getCommentIds",
+          "hlCommentIds",
+          "unHlCommentIds",
+          "removeCommentIds",
+          "init"
+        ]
+      },
+      "roundTrips": [
+        {
+          "id": "references",
+          "mode": "ir",
+          "input": "[label][id]\n\n[id]: https://example.com \"Title\"\n",
+          "output": "[label][id]\n\n[id]: https://example.com\n",
+          "identical": false,
+          "html": "<p><a href=\"https://example.com\">label</a></p>\n"
+        },
+        {
+          "id": "references",
+          "mode": "wysiwyg",
+          "input": "[label][id]\n\n[id]: https://example.com \"Title\"\n",
+          "output": "[label][id]\n\n[id]: https://example.com\n",
+          "identical": false,
+          "html": "<p><a href=\"https://example.com\">label</a></p>\n"
+        },
+        {
+          "id": "references",
+          "mode": "sv",
+          "input": "[label][id]\n\n[id]: https://example.com \"Title\"\n",
+          "output": "[label][id]\n\n[id]: https://example.com\n\n",
+          "identical": false,
+          "html": "<p><a href=\"https://example.com\">label</a></p>\n"
+        },
+        {
+          "id": "front-matter",
+          "mode": "ir",
+          "input": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n",
+          "output": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n# Heading\n",
+          "identical": false,
+          "html": "<pre class=\"vditor-yml-front-matter\"><code class=\"language-yaml\">title: &quot;Quoted&quot;\ncustom: [one, two]</code></pre>\n<h1>Heading</h1>\n"
+        },
+        {
+          "id": "front-matter",
+          "mode": "wysiwyg",
+          "input": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n",
+          "output": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n# Heading\n",
+          "identical": false,
+          "html": "<pre class=\"vditor-yml-front-matter\"><code class=\"language-yaml\">title: &quot;Quoted&quot;\ncustom: [one, two]</code></pre>\n<h1>Heading</h1>\n"
+        },
+        {
+          "id": "front-matter",
+          "mode": "sv",
+          "input": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n",
+          "output": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n\n",
+          "identical": false,
+          "html": "<pre class=\"vditor-yml-front-matter\"><code class=\"language-yaml\">title: &quot;Quoted&quot;\ncustom: [one, two]</code></pre>\n<h1>Heading</h1>\n"
+        },
+        {
+          "id": "raw-html",
+          "mode": "ir",
+          "input": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n",
+          "output": "<div class=\"custom\">\n  <span data-value=\"x\">Raw & HTML</span>\n</div>\n",
+          "identical": false,
+          "html": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n"
+        },
+        {
+          "id": "raw-html",
+          "mode": "wysiwyg",
+          "input": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n",
+          "output": "<div class=\"custom\">\n  <span data-value=\"x\">Raw & HTML</span>\n</div>\n",
+          "identical": false,
+          "html": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n"
+        },
+        {
+          "id": "raw-html",
+          "mode": "sv",
+          "input": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n",
+          "output": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n\n",
+          "identical": false,
+          "html": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n"
+        },
+        {
+          "id": "math",
+          "mode": "ir",
+          "input": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "output": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "identical": true,
+          "html": "<p>Inline <span class=\"language-math\">2x+1</span> and escaped $5.</p>\n<div class=\"language-math\">a^2+b^2=c^2</div>\n"
+        },
+        {
+          "id": "math",
+          "mode": "wysiwyg",
+          "input": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "output": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "identical": true,
+          "html": "<p>Inline <span class=\"language-math\">​2x+1</span> and escaped $5.</p>\n<div class=\"language-math\">a^2+b^2=c^2</div>\n"
+        },
+        {
+          "id": "math",
+          "mode": "sv",
+          "input": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n",
+          "output": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n\n",
+          "identical": false,
+          "html": "<p>Inline <span class=\"language-math\">2x+1</span> and escaped $5.</p>\n<div class=\"language-math\">a^2+b^2=c^2</div>\n"
+        },
+        {
+          "id": "unknown-fence",
+          "mode": "ir",
+          "input": "```unknown-engine extra\n  untouched < & >\n```\n",
+          "output": "```unknown-engine\n  untouched < & >\n```\n",
+          "identical": false,
+          "html": "<pre><code class=\"language-unknown-engine\">  untouched &lt; &amp; &gt;\n</code></pre>\n"
+        },
+        {
+          "id": "unknown-fence",
+          "mode": "wysiwyg",
+          "input": "```unknown-engine extra\n  untouched < & >\n```\n",
+          "output": "```unknown-engine\n  untouched < & >\n```\n",
+          "identical": false,
+          "html": "<pre><code class=\"language-unknown-engine\">  untouched &lt; &amp; &gt;\n</code></pre>\n"
+        },
+        {
+          "id": "unknown-fence",
+          "mode": "sv",
+          "input": "```unknown-engine extra\n  untouched < & >\n```\n",
+          "output": "```unknown-engine\nuntouched < & >\n```\n\n",
+          "identical": false,
+          "html": "<pre><code class=\"language-unknown-engine\">untouched &lt; &amp; &gt;\n</code></pre>\n"
+        },
+        {
+          "id": "unicode",
+          "mode": "ir",
+          "input": "Café é 中文 😀 👩‍💻\n",
+          "output": "Café é 中文 😀 👩‍💻\n",
+          "identical": true,
+          "html": "<p>Café é 中文 😀 👩‍💻</p>\n"
+        },
+        {
+          "id": "unicode",
+          "mode": "wysiwyg",
+          "input": "Café é 中文 😀 👩‍💻\n",
+          "output": "Café é 中文 😀 👩‍💻\n",
+          "identical": true,
+          "html": "<p>Café é 中文 😀 👩‍💻</p>\n"
+        },
+        {
+          "id": "unicode",
+          "mode": "sv",
+          "input": "Café é 中文 😀 👩‍💻\n",
+          "output": "Café é 中文 😀 👩‍💻\n\n",
+          "identical": false,
+          "html": "<p>Café é 中文 😀 👩‍💻</p>\n"
+        },
+        {
+          "id": "crlf",
+          "mode": "ir",
+          "input": "# Windows\r\n\r\nBody\r\n",
+          "output": "# Windows\n\nBody\n",
+          "identical": false,
+          "html": "<h1>Windows</h1>\n<p>Body</p>\n"
+        },
+        {
+          "id": "crlf",
+          "mode": "wysiwyg",
+          "input": "# Windows\r\n\r\nBody\r\n",
+          "output": "# Windows\n\nBody\n",
+          "identical": false,
+          "html": "<h1>Windows</h1>\n<p>Body</p>\n"
+        },
+        {
+          "id": "crlf",
+          "mode": "sv",
+          "input": "# Windows\r\n\r\nBody\r\n",
+          "output": "# Windows\n\nBody\n\n",
+          "identical": false,
+          "html": "<h1>Windows</h1>\n<p>Body</p>\n"
+        },
+        {
+          "id": "no-final-newline",
+          "mode": "ir",
+          "input": "# No newline\n\nLast line",
+          "output": "# No newline\n\nLast line\n",
+          "identical": false,
+          "html": "<h1>No newline</h1>\n<p>Last line</p>\n"
+        },
+        {
+          "id": "no-final-newline",
+          "mode": "wysiwyg",
+          "input": "# No newline\n\nLast line",
+          "output": "# No newline\n\nLast line\n",
+          "identical": false,
+          "html": "<h1>No newline</h1>\n<p>Last line</p>\n"
+        },
+        {
+          "id": "no-final-newline",
+          "mode": "sv",
+          "input": "# No newline\n\nLast line",
+          "output": "# No newline\n\nLast line\n\n",
+          "identical": false,
+          "html": "<h1>No newline</h1>\n<p>Last line</p>\n"
+        },
+        {
+          "id": "commonmark",
+          "mode": "ir",
+          "input": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n- [x] done\n- [ ] todo\n\n1. ordered\n\n<https://example.com>\n\n| left | right |\n| :--- | ---: |\n| A | B |\n",
+          "output": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n\n- [X]  done\n- [ ]  todo\n\n1. ordered\n\n[https://example.com](https://example.com)\n\n\n| left | right |\n| :--- | ----: |\n| A    |     B |\n",
+          "identical": false,
+          "html": "<h1>Heading</h1>\n<p><strong>Bold</strong> <em>italic</em> <del>strike</del> <code>code</code> *escaped*.</p>\n<blockquote>\n<p>Quote</p>\n</blockquote>\n<ul>\n<li>outer\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ul>\n<li class=\"vditor-task vditor-task--done\"><input checked=\"\" disabled=\"\" type=\"checkbox\" /> done</li>\n<li class=\"vditor-task\"><input disabled=\"\" type=\"checkbox\" /> todo</li>\n</ul>\n<ol>\n<li>ordered</li>\n</ol>\n<p><a href=\"https://example.com\">https://example.com</a></p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">left</th>\n<th align=\"right\">right</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">A</td>\n<td align=\"right\">B</td>\n</tr>\n</tbody>\n</table>\n"
+        },
+        {
+          "id": "commonmark",
+          "mode": "wysiwyg",
+          "input": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n- [x] done\n- [ ] todo\n\n1. ordered\n\n<https://example.com>\n\n| left | right |\n| :--- | ---: |\n| A | B |\n",
+          "output": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n\n- [X] done\n- [ ] todo\n\n1. ordered\n\n[https://example.com](https://example.com)\n\n| left | right |\n| :--- | ----: |\n| A    |     B |\n",
+          "identical": false,
+          "html": "<h1>Heading</h1>\n<p><strong>Bold</strong> <em>italic</em> <del>strike</del> <code>code</code> *escaped*.</p>\n<blockquote>\n<p>Quote</p>\n</blockquote>\n<ul>\n<li>outer\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ul>\n<li class=\"vditor-task vditor-task--done\"><input checked=\"\" disabled=\"\" type=\"checkbox\" /> done</li>\n<li class=\"vditor-task\"><input disabled=\"\" type=\"checkbox\" /> todo</li>\n</ul>\n<ol>\n<li>ordered</li>\n</ol>\n<p><a href=\"https://example.com\">https://example.com</a></p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">left</th>\n<th align=\"right\">right</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">A</td>\n<td align=\"right\">B</td>\n</tr>\n</tbody>\n</table>\n"
+        },
+        {
+          "id": "commonmark",
+          "mode": "sv",
+          "input": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n- [x] done\n- [ ] todo\n\n1. ordered\n\n<https://example.com>\n\n| left | right |\n| :--- | ---: |\n| A | B |\n",
+          "output": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n\n- [x] done\n- [ ] todo\n\n1. ordered\n\n[https://example.com](https://example.com)\n\n| left | right |\n| :--- | ---: |\n| A | B |\n\n",
+          "identical": false,
+          "html": "<h1>Heading</h1>\n<p><strong>Bold</strong> <em>italic</em> <del>strike</del> <code>code</code> *escaped*.</p>\n<blockquote>\n<p>Quote</p>\n</blockquote>\n<ul>\n<li>outer\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ul>\n<li class=\"vditor-task vditor-task--done\"><input checked=\"\" disabled=\"\" type=\"checkbox\" /> done</li>\n<li class=\"vditor-task\"><input disabled=\"\" type=\"checkbox\" /> todo</li>\n</ul>\n<ol>\n<li>ordered</li>\n</ol>\n<p><a href=\"https://example.com\">https://example.com</a></p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">left</th>\n<th align=\"right\">right</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">A</td>\n<td align=\"right\">B</td>\n</tr>\n</tbody>\n</table>\n"
+        },
+        {
+          "id": "extensions",
+          "mode": "ir",
+          "input": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "output": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "identical": true,
+          "html": "<p>[toc]</p>\n<h1>Heading</h1>\n<p>Footnote<sup class=\"footnotes-ref\" id=\"footnotes-ref-1\"><a href=\"#footnotes-def-1\">1</a></sup>.</p>\n<div class=\"footnotes-defs-div\"><hr class=\"footnotes-defs-hr\" />\n<ol class=\"footnotes-defs-ol\"><li id=\"footnotes-def-1\"><p>Footnote text. <a href=\"#footnotes-ref-1\" class=\"vditor-footnotes__goto-ref\">↩</a></p>\n</li>\n</ol></div>"
+        },
+        {
+          "id": "extensions",
+          "mode": "wysiwyg",
+          "input": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "output": "[toc]\n\n# Heading\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "identical": false,
+          "html": "<p>[toc]</p>\n<h1>Heading</h1>\n<p>Footnote<sup class=\"footnotes-ref\" id=\"footnotes-ref-1\"><a href=\"#footnotes-def-1\">1</a></sup>.</p>\n<div class=\"footnotes-defs-div\"><hr class=\"footnotes-defs-hr\" />\n<ol class=\"footnotes-defs-ol\"><li id=\"footnotes-def-1\"><p>Footnote text. <a href=\"#footnotes-ref-1\" class=\"vditor-footnotes__goto-ref\">↩</a></p>\n</li>\n</ol></div>"
+        },
+        {
+          "id": "extensions",
+          "mode": "sv",
+          "input": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n",
+          "output": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n\n",
+          "identical": false,
+          "html": "<p>[toc]</p>\n<h1>Heading</h1>\n<p>Footnote<sup class=\"footnotes-ref\" id=\"footnotes-ref-1\"><a href=\"#footnotes-def-1\">1</a></sup>.</p>\n<div class=\"footnotes-defs-div\"><hr class=\"footnotes-defs-hr\" />\n<ol class=\"footnotes-defs-ol\"><li id=\"footnotes-def-1\"><p>Footnote text. <a href=\"#footnotes-ref-1\" class=\"vditor-footnotes__goto-ref\">↩</a></p>\n</li>\n</ol></div>"
+        }
+      ],
+      "htmlPaste": {
+        "dispatched": true,
+        "output": "Pasted **bold** [link](https://example.com)Paste here\n"
+      },
+      "interactions": {
+        "findOpen": true,
+        "findCount": "1/3",
+        "tableTogglePreservedSource": true,
+        "modeSwitches": [
+          {
+            "mode": "wysiwyg",
+            "value": "Find find FIND\n\n| long cell                  | B |\n| -------------------------- | - |\n| repeated repeated repeated | B |\n"
+          },
+          {
+            "mode": "sv",
+            "value": "Find find FIND\n\n| long cell                  | B |\n| -------------------------- | - |\n| repeated repeated repeated | B |\n\n"
+          },
+          {
+            "mode": "ir",
+            "value": "Find find FIND\n\n\n| long cell                  | B |\n| -------------------------- | - |\n| repeated repeated repeated | B |\n"
+          }
+        ]
+      },
+      "renderers": [
+        {
+          "language": "mermaid",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "#mermaida5db2d93-df75-46df-804a-211e7b2d360b{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .error-icon{fill:#552222;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .error-text{fill:#552222;stroke:#552222;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-thickness-normal{stroke-width:1px;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-thickness-thick{stroke-width:3.5px;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-pattern-solid{stroke-dasharray:0;}#mermaida5db2d93-df75-46df-804a-211e7b2",
+          "html": "<div class=\"language-mermaid\" data-processed=\"true\"><svg id=\"mermaida5db2d93-df75-46df-804a-211e7b2d360b\" width=\"100%\" xmlns=\"http://www.w3.org/2000/svg\" class=\"flowchart\" style=\"max-width: 86.671875px;\" viewBox=\"0 0 86.671875 174\" role=\"graphics-document document\" aria-roledescription=\"flowchart-v2\"><style>#mermaida5db2d93-df75-46df-804a-211e7b2d360b{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .error-icon{fill:#552222;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .error-text{fill:#552222;stroke:#552222;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-thickness-normal{stroke-width:1px;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-thickness-thick{stroke-width:3.5px;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-pattern-solid{stroke-dasharray:0;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-pattern-dashed{stroke-dasharray:3;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .edge-pattern-dotted{stroke-dasharray:2;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .marker{fill:#333333;stroke:#333333;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .marker.cross{stroke:#333333;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b svg{font-family:sans-serif;font-size:16px;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b p{margin:0;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .label{font-family:sans-serif;color:#333;}#mermaida5db2d93-df75-46df-804a-211e7b2d360b .cluster-label text{fill:#3",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "mermaid",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .error-icon{fill:#552222;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .error-text{fill:#552222;stroke:#552222;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-thickness-normal{stroke-width:1px;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-thickness-thick{stroke-width:3.5px;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-pattern-solid{stroke-dasharray:0;}#mermaid5954ac31-7300-4dbf-9260-76dcb44",
+          "html": "<div class=\"language-mermaid\" data-processed=\"true\"><svg id=\"mermaid5954ac31-7300-4dbf-9260-76dcb4464cac\" width=\"100%\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 2412 512\" style=\"max-width: 512px;\" role=\"graphics-document document\" aria-roledescription=\"error\"><style>#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac{font-family:sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .error-icon{fill:#552222;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .error-text{fill:#552222;stroke:#552222;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-thickness-normal{stroke-width:1px;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-thickness-thick{stroke-width:3.5px;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-pattern-solid{stroke-dasharray:0;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-pattern-dashed{stroke-dasharray:3;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .edge-pattern-dotted{stroke-dasharray:2;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .marker{fill:#333333;stroke:#333333;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac .marker.cross{stroke:#333333;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac svg{font-family:sans-serif;font-size:16px;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac p{margin:0;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac :root{--mermaid-font-family:sans-serif;}#mermaid5954ac31-7300-4dbf-9260-76dcb4464cac :root{--mermaid-alt-font-family:sans-serif;}</style><g></g><g><pa",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "graphviz",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n\n%0\n\n\n\nA\n\nA\n\n\n\nB\n\nB\n\n\n\nA->B\n\n\n\n\n\n",
+          "html": "<div class=\"language-graphviz\" data-processed=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"62pt\" height=\"116pt\" viewBox=\"0.00 0.00 62.00 116.00\">\n<g id=\"graph0\" class=\"graph\" transform=\"scale(1 1) rotate(0) translate(4 112)\">\n<title>%0</title>\n<polygon fill=\"#ffffff\" stroke=\"transparent\" points=\"-4,4 -4,-112 58,-112 58,4 -4,4\"></polygon>\n<!-- A -->\n<g id=\"node1\" class=\"node\">\n<title>A</title>\n<ellipse fill=\"none\" stroke=\"#000000\" cx=\"27\" cy=\"-90\" rx=\"27\" ry=\"18\"></ellipse>\n<text text-anchor=\"middle\" x=\"27\" y=\"-85.8\" font-family=\"Times,serif\" font-size=\"14.00\" fill=\"#000000\">A</text>\n</g>\n<!-- B -->\n<g id=\"node2\" class=\"node\">\n<title>B</title>\n<ellipse fill=\"none\" stroke=\"#000000\" cx=\"27\" cy=\"-18\" rx=\"27\" ry=\"18\"></ellipse>\n<text text-anchor=\"middle\" x=\"27\" y=\"-13.8\" font-family=\"Times,serif\" font-size=\"14.00\" fill=\"#000000\">B</text>\n</g>\n<!-- A&#45;&gt;B -->\n<g id=\"edge1\" class=\"edge\">\n<title>A-&gt;B</title>\n<path fill=\"none\" stroke=\"#000000\" d=\"M27,-71.8314C27,-64.131 27,-54.9743 27,-46.4166\"></path>\n<polygon fill=\"#000000\" stroke=\"#000000\" points=\"30.5001,-46.4132 27,-36.4133 23.5001,-46.4133 30.5001,-46.4132\"></polygon>\n</g>\n</g>\n</svg></div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "graphviz",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [
+            "graphviz render error: Error: syntax error in line 1 near '{'\n"
+          ],
+          "processed": 1,
+          "text": "graphviz render error: Error: syntax error in line 1 near '{'\n\n",
+          "html": "<div class=\"vditor-reset--error\" data-processed=\"true\">graphviz render error: <br>Error: syntax error in line 1 near '{'\n</div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "echarts",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 1,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<div class=\"language-echarts\" _echarts_instance_=\"ec_1791789757455\" data-processed=\"true\" style=\"user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"><div style=\"position: relative; width: 534px; height: 420px; padding: 0px; margin: 0px; border-width: 0px;\"><canvas data-zr-dom-id=\"zr_0\" width=\"534\" height=\"420\" style=\"position: absolute; left: 0px; top: 0px; width: 534px; height: 420px; user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); padding: 0px; margin: 0px; border-width: 0px;\"></canvas></div></div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "echarts",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [
+            "echarts render error: SyntaxError: Unexpected token '-'"
+          ],
+          "processed": 0,
+          "text": "echarts render error: SyntaxError: Unexpected token '-'\n",
+          "html": "<div class=\"vditor-reset--error\">echarts render error: <br>SyntaxError: Unexpected token '-'</div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "abc",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "Sheet Music for \"Scale\"Scale\n",
+          "html": "<div class=\"language-abc\" data-processed=\"true\" style=\"overflow: auto hidden; height: 153.542px;\"><svg xmlns:xlink=\"http://www.w3.org/1999/xlink\" role=\"img\" width=\"755\" height=\"153.542\"><title>Sheet Music for \"Scale\"</title><path d=\"M 68.846 110.14500000000001 L 82.656 110.14500000000001 L 82.656 110.845 L 68.846 110.845 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><g><path d=\"M 15 71.39500000000001 L 422.2572549695428 71.39500000000001 L 422.2572549695428 72.095 L 15 72.095 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 79.14500000000001 L 422.2572549695428 79.14500000000001 L 422.2572549695428 79.845 L 15 79.845 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 86.89500000000001 L 422.2572549695428 86.89500000000001 L 422.2572549695428 87.595 L 15 87.595 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 94.64500000000001 L 422.2572549695428 94.64500000000001 L 422.2572549695428 95.345 L 15 95.345 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 102.39500000000001 L 422.2572549695428 102.39500000000001 L 422.2572549695428 103.095 L 15 103.095 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path></g><path d=\"M 0 59.65 L 100 59.65 L 100 60.35 L 0 60.35 z\" stroke=\"none\" fill=\"rgba(0,0,0,0)\" fill-opacity=\"0\" class=\"\" data-vertical=\"60\"></path><text font-size=\"26.666666666666668\" font-style=\"normal\" font-family=\"&quot;Times New Roman&quot;\" font-weight=\"normal\" text-decoration=\"none\" class=\"\" font=\"\" text-anchor=\"middle\" x=\"385\" y=\"29.56\" dy=\"0.5em\"><tspan x=\"385\">Scale</tspan></text><path d=\"m 29.689999999999998 57.58500000000001c 0.09 -0.09 0.24 -0.06 0.36 0c 0.12 0.09 0.57 0.6 0.96 1.11c 1.77 2.34 3.21 5.85 3.57 8.73c 0.21 1.56 0.03 3.27 -0.45 4.86c -0.69 2.31 -1.92 4.47 -4.23 7.44c -0.3 0.39 -0.57 0.72 -0.6 0.75c -0.03 0.06 0 0.15 0.18 0.78c 0.54 1.68 1.38 4.44 1.68 5.49l 0.09 0.42l 0.39 0c 1.47 0.09 2.76 0.51 3.96 1.29c 1.83 1.23 3.06 3.21 3.39 5.52c 0.09 0.45 0.12 1.29 0.06 1.74c -0.09 1.02 -0.33 1.83 -0.75 2.73c -",
+          "versions": {
+            "abcjs": "abcjs-basic v5.10.3"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "abc",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "Sheet Music\n",
+          "html": "<div class=\"language-abc\" data-processed=\"true\" style=\"overflow: auto hidden; height: 123.732px;\"><svg xmlns:xlink=\"http://www.w3.org/1999/xlink\" role=\"img\" width=\"755\" height=\"123.732\"><title>Sheet Music</title><g><path d=\"M 15 33.835 L 115.79334614174766 33.835 L 115.79334614174766 34.535000000000004 L 15 34.535000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 41.585 L 115.79334614174766 41.585 L 115.79334614174766 42.285000000000004 L 15 42.285000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 49.335 L 115.79334614174766 49.335 L 115.79334614174766 50.035000000000004 L 15 50.035000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 57.085 L 115.79334614174766 57.085 L 115.79334614174766 57.785000000000004 L 15 57.785000000000004 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path><path d=\"M 15 64.83500000000001 L 115.79334614174766 64.83500000000001 L 115.79334614174766 65.535 L 15 65.535 z\" stroke=\"none\" fill=\"#000000\" class=\"\"></path></g><path d=\"M 0 22.65 L 100 22.65 L 100 23.35 L 0 23.35 z\" stroke=\"none\" fill=\"rgba(0,0,0,0)\" fill-opacity=\"0\" class=\"\" data-vertical=\"23\"></path><path d=\"m 29.689999999999998 20.025000000000006c 0.09 -0.09 0.24 -0.06 0.36 0c 0.12 0.09 0.57 0.6 0.96 1.11c 1.77 2.34 3.21 5.85 3.57 8.73c 0.21 1.56 0.03 3.27 -0.45 4.86c -0.69 2.31 -1.92 4.47 -4.23 7.44c -0.3 0.39 -0.57 0.72 -0.6 0.75c -0.03 0.06 0 0.15 0.18 0.78c 0.54 1.68 1.38 4.44 1.68 5.49l 0.09 0.42l 0.39 0c 1.47 0.09 2.76 0.51 3.96 1.29c 1.83 1.23 3.06 3.21 3.39 5.52c 0.09 0.45 0.12 1.29 0.06 1.74c -0.09 1.02 -0.33 1.83 -0.75 2.73c -0.84 1.71 -2.28 3.06 -4.02 3.72l -0.33 0.12l 0.03 1.26c 0 1.74 -0.06 3.63 -0.21 4.62c -0.45 3.06 -2.19 5.49 -4.47 6.21c -0.57 0.18 -0.9 0.21 -1.59 0.21c -0.69 0 -1.02 -0.03 -1.65 -0.21c -1.14 -0.27 -2.13 -0.84 -2.94 -1.65c -0.99 -0.99 -1.56 -2.16 -1.71 -3.54c -0.09 -0.81 0.06 -1.53 0.45 -2.13c 0.63 -0.99 1.83 -1.56 3 -1.53c 1.5 0.09 2.64 1.32 2.73 2.94c 0.06 1.47 -0.93 2.7 -2.37 2.97c -",
+          "versions": {
+            "abcjs": "abcjs-basic v5.10.3"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "flowchart",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "Created with RaphaÃ«l 2.3.0StartEnd\n",
+          "html": "<div class=\"language-flowchart\" data-processed=\"true\"><svg height=\"137\" version=\"1.1\" width=\"59.67578125\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" style=\"overflow: hidden; position: relative; left: -0.5px;\" viewBox=\"0 0 59.67578125 137\" preserveAspectRatio=\"xMidYMid meet\"><desc style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\">Created with RaphaÃ«l 2.3.0</desc><defs style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"><path stroke-linecap=\"round\" d=\"M5,0 0,2.5 5,5z\" id=\"raphael-marker-block\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"></path><marker id=\"raphael-marker-endblock33-objdbsk2\" markerHeight=\"3\" markerWidth=\"3\" orient=\"auto\" refX=\"1.5\" refY=\"1.5\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"><use xlink:href=\"#raphael-marker-block\" transform=\"rotate(180 1.5 1.5) scale(0.6,0.6)\" stroke-width=\"1.6667\" fill=\"black\" stroke=\"none\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\"></use></marker></defs><rect x=\"0\" y=\"0\" width=\"50.67578125\" height=\"36\" rx=\"20\" ry=\"20\" fill=\"#ffffff\" stroke=\"#000000\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\" stroke-width=\"3\" class=\"flowchart\" id=\"st\" transform=\"matrix(1,0,0,1,6,6)\"></rect><text x=\"10\" y=\"18\" text-anchor=\"start\" font-family=\"&quot;Arial&quot;\" font-size=\"14px\" stroke=\"none\" fill=\"#000000\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-family: Arial; font-size: 14px;\" id=\"stt\" class=\"flowchartt\" transform=\"matrix(1,0,0,1,6,6)\" stroke-width=\"1\"><tspan dy=\"5\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\">Start</tspan></text><rect x=\"0\" y=\"0\" width=\"45.1240234375\" height=\"36\" rx=\"20\" ry=\"20\" fill=\"#ffffff\" stroke=\"#000000\" style=\"-webkit-tap-highlight-color: rgba(0, 0, 0, 0);\" stroke-width=\"3\" class=\"flowchart\" id=\"e\" transform=\"matrix(1,0,0,1,8.7759,98)\"></rect><text x=\"10\" y=\"18\" text-anchor=\"start\" font-family=\"&quot;Arial&quot;\" font-size=\"14px\" stroke=\"none\" fill=\"#000000\" style=\"-webkit-tap-hi",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "flowchart",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{ INVALID -> ???\n\n",
+          "html": "<div class=\"language-flowchart\">{ INVALID -&gt; ???\n</div>\n",
+          "versions": {},
+          "pageErrors": [
+            "Cannot set properties of undefined (setting 'next')"
+          ]
+        },
+        {
+          "language": "plantuml",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [
+            "https://www.plantuml.com/plantuml/svg/~1UDfpA2v9B2efpStXSip9J4vLqBLJSCfFibBmICt9oUToICrB0Se10EyN3800"
+          ],
+          "errors": [],
+          "processed": 0,
+          "text": "\n",
+          "html": "<div class=\"language-plantuml\"><object type=\"image/svg+xml\" data=\"https://www.plantuml.com/plantuml/svg/~1UDfpA2v9B2efpStXSip9J4vLqBLJSCfFibBmICt9oUToICrB0Se10EyN3800\"></object></div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "plantuml",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [
+            "https://www.plantuml.com/plantuml/svg/~1UDghLl3q2tFqyNHHqBLJiBUt1m0bBWGB"
+          ],
+          "errors": [],
+          "processed": 0,
+          "text": "\n",
+          "html": "<div class=\"language-plantuml\"><object type=\"image/svg+xml\" data=\"https://www.plantuml.com/plantuml/svg/~1UDghLl3q2tFqyNHHqBLJiBUt1m0bBWGB\"></object></div>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "markmap",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": ".markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node>circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)>code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}ChildRoot\n",
+          "html": "<pre><div class=\"language-markmap\"><svg style=\"width:100%\" class=\"markmap mm-n66i4z-1\"><style>.markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node&gt;circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)&gt;code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}</style><g transform=\"translate(-78.25,75) scale(2)\"><path class=\"markmap-link\" data-depth=\"1\" data-path=\"1.2\" d=\"M131,10C171,10,171,10,211,10\" stroke=\"rgb(255, 127, 14)\" stroke-width=\"2\"></path><g data-depth=\"1\" data-path=\"1.2\" transform=\"translate(211, -10)\" class=\"markmap-node\"><line x1=\"-1\" x2=\"56\" y1=\"20\" y2=\"20\" stroke=\"rgb(255, 127, 14)\" stroke-width=\"2\"></line><foreignObject class=\"markmap-foreign\" x=\"8\" y=\"0\" width=\"38\" height=\"20\" style=\"opacity: 1;\"><div xmlns=\"http://www.w3.org/1999/xhtml\">Child</div></foreignObject></g><g data-depth=\"0\" data-path=\"1\" transform=\"translate(80,-10)\" class=\"markmap-node\"><line x1=\"-1\" x2=\"53\" y1=\"20\" y2=\"20\" stroke=\"rgb(31, 119, 180)\" stroke-width=\"4\"></line><circle stroke-width=\"1.5\" cx=\"51\" cy=\"20\" r=\"6\" stroke=\"rgb(31, 119, 180)\" fill=\"rgb(255, 255, 255)\"></circle><foreignObject class=\"markmap-foreign\" x=\"8\" y=\"0\" width=\"35\" height=\"20\" style=\"opacity: 1;\"><div xmlns=\"http://www.w3.org/1999/xhtml\">Root</div></foreignObject></g></g></svg></div></pre>\n",
+          "versions": {
+            "katex": "0.16.0"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "markmap",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": ".markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node>circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)>code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}{ INVALID -> ???\n",
+          "html": "<pre><div class=\"language-markmap\"><svg style=\"width:100%\" class=\"markmap mm-q3asxj-1\"><style>.markmap{font:300 16px/20px sans-serif}.markmap-link{fill:none}.markmap-node&gt;circle{cursor:pointer}.markmap-foreign{display:inline-block}.markmap-foreign a{color:#0097e6}.markmap-foreign a:hover{color:#00a8ff}.markmap-foreign code{background-color:#f0f0f0;border-radius:2px;color:#555;font-size:calc(1em - 2px)}.markmap-foreign :not(pre)&gt;code{padding:.2em .4em}.markmap-foreign del{text-decoration:line-through}.markmap-foreign em{font-style:italic}.markmap-foreign strong{font-weight:bolder}.markmap-foreign mark{background:#ffeaa7}.markmap-foreign pre,.markmap-foreign pre[class*=language-]{margin:0;padding:.2em .4em}</style><g transform=\"translate(-32.25,75) scale(2)\"><g data-depth=\"0\" data-path=\"1\" transform=\"translate(80,-10)\" class=\"markmap-node\"><line x1=\"-1\" x2=\"141\" y1=\"20\" y2=\"20\" stroke=\"rgb(31, 119, 180)\" stroke-width=\"4\"></line><foreignObject class=\"markmap-foreign\" x=\"8\" y=\"0\" width=\"123\" height=\"20\" style=\"opacity: 1;\"><div xmlns=\"http://www.w3.org/1999/xhtml\">{ INVALID -&gt; ???</div></foreignObject></g></g></svg></div></pre>\n",
+          "versions": {
+            "katex": "0.16.0"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "smiles",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n                .element {\n                    font: 11pt Arial, Helvetica, sans-serif;\n                }\n                .sub {\n                    font: 3pt Arial, Helvetica, sans-serif;\n                }\n            HO\n",
+          "html": "<pre><code class=\"language-smiles\" data-processed=\"true\"><svg id=\"smiles00ee70ca-fedb-49d0-8599-dc9e52750108\" viewBox=\"5.999999999999986 6.380770858731577 85.96152422705454 85.96152422705454\"><style>\n                .element {\n                    font: 11pt Arial, Helvetica, sans-serif;\n                }\n                .sub {\n                    font: 3pt Arial, Helvetica, sans-serif;\n                }\n            </style><defs><linearGradient id=\"Y0mWY-line-0\" gradientUnits=\"userSpaceOnUse\" x1=\"55.98077221160382\" y1=\"36.961541717451375\" x2=\"81.96152422705453\" y2=\"51.96155920782964\"><stop stop-color=\"#222\" offset=\"20%\"></stop><stop stop-color=\"#222\" offset=\"100%\"></stop></linearGradient><linearGradient id=\"Y0mWY-line-1\" gradientUnits=\"userSpaceOnUse\" x1=\"29.999999999999986\" y1=\"51.96152422706632\" x2=\"55.98077221160382\" y2=\"36.961541717451375\"><stop stop-color=\"#e74c3c\" offset=\"20%\"></stop><stop stop-color=\"#222\" offset=\"100%\"></stop></linearGradient></defs><mask id=\"Y0mWY-text-mask\"><rect x=\"5.999999999999986\" y=\"26.961541717451375\" width=\"85.96152422705454\" height=\"44.79998250961494\" fill=\"white\"></rect><circle cx=\"29.999999999999986\" cy=\"51.96152422706632\" r=\"8.25\" fill=\"black\"></circle></mask><g style=\"transform: translateX(5.999999999999986px) translateY(26.961541717451375px)\"></g><g></g><g mask=\"url(#Y0mWY-text-mask)\"><line x1=\"55.98077221160382\" y1=\"36.961541717451375\" x2=\"81.96152422705453\" y2=\"51.96155920782964\" style=\"stroke-width:1;stroke-linecap:round;stroke-dasharray:none\" stroke=\"url('#Y0mWY-line-0')\"></line><line x1=\"29.999999999999986\" y1=\"51.96152422706632\" x2=\"55.98077221160382\" y2=\"36.961541717451375\" style=\"stroke-width:1;stroke-linecap:round;stroke-dasharray:none\" stroke=\"url('#Y0mWY-line-1')\"></line></g><g><g style=\"transform: translateX(35.999999999999986px) translateY(51.96152422706632px)\"><text class=\"element\" fill=\"#ffffff\" data-direction=\"left\" dominant-baseline=\"alphabetic\" y=\"0.36em\" text-anchor=\"end\"><tspan fill=\"#666\">H</tspan><tspan f",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "smiles",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<pre><code class=\"language-smiles\" data-processed=\"true\"><svg id=\"smiles415138b6-d204-4907-81b2-a701583bf39c\"></svg></code></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "math",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "a2+b2=c2\n",
+          "html": "<pre><code class=\"language-math\" data-math=\"a^2+b^2=c^2\n\"><span class=\"katex\"><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.8974em;vertical-align:-0.0833em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">a</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8141em;\"><span style=\"top:-3.063em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span><span class=\"mbin\">+</span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.8141em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">b</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8141em;\"><span style=\"top:-3.063em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span><span class=\"mspace\" style=\"margin-right:0.2778em;\"></span><span class=\"mrel\">=</span><span class=\"mspace\" style=\"margin-right:0.2778em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.8141em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">c</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8141em;\"><span style=\"top:-3.063em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span></span></span></span></code></pre>\n",
+          "versions": {
+            "katex": "0.16.9"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "math",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 0,
+          "objects": [],
+          "errors": [
+            "KaTeX parse error: Expected '}', got 'EOF' at end of input: …INVALID -> ???\n"
+          ],
+          "processed": 0,
+          "text": "KaTeX parse error: Expected '}', got 'EOF' at end of input: …INVALID -> ???\n\n",
+          "html": "<pre><code class=\"language-math vditor-reset--error\" data-math=\"{ INVALID -&gt; ???\n\">KaTeX parse error: Expected '}', got 'EOF' at end of input: …INVALID -&gt; ???\n</code></pre>\n",
+          "versions": {
+            "katex": "0.16.9"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "mindmap",
+          "validity": "valid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 1,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<div data-code=\"%7B%7D\" class=\"language-mindmap\" _echarts_instance_=\"ec_1791789785458\" data-processed=\"true\" style=\"user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); position: relative;\"><div style=\"position: relative; width: 534px; height: 420px; padding: 0px; margin: 0px; border-width: 0px;\"><canvas data-zr-dom-id=\"zr_0\" width=\"534\" height=\"420\" style=\"position: absolute; left: 0px; top: 0px; width: 534px; height: 420px; user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); padding: 0px; margin: 0px; border-width: 0px;\"></canvas></div><div class=\"\"></div></div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "mindmap",
+          "validity": "invalid",
+          "enabled": true,
+          "svg": 0,
+          "canvas": 1,
+          "objects": [],
+          "errors": [],
+          "processed": 1,
+          "text": "\n",
+          "html": "<div data-code=\"%7B%7D\" class=\"language-mindmap\" _echarts_instance_=\"ec_1791789787458\" data-processed=\"true\" style=\"user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); position: relative;\"><div style=\"position: relative; width: 534px; height: 420px; padding: 0px; margin: 0px; border-width: 0px;\"><canvas data-zr-dom-id=\"zr_0\" width=\"534\" height=\"420\" style=\"position: absolute; left: 0px; top: 0px; width: 534px; height: 420px; user-select: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0); padding: 0px; margin: 0px; border-width: 0px;\"></canvas></div><div class=\"\"></div></div>\n",
+          "versions": {
+            "echarts": "5.5.1"
+          },
+          "pageErrors": []
+        },
+        {
+          "language": "wavedrom",
+          "validity": "valid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{\"signal\":[{\"name\":\"clock\",\"wave\":\"p...\"}]}\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-wavedrom hljs\" style=\"max-height: 680px;\">{\"signal\":[{\"name\":\"clock\",\"wave\":\"p...\"}]}\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "wavedrom",
+          "validity": "invalid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{ INVALID -> ???\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-wavedrom hljs\" style=\"max-height: 680px;\">{ INVALID -&gt; ???\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "sequence",
+          "validity": "valid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "Alice->Bob: Hello\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-sequence hljs\" style=\"max-height: 680px;\">Alice-&gt;Bob: Hello\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        },
+        {
+          "language": "sequence",
+          "validity": "invalid",
+          "enabled": false,
+          "svg": 1,
+          "canvas": 0,
+          "objects": [],
+          "errors": [],
+          "processed": 0,
+          "text": "{ INVALID -> ???\n​\n",
+          "html": "<pre><div class=\"vditor-copy\"><textarea></textarea><span aria-label=\"Copy\" onmouseover=\"this.setAttribute('aria-label', 'Copy')\" class=\"vditor-tooltipped vditor-tooltipped__w\" onclick=\"event.stopPropagation();this.previousElementSibling.select();document.execCommand('copy');this.setAttribute('aria-label', 'Copied');this.previousElementSibling.blur()\"><svg><use xlink:href=\"#vditor-icon-copy\"></use></svg></span></div><code class=\"language-sequence hljs\" style=\"max-height: 680px;\">{ INVALID -&gt; ???\n</code><span style=\"position: absolute\">​</span></pre>\n",
+          "versions": {},
+          "pageErrors": []
+        }
+      ],
+      "requests": [
+        "https://unpkg.com/vditor@3.11.2/dist/css/content-theme/light.css",
+        "https://unpkg.com/vditor@3.11.2/dist/js/abcjs/abcjs_basic.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/echarts/echarts.min.js?v=5.5.1",
+        "https://unpkg.com/vditor@3.11.2/dist/js/flowchart.js/flowchart.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/graphviz/full.render.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/graphviz/viz.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/highlight.js/highlight.min.js?v=11.7.0",
+        "https://unpkg.com/vditor@3.11.2/dist/js/highlight.js/styles/github.min.css",
+        "https://unpkg.com/vditor@3.11.2/dist/js/highlight.js/third-languages.js?v=1.0.1",
+        "https://unpkg.com/vditor@3.11.2/dist/js/i18n/en_US.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/icons/ant.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/fonts/KaTeX_Main-Regular.woff2",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/fonts/KaTeX_Math-Italic.woff2",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/katex.min.css?v=0.16.9",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/katex.min.js?v=0.16.9",
+        "https://unpkg.com/vditor@3.11.2/dist/js/katex/mhchem.min.js?v=0.16.9",
+        "https://unpkg.com/vditor@3.11.2/dist/js/lute/lute.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/markmap/markmap.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/mermaid/mermaid.min.js?v=11.6.0",
+        "https://unpkg.com/vditor@3.11.2/dist/js/plantuml/plantuml-encoder.min.js",
+        "https://unpkg.com/vditor@3.11.2/dist/js/smiles-drawer/smiles-drawer.min.js?v=2.1.7",
+        "https://www.plantuml.com/plantuml/svg/~1UDfpA2v9B2efpStXSip9J4vLqBLJSCfFibBmICt9oUToICrB0Se10EyN3800",
+        "https://www.plantuml.com/plantuml/svg/~1UDghLl3q2tFqyNHHqBLJiBUt1m0bBWGB"
+      ],
+      "errors": [
+        "Cannot set properties of undefined (setting 'next')"
+      ]
+    }
+  },
+  "publishedBundleSha256": "3c0f7fc66d66e1df02e3bb01366db3a6012b4848ee83a9b770be8e17fa95bfe2",
+  "hostEqual": true,
+  "manifest": {
+    "commands": [
+      {
+        "command": "markdown-editor.openEditor",
+        "title": "Open with markdown editor",
+        "category": "markdown-editor"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-editor.openEditor",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-editor.openEditor",
+          "group": "1_open"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "markdown-editor.customEditor",
+        "displayName": "Markdown Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "configuration": {
+      "title": "markdown-editor",
+      "properties": {
+        "markdown-editor.imageSaveFolder": {
+          "type": "string",
+          "default": "assets",
+          "description": "Save images to which folder when upload in markdown, default relative to the markdown file, you can set to project root via `${projectRoot}/assets`."
+        },
+        "markdown-editor.useVscodeThemeColor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use vscode theme's background color as the markdown editor's background color."
+        },
+        "markdown-editor.showLineNumbers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show line numbers in the left gutter of the markdown editor."
+        },
+        "markdown-editor.defaultOpenOutline": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the outline by default when opening a markdown editor."
+        },
+        "markdown-editor.customCss": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "key": "ctrl+shift+alt+m",
+        "command": "markdown-editor.openEditor",
+        "mac": "cmd+shift+alt+m",
+        "when": "editorTextFocus && editorLangId == markdown"
+      }
+    ]
+  }
+}
