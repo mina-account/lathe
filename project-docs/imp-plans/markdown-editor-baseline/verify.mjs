@@ -28,6 +28,15 @@ for (const baseline of Object.values(evidence.baselines)) {
     }
   }
   assert.equal(baseline.renderers.length, fixtures.fences.length * 2);
+  const mindmap = baseline.renderers.find(row => row.language === 'mindmap' && row.validity === 'valid');
+  const mindmapSource = JSON.parse(decodeURIComponent(mindmap.html.match(/data-code="([^"]+)"/)[1]));
+  assert.equal(mindmapSource.name, 'Root');
+  assert.equal(mindmapSource.children[0].name, 'Child');
+  assert.deepEqual(mindmap.mindmapTree, [mindmapSource]);
+  assert.equal(mindmap.canvas, 1);
+  assert.equal(mindmap.processed, 1);
+  assert.deepEqual(mindmap.errors, []);
+  assert.deepEqual(mindmap.pageErrors, []);
   for (const fixture of fixtures.fences) {
     for (const validity of ['valid', 'invalid']) {
       const observation = baseline.renderers.find(row => row.language === fixture.language && row.validity === validity);
@@ -36,6 +45,7 @@ for (const baseline of Object.values(evidence.baselines)) {
     }
   }
   assert(baseline.toolbar.includes('find') && baseline.toolbar.includes('table-wrap'));
+  assert.equal(baseline.options.toolbar.find(item => item.name === 'redo').hotkey, '\u2318Y');
   assert(!baseline.toolbar.includes('record') && !baseline.toolbar.includes('export'));
   assert(baseline.interactions.findOpen && baseline.interactions.tableTogglePreservedSource);
   assert.equal(baseline.interactions.modeSwitches.length, 3);
@@ -49,6 +59,7 @@ assert(runtime.rendererAssets.every(asset => /^[0-9a-f]{64}$/.test(asset.sha256)
 assert.equal(runtime.contentThemes.length, 4);
 assert(runtime.codeThemes.length > 100);
 assert.equal(evidence.manifest.keybindings[0].key, fixtures.keys.open);
+assert.equal(fixtures.keys.redo, 'ctrl+y / cmd+y');
 for (const [setting, value] of Object.entries(fixtures.settings)) {
   assert.equal(evidence.manifest.configuration.properties[`markdown-editor.${setting}`].default, value);
 }

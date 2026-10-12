@@ -125,7 +125,7 @@ try {
         const errorStart = errors.length;
         await initialize(fixture[validity], 'sv');
         await page.waitForTimeout(1800);
-        const rendered = await page.locator('.vditor-preview .vditor-reset').evaluate(element => ({
+        const rendered = await page.locator('.vditor-preview .vditor-reset').evaluate((element, language) => ({
           svg: element.querySelectorAll('svg').length,
           canvas: element.querySelectorAll('canvas').length,
           objects: [...element.querySelectorAll('object')].map(object => object.data),
@@ -133,8 +133,18 @@ try {
           processed: element.querySelectorAll('[data-processed="true"]').length,
           text: element.textContent.slice(0, 1000),
           html: element.innerHTML.slice(0, 2000),
-          versions: { echarts: window.echarts?.version, katex: window.katex?.version, abcjs: window.ABCJS?.signature }
-        }));
+          versions: { echarts: window.echarts?.version, katex: window.katex?.version, abcjs: window.ABCJS?.signature },
+          ...(language === 'mindmap' ? {
+            mindmapTree: window.echarts?.getInstanceByDom(element.querySelector('.language-mindmap'))?.getOption().series[0].data
+          } : {})
+        }), fixture.language);
+        if (fixture.language === 'mindmap' && validity === 'valid') {
+          assert.equal(rendered.mindmapTree[0].name, 'Root');
+          assert.equal(rendered.mindmapTree[0].children[0].name, 'Child');
+          assert.equal(rendered.canvas, 1);
+          assert.deepEqual(rendered.errors, []);
+          assert.deepEqual(errors.slice(errorStart), []);
+        }
         renderers.push({ language: fixture.language, validity, enabled: fixture.enabled, ...rendered, pageErrors: errors.slice(errorStart) });
       }
     }

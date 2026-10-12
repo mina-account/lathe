@@ -99,7 +99,7 @@
     },
     {
       "language": "mindmap",
-      "valid": "```mindmap\n# Root\n\n- Child\n```\n",
+      "valid": "```mindmap\n- Root\n  - Child\n```\n",
       "invalid": "```mindmap\n{ INVALID -> ???\n```\n",
       "enabled": true
     },
@@ -294,7 +294,7 @@
     "findPrevious": "Shift+Enter",
     "closeFind": "Escape",
     "undo": "ctrl+z / cmd+z",
-    "redo": "ctrl+y / cmd+shift+z",
+    "redo": "ctrl+y / cmd+y",
     "wysiwyg": "ctrl+alt+7 / cmd+alt+7",
     "instantRendering": "ctrl+alt+8 / cmd+alt+8",
     "split": "ctrl+alt+9 / cmd+alt+9",
