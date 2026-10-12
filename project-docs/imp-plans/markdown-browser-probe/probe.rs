@@ -63,9 +63,40 @@ fn resource(path: &str) -> Option<(&'static str, &'static [u8])> {
     }
 }
 
+#[cfg(any(target_os = "windows", test))]
+#[derive(Default)]
+struct Outcome {
+    error: Option<String>,
+    acknowledged: [bool; 2],
+    lifecycle_operations: usize,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl Outcome {
+    fn finish(&self, smoke: bool) -> Result<()> {
+        if let Some(error) = &self.error {
+            bail!("{error}");
+        }
+        if smoke && (self.acknowledged != [true, true] || self.lifecycle_operations != 8) {
+            bail!(
+                "Wry smoke incomplete: acknowledgments {:?}, lifecycle operations {}/8",
+                self.acknowledged,
+                self.lifecycle_operations
+            );
+        }
+        Ok(())
+    }
+}
+
 #[cfg(target_os = "windows")]
-fn main() {
-    native::run();
+fn main() -> std::process::ExitCode {
+    match native::run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error:#}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -75,7 +106,7 @@ mod native {
         App, Bounds, Context, Task, Window, WindowBounds, WindowOptions, canvas, div, prelude::*,
         px, rgb, size,
     };
-    use std::{rc::Rc, sync::mpsc, time::Duration};
+    use std::{cell::RefCell, rc::Rc, sync::mpsc, time::Duration};
     use wry::{WebView, WebViewBuilder, WebViewBuilderExtWindows};
 
     struct Probe {
@@ -84,6 +115,7 @@ mod native {
         hidden: bool,
         smoke: bool,
         status: String,
+        outcome: Rc<RefCell<Outcome>>,
         _messages: Task<()>,
     }
 
@@ -144,7 +176,18 @@ mod native {
     }
 
     impl Probe {
-        fn new(window: &mut Window, cx: &mut Context<Self>, smoke: bool) -> Result<Self> {
+        fn fail(&mut self, error: String, cx: &mut Context<Self>) {
+            self.status = error.clone();
+            self.outcome.borrow_mut().error = Some(error);
+            cx.notify();
+            cx.quit();
+        }
+        fn new(
+            window: &mut Window,
+            cx: &mut Context<Self>,
+            smoke: bool,
+            outcome: Rc<RefCell<Outcome>>,
+        ) -> Result<Self> {
             let (sender, receiver) = mpsc::channel();
             let surfaces = vec![
                 create_surface(window, "left", sender.clone())?,
@@ -163,20 +206,21 @@ mod native {
                                 let response = serde_json::to_string(&HostMessage { kind: "Welcome", session: &session, request });
                                 match (this.surfaces.get(index), response) {
                                     (Some(surface), Ok(response)) => if let Err(error) = surface.evaluate_script(&format!("window.receiveHost({response});")) {
-                                        this.status = format!("host response failed: {error}");
+                                        this.fail(format!("host response failed: {error}"), cx);
                                     },
-                                    (_, Err(error)) => this.status = format!("response encoding failed: {error}"),
-                                    (None, _) => this.status = "surface closed".into(),
+                                    (_, Err(error)) => this.fail(format!("response encoding failed: {error}"), cx),
+                                    (None, _) => this.fail("surface closed".into(), cx),
                                 }
                             }
-                            if let ClientMessage::Acknowledged { .. } = message {
+                            if let ClientMessage::Acknowledged { request: 1, .. } = message {
+                                let index = if session == "left" { 0 } else { 1 };
+                                this.outcome.borrow_mut().acknowledged[index] = true;
                                 this.status = format!("Typed round trip acknowledged by {session}");
                                 if this.smoke {
                                     let index = if session == "left" { 0 } else { 1 };
                                     if let Some(surface) = this.surfaces.get(index)
                                         && let Err(error) = surface.evaluate_script("document.querySelector('#navigation').click(); document.querySelector('#popup').click();") {
-                                        this.status = format!("boundary probe failed: {error}");
-                                        eprintln!("{}", this.status);
+                                        this.fail(format!("boundary probe failed: {error}"), cx);
                                     }
                                 }
                             }
@@ -191,9 +235,9 @@ mod native {
                                     _ => surface.focus_parent(),
                                 };
                                 println!("{}", serde_json::json!({"event":"lifecycle_api", "tick":ticks, "success":operation.is_ok()}));
-                                if let Err(error) = operation {
-                                    this.status = format!("lifecycle operation failed: {error}");
-                                    eprintln!("{}", this.status);
+                                match operation {
+                                    Ok(()) => this.outcome.borrow_mut().lifecycle_operations += 1,
+                                    Err(error) => { this.outcome.borrow_mut().error = Some(format!("lifecycle operation failed: {error}")); cx.quit(); }
                                 }
                             }
                         }
@@ -209,6 +253,7 @@ mod native {
                 hidden: false,
                 smoke,
                 status: "Waiting for packaged page".into(),
+                outcome,
                 _messages: messages,
             })
         }
@@ -219,13 +264,14 @@ mod native {
             let mut panes = div().flex().flex_1().gap_4();
             for surface in &self.surfaces {
                 let surface = surface.clone();
-                panes = panes.child(canvas(move |bounds, window, _| {
+                let outcome = self.outcome.clone();
+                panes = panes.child(canvas(move |bounds, window, cx| {
                     let rectangle = wry::Rect {
                         position: wry::dpi::LogicalPosition::new(f64::from(bounds.origin.x), f64::from(bounds.origin.y)).into(),
                         size: wry::dpi::LogicalSize::new(f64::from(bounds.size.width), f64::from(bounds.size.height)).into(),
                     };
                     if let Err(error) = surface.set_bounds(rectangle) {
-                        eprintln!("bounds update failed: {error}");
+                        outcome.borrow_mut().error = Some(format!("bounds update failed: {error}")); cx.quit();
                     }
                     println!("{}", serde_json::json!({"event":"bounds", "scale":window.scale_factor(), "x":f32::from(bounds.origin.x), "y":f32::from(bounds.origin.y), "width":f32::from(bounds.size.width), "height":f32::from(bounds.size.height)}));
                 }, |_, _, _, _| {}).flex_1().h_full());
@@ -237,13 +283,13 @@ mod native {
                     .child(div().id("toggle-visibility").cursor_pointer().child("Hide/show browser panes").on_click(cx.listener(|this, _, _, cx| {
                         this.hidden = !this.hidden;
                         for surface in &this.surfaces {
-                            if let Err(error) = surface.set_visible(!this.hidden) { this.status = format!("visibility failed: {error}"); }
+                            if let Err(error) = surface.set_visible(!this.hidden) { this.outcome.borrow_mut().error = Some(format!("visibility failed: {error}")); cx.quit(); }
                         }
                         cx.notify();
                     })))
-                    .child(div().id("focus-browser").cursor_pointer().child("Focus left pane").on_click(cx.listener(|this, _, _, _| {
+                    .child(div().id("focus-browser").cursor_pointer().child("Focus left pane").on_click(cx.listener(|this, _, _, cx| {
                         if let Some(surface) = this.surfaces.first()
-                            && let Err(error) = surface.focus() { this.status = format!("focus failed: {error}");
+                            && let Err(error) = surface.focus() { this.fail(format!("focus failed: {error}"), cx);
                         }
                     }))))
                 .child(self.status.clone())
@@ -252,12 +298,14 @@ mod native {
         }
     }
 
-    pub fn run() {
+    pub fn run() -> Result<()> {
         println!(
             "{}",
             serde_json::json!({"event":"runtime", "wry":"0.57.0", "webview": wry::webview_version().unwrap_or_else(|error| format!("unavailable: {error}"))})
         );
         let smoke = std::env::args().any(|argument| argument == "--smoke");
+        let outcome = Rc::new(RefCell::new(Outcome::default()));
+        let outcome_for_window = outcome.clone();
         gpui_platform::application().run(move |cx: &mut App| {
             cx.on_window_closed(|cx, _| {
                 if cx.windows().is_empty() {
@@ -273,25 +321,30 @@ mod native {
                 },
                 |window, cx| {
                     window.set_window_title("Markdown browser host probe");
-                    cx.new(|cx| match Probe::new(window, cx, smoke) {
-                        Ok(probe) => probe,
-                        Err(error) => {
-                            eprintln!("browser creation failed: {error:#}");
-                            cx.quit();
-                            Probe {
-                                surfaces: vec![],
-                                overlay: false,
-                                hidden: true,
-                                smoke,
-                                status: format!("Creation failed: {error:#}"),
-                                _messages: Task::ready(()),
+                    cx.new(
+                        |cx| match Probe::new(window, cx, smoke, outcome_for_window.clone()) {
+                            Ok(probe) => probe,
+                            Err(error) => {
+                                outcome_for_window.borrow_mut().error =
+                                    Some(format!("browser creation failed: {error:#}"));
+                                cx.quit();
+                                Probe {
+                                    surfaces: vec![],
+                                    overlay: false,
+                                    hidden: true,
+                                    smoke,
+                                    status: format!("Creation failed: {error:#}"),
+                                    outcome: outcome_for_window.clone(),
+                                    _messages: Task::ready(()),
+                                }
                             }
-                        }
-                    })
+                        },
+                    )
                 },
             );
             if let Err(error) = result {
-                eprintln!("GPUI window creation failed: {error:#}");
+                outcome_for_window.borrow_mut().error =
+                    Some(format!("GPUI window creation failed: {error:#}"));
                 cx.quit();
             }
             if smoke {
@@ -303,7 +356,9 @@ mod native {
             }
             cx.activate(true);
         });
+        outcome.borrow().finish(smoke)?;
         println!("{}", serde_json::json!({"event":"teardown"}));
+        Ok(())
     }
 }
 
@@ -315,6 +370,23 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn initialization_and_incomplete_smoke_cannot_succeed() {
+        let mut outcome = Outcome::default();
+        assert!(outcome.finish(true).is_err());
+        outcome.acknowledged = [true, false];
+        outcome.lifecycle_operations = 8;
+        assert!(outcome.finish(true).is_err());
+        outcome.acknowledged = [true, true];
+        outcome.lifecycle_operations = 7;
+        assert!(outcome.finish(true).is_err());
+        outcome.lifecycle_operations = 8;
+        assert!(outcome.finish(true).is_ok());
+        outcome.error = Some("browser initialization failed".into());
+        assert!(outcome.finish(true).is_err());
+        assert!(outcome.finish(false).is_err());
+    }
 
     #[test]
     fn valid_typed_message() -> Result<()> {

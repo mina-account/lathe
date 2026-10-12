@@ -51,7 +51,15 @@ for (const path of files) {
   for (const event of ["pointer", "wheel", "key_up"]) {
     assert(matching("ipc").some((entry) => entry.message.kind === "Event" && entry.message.session === "left" && entry.message.event === event));
   }
-  assert.deepEqual(matching("smoke_phase").map((entry) => entry.phase), [0,1,2,3,4,5,6,7,8,9]);
+  const events = matching("ipc").filter((entry) => entry.message.kind === "Event" && entry.message.session === "left").map((entry) => entry.message);
+  for (const [key, key_code, caret] of [["Home",36,6], ["End",35,10], ["PageUp",33,0], ["PageDown",34,16], [" ",32,17]]) {
+    assert(events.some(({event, details}) => event === "key_up" && details.type === "keyboard" && details.key === key && details.key_code === key_code && details.selection_start === caret && details.selection_end === caret), `Missing browser key/caret result for ${key}`);
+  }
+  assert(matching("ipc").some((entry) => entry.message.kind === "Input" && entry.message.session === "left" && entry.message.text === "alpha\nbeta\ngamma "));
+  for (const [event, name, buttons, detail, alt_key] of [["pointer","pointerdown",1,0,false], ["drag","pointermove",1,0,false], ["pointer_up","pointerup",0,0,false], ["double_click","dblclick",0,2,false], ["wheel","wheel",0,0,true], ["wheel","wheel",1,0,true]]) {
+    assert(events.some((entry) => entry.event === event && entry.details.type === "pointer" && entry.details.name === name && entry.details.shift_key === true && entry.details.control_key === false && entry.details.alt_key === alt_key && entry.details.meta_key === false && entry.details.buttons === buttons && entry.details.detail === detail), `Missing browser pointer metadata for ${name}, buttons=${buttons}`);
+  }
+  assert.deepEqual(matching("smoke_phase").map((entry) => entry.phase), Array.from({length: 17}, (_, index) => index));
   assert.equal(matching("runtime_shutdown").length, 1);
   console.log(`Verified real ${backend.startsWith("Wayland") ? "Wayland/headless-CEF" : "Windows"} offscreen smoke; native IME/accessibility/installer acceptance remains pending.`);
 }

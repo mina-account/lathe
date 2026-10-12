@@ -7,18 +7,83 @@ use gpui::{
     App, Bounds, Context, FocusHandle, Pixels, RenderImage, Task, Window, canvas, div, point,
     prelude::*, px, rgb, size,
 };
-use offscreen_adapter::{EventKind, Message};
+use offscreen_adapter::{EventDetails, EventKind, Message};
 use offscreen_host::Surface;
 use raw_window_handle::HasWindowHandle;
 use std::{
     cell::RefCell,
-    collections::BTreeSet,
+    collections::BTreeMap,
     ops::Range,
     path::PathBuf,
     rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+fn key_code(key: &str) -> Result<i32> {
+    Ok(match key {
+        "backspace" => 8,
+        "tab" => 9,
+        "enter" => 13,
+        "escape" => 27,
+        "space" => 32,
+        "pageup" => 33,
+        "pagedown" => 34,
+        "end" => 35,
+        "home" => 36,
+        "left" => 37,
+        "up" => 38,
+        "right" => 39,
+        "down" => 40,
+        "insert" => 45,
+        "delete" => 46,
+        "shift" => 16,
+        "control" => 17,
+        "alt" => 18,
+        "super" => 91,
+        "capslock" => 20,
+        key if key.len() == 1 && key.as_bytes()[0].is_ascii_alphanumeric() => {
+            key.as_bytes()[0].to_ascii_uppercase() as i32
+        }
+        ";" | ":" => 186,
+        "=" | "+" => 187,
+        "," | "<" => 188,
+        "-" | "_" => 189,
+        "." | ">" => 190,
+        "/" | "?" => 191,
+        "`" | "~" => 192,
+        "[" | "{" => 219,
+        "\\" | "|" => 220,
+        "]" | "}" => 221,
+        "'" | "\"" => 222,
+        key => bail!("unsupported GPUI key: {key:?}"),
+    })
+}
+
+fn event_modifiers(modifiers: gpui::Modifiers, pressed_button: Option<gpui::MouseButton>) -> u32 {
+    let flags = (u32::from(modifiers.shift) << 1)
+        | (u32::from(modifiers.control) << 2)
+        | (u32::from(modifiers.alt) << 3)
+        | (u32::from(modifiers.platform) << 7);
+    flags
+        | match pressed_button {
+            Some(gpui::MouseButton::Left) => 1 << 4,
+            Some(gpui::MouseButton::Middle) => 1 << 5,
+            Some(gpui::MouseButton::Right) => 1 << 6,
+            _ => 0,
+        }
+}
+
+fn pointer_metadata(
+    modifiers: gpui::Modifiers,
+    pressed_button: Option<gpui::MouseButton>,
+    click_count: usize,
+) -> Result<(u32, i32)> {
+    Ok((
+        event_modifiers(modifiers, pressed_button),
+        i32::try_from(click_count)?,
+    ))
+}
 
 #[derive(Default)]
 struct Outcome {
@@ -33,11 +98,12 @@ struct Pane {
     acknowledged: bool,
     visible: bool,
     text: String,
-    events: BTreeSet<EventKind>,
+    events: BTreeMap<EventKind, EventDetails>,
 }
 struct Probe {
     panes: Vec<Pane>,
     focused: usize,
+    pressed_button: Option<gpui::MouseButton>,
     focus: FocusHandle,
     marked: Option<Range<usize>>,
     outcome: Rc<RefCell<Outcome>>,
@@ -71,7 +137,7 @@ impl Probe {
                 acknowledged: false,
                 visible: true,
                 text: String::new(),
-                events: BTreeSet::new(),
+                events: BTreeMap::new(),
             });
         }
         let focus = cx.focus_handle();
@@ -96,6 +162,7 @@ impl Probe {
         Ok(Self {
             panes,
             focused: 0,
+            pressed_button: None,
             focus,
             marked: None,
             outcome,
@@ -115,27 +182,8 @@ impl Probe {
             .host()
     }
     fn send_key(&self, keystroke: &gpui::Keystroke, type_: cef::KeyEventType) -> Result<()> {
-        let code = match keystroke.key.as_str() {
-            "backspace" => 8,
-            "tab" => 9,
-            "enter" => 13,
-            "escape" => 27,
-            "left" => 37,
-            "up" => 38,
-            "right" => 39,
-            "down" => 40,
-            "delete" => 46,
-            key => key
-                .chars()
-                .next()
-                .filter(char::is_ascii)
-                .map(|character| character.to_ascii_uppercase() as i32)
-                .unwrap_or(0),
-        };
-        let modifiers = &keystroke.modifiers;
-        let modifiers = (u32::from(modifiers.shift) << 1)
-            | (u32::from(modifiers.control) << 2)
-            | (u32::from(modifiers.alt) << 3);
+        let code = key_code(&keystroke.key)?;
+        let modifiers = event_modifiers(keystroke.modifiers, None);
         self.host(self.focused)?
             .send_key_event(Some(&cef::KeyEvent {
                 type_,
@@ -197,8 +245,8 @@ impl Probe {
                     ))?,
                     Message::Acknowledged { request: 1, .. } => pane.acknowledged = true,
                     Message::Input { text, .. } => pane.text = text,
-                    Message::Event { event, .. } => {
-                        pane.events.insert(event);
+                    Message::Event { event, details, .. } => {
+                        pane.events.insert(event, details);
                     }
                     _ => bail!("unexpected bridge request"),
                 }
@@ -272,15 +320,60 @@ impl Probe {
                 if self.panes.first().is_none_or(|pane| pane.text != "a") {
                     bail!("GPUI-to-CEF input did not update the left textarea");
                 }
+                self.panes.first().ok_or_else(|| anyhow!("left pane missing"))?.surface.execute("{ const input = document.querySelector('#input'); input.value = 'alpha\\nbeta\\ngamma'; input.setSelectionRange(8, 8); input.dispatchEvent(new Event('input')); }")?;
+            }
+            5 => {
+                if self
+                    .panes
+                    .first()
+                    .is_none_or(|pane| pane.text != "alpha\nbeta\ngamma")
+                {
+                    bail!("navigation fixture did not reach DOM");
+                }
+                self.dispatch_key("home", None, window, cx);
+            }
+            6 => {
+                self.expect_key("Home", 36, Some(6))?;
+                self.dispatch_key("end", None, window, cx);
+            }
+            7 => {
+                self.expect_key("End", 35, Some(10))?;
+                self.dispatch_key("pageup", None, window, cx);
+            }
+            8 => {
+                self.expect_key("PageUp", 33, Some(0))?;
+                self.dispatch_key("pagedown", None, window, cx);
+            }
+            9 => {
+                self.expect_key("PageDown", 34, Some(16))?;
+                self.panes
+                    .first()
+                    .ok_or_else(|| anyhow!("left pane missing"))?
+                    .surface
+                    .execute("document.querySelector('#input').setSelectionRange(16, 16);")?;
+            }
+            10 => self.dispatch_key("space", Some(" "), window, cx),
+            11 => {
+                self.expect_key(" ", 32, Some(17))?;
+                if self
+                    .panes
+                    .first()
+                    .is_none_or(|pane| pane.text != "alpha\nbeta\ngamma ")
+                {
+                    bail!("GPUI navigation/space did not edit at the expected caret");
+                }
                 self.set_focus(1, window, cx)?;
                 self.panes.get(1).ok_or_else(|| anyhow!("right pane missing"))?.surface.execute("document.querySelector('#input').focus(); document.querySelector('#navigation').click(); document.querySelector('#popup').click();")?;
                 cx.notify();
             }
-            5 => {
+            12 => {
                 self.dispatch_character("b", window, cx);
             }
-            6 => {
-                if self.panes.first().is_none_or(|pane| pane.text != "a")
+            13 => {
+                if self
+                    .panes
+                    .first()
+                    .is_none_or(|pane| pane.text != "alpha\nbeta\ngamma ")
                     || self.panes.get(1).is_none_or(|pane| pane.text != "b")
                 {
                     bail!("pane input isolation failed");
@@ -291,9 +384,34 @@ impl Probe {
                     .ok_or_else(|| anyhow!("left pane missing"))?;
                 if ![EventKind::Pointer, EventKind::Wheel, EventKind::KeyUp]
                     .iter()
-                    .all(|event| left.events.contains(event))
+                    .all(|event| left.events.contains_key(event))
                 {
                     bail!("GPUI pointer/wheel/key-up did not reach browser DOM");
+                }
+                for (kind, name, buttons, detail, alt) in [
+                    (EventKind::Pointer, "pointerdown", 1, 0, false),
+                    (EventKind::Drag, "pointermove", 1, 0, false),
+                    (EventKind::PointerUp, "pointerup", 0, 0, false),
+                    (EventKind::DoubleClick, "dblclick", 0, 2, false),
+                    (EventKind::Wheel, "wheel", 0, 0, true),
+                ] {
+                    match left.events.get(&kind) {
+                        Some(EventDetails::Pointer {
+                            name: actual_name,
+                            shift_key: true,
+                            control_key: false,
+                            alt_key,
+                            meta_key: false,
+                            buttons: actual_buttons,
+                            detail: actual_detail,
+                        }) if actual_name == name
+                            && *actual_buttons == buttons
+                            && *actual_detail == detail
+                            && *alt_key == alt => {}
+                        actual => {
+                            bail!("browser pointer metadata mismatch for {kind:?}: {actual:?}")
+                        }
+                    }
                 }
                 self.panes
                     .get(1)
@@ -301,7 +419,7 @@ impl Probe {
                     .surface
                     .close()?;
             }
-            7 => {
+            14 => {
                 if !self
                     .panes
                     .get(1)
@@ -332,13 +450,13 @@ impl Probe {
                 pane.events.clear();
                 cx.notify();
             }
-            8 => {
+            15 => {
                 self.capture(window, "recreated")?;
                 for pane in &self.panes {
                     pane.surface.close()?;
                 }
             }
-            9 => {
+            16 => {
                 if self.panes.iter().any(|pane| {
                     pane.surface
                         .shared
@@ -353,6 +471,53 @@ impl Probe {
             _ => bail!("unexpected smoke phase"),
         }
         Ok(())
+    }
+    fn expect_key(&self, key: &str, code: u32, caret: Option<usize>) -> Result<()> {
+        let event = self
+            .panes
+            .first()
+            .and_then(|pane| pane.events.get(&EventKind::KeyUp));
+        match event {
+            Some(EventDetails::Keyboard {
+                key: actual_key,
+                key_code,
+                selection_start,
+                selection_end,
+            }) if actual_key == key
+                && *key_code == code
+                && caret
+                    .is_none_or(|caret| *selection_start == caret && *selection_end == caret) =>
+            {
+                Ok(())
+            }
+            actual => bail!("browser key/caret mismatch for {key}: {actual:?}"),
+        }
+    }
+    fn dispatch_key(
+        &self,
+        key: &'static str,
+        character: Option<&'static str>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let handle = window.window_handle();
+        let outcome = self.outcome.clone();
+        cx.defer(move |cx| {
+            if let Err(error) = handle.update(cx, |_, window, cx| {
+                let keystroke = gpui::Keystroke {
+                    key: key.into(),
+                    key_char: character.map(str::to_owned),
+                    ..Default::default()
+                };
+                window.dispatch_keystroke(keystroke.clone(), cx);
+                window.dispatch_event(
+                    gpui::PlatformInput::KeyUp(gpui::KeyUpEvent { keystroke }),
+                    cx,
+                );
+            }) {
+                outcome.borrow_mut().error = Some(format!("deferred navigation failed: {error:#}"));
+            }
+        });
     }
     fn capture(&self, window: &mut Window, label: &str) -> Result<()> {
         std::fs::create_dir_all(&self.output)?;
@@ -418,35 +583,62 @@ impl Probe {
                 if character == "a"
                     && let Some(position) = target
                 {
-                    window.dispatch_event(
-                        gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
-                            position,
-                            ..Default::default()
-                        }),
-                        cx,
-                    );
-                    window.dispatch_event(
-                        gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
-                            position,
-                            button: gpui::MouseButton::Left,
-                            modifiers: Default::default(),
-                            click_count: 1,
-                            first_mouse: false,
-                        }),
-                        cx,
-                    );
-                    window.dispatch_event(
-                        gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
-                            position,
-                            button: gpui::MouseButton::Left,
-                            click_count: 1,
-                            ..Default::default()
-                        }),
-                        cx,
-                    );
+                    let modifiers = gpui::Modifiers {
+                        shift: true,
+                        ..Default::default()
+                    };
+                    for click_count in [1, 2] {
+                        window.dispatch_event(
+                            gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+                                position,
+                                button: gpui::MouseButton::Left,
+                                modifiers,
+                                click_count,
+                                first_mouse: false,
+                            }),
+                            cx,
+                        );
+                        if click_count == 1 {
+                            window.dispatch_event(
+                                gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+                                    position: position + point(px(4.), px(0.)),
+                                    pressed_button: Some(gpui::MouseButton::Left),
+                                    modifiers,
+                                }),
+                                cx,
+                            );
+                            window.dispatch_event(
+                                gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
+                                    position,
+                                    modifiers: gpui::Modifiers {
+                                        shift: true,
+                                        alt: true,
+                                        ..Default::default()
+                                    },
+                                    delta: gpui::ScrollDelta::Pixels(point(px(0.), px(-20.))),
+                                    ..Default::default()
+                                }),
+                                cx,
+                            );
+                        }
+                        window.dispatch_event(
+                            gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                                position,
+                                button: gpui::MouseButton::Left,
+                                modifiers,
+                                click_count,
+                            }),
+                            cx,
+                        );
+                    }
                     window.dispatch_event(
                         gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
                             position,
+                            modifiers: gpui::Modifiers {
+                                shift: true,
+                                alt: true,
+                                ..Default::default()
+                            },
                             delta: gpui::ScrollDelta::Pixels(point(px(0.), px(-20.))),
                             ..Default::default()
                         }),
@@ -502,12 +694,38 @@ impl Probe {
     fn mouse(
         &mut self,
         index: usize,
-        position: gpui::Point<Pixels>,
-        button: Option<gpui::MouseButton>,
-        up: bool,
+        input: gpui::PlatformInput,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<()> {
+        let (position, modifiers, button, up, pressed_button, click_count) = match input {
+            gpui::PlatformInput::MouseDown(event) => (
+                event.position,
+                event.modifiers,
+                Some(event.button),
+                false,
+                Some(event.button),
+                event.click_count,
+            ),
+            gpui::PlatformInput::MouseUp(event) => (
+                event.position,
+                event.modifiers,
+                Some(event.button),
+                true,
+                None,
+                event.click_count,
+            ),
+            gpui::PlatformInput::MouseMove(event) => (
+                event.position,
+                event.modifiers,
+                None,
+                false,
+                event.pressed_button,
+                0,
+            ),
+            _ => bail!("unsupported pointer input"),
+        };
+        self.pressed_button = pressed_button;
         if button.is_some() && !up {
             self.set_focus(index, window, cx)?;
         }
@@ -527,11 +745,8 @@ impl Probe {
             ),
             window.scale_factor(),
         )?;
-        let event = cef::MouseEvent {
-            x,
-            y,
-            ..Default::default()
-        };
+        let (modifiers, click_count) = pointer_metadata(modifiers, pressed_button, click_count)?;
+        let event = cef::MouseEvent { x, y, modifiers };
         let host = pane.surface.host()?;
         if let Some(button) = button {
             let button = match button {
@@ -539,7 +754,7 @@ impl Probe {
                 gpui::MouseButton::Right => cef::MouseButtonType::RIGHT,
                 _ => cef::MouseButtonType::MIDDLE,
             };
-            host.send_mouse_click_event(Some(&event), button, i32::from(up), 1);
+            host.send_mouse_click_event(Some(&event), button, i32::from(up), click_count);
         } else {
             host.send_mouse_move_event(Some(&event), 0);
         }
@@ -603,9 +818,7 @@ impl Render for Probe {
                         cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                             let result = this.mouse(
                                 index,
-                                event.position,
-                                Some(event.button),
-                                false,
+                                gpui::PlatformInput::MouseDown(event.clone()),
                                 window,
                                 cx,
                             );
@@ -617,9 +830,7 @@ impl Render for Probe {
                         cx.listener(move |this, event: &gpui::MouseUpEvent, window, cx| {
                             let result = this.mouse(
                                 index,
-                                event.position,
-                                Some(event.button),
-                                true,
+                                gpui::PlatformInput::MouseUp(event.clone()),
                                 window,
                                 cx,
                             );
@@ -631,9 +842,7 @@ impl Render for Probe {
                         cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                             let result = this.mouse(
                                 index,
-                                event.position,
-                                Some(event.button),
-                                false,
+                                gpui::PlatformInput::MouseDown(event.clone()),
                                 window,
                                 cx,
                             );
@@ -645,9 +854,7 @@ impl Render for Probe {
                         cx.listener(move |this, event: &gpui::MouseUpEvent, window, cx| {
                             let result = this.mouse(
                                 index,
-                                event.position,
-                                Some(event.button),
-                                true,
+                                gpui::PlatformInput::MouseUp(event.clone()),
                                 window,
                                 cx,
                             );
@@ -659,9 +866,7 @@ impl Render for Probe {
                         cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                             let result = this.mouse(
                                 index,
-                                event.position,
-                                Some(event.button),
-                                false,
+                                gpui::PlatformInput::MouseDown(event.clone()),
                                 window,
                                 cx,
                             );
@@ -673,9 +878,7 @@ impl Render for Probe {
                         cx.listener(move |this, event: &gpui::MouseUpEvent, window, cx| {
                             let result = this.mouse(
                                 index,
-                                event.position,
-                                Some(event.button),
-                                true,
+                                gpui::PlatformInput::MouseUp(event.clone()),
                                 window,
                                 cx,
                             );
@@ -684,7 +887,12 @@ impl Render for Probe {
                     )
                     .on_mouse_move(cx.listener(
                         move |this, event: &gpui::MouseMoveEvent, window, cx| {
-                            let result = this.mouse(index, event.position, None, false, window, cx);
+                            let result = this.mouse(
+                                index,
+                                gpui::PlatformInput::MouseMove(event.clone()),
+                                window,
+                                cx,
+                            );
                             this.input_error(result, cx);
                         },
                     ))
@@ -716,7 +924,10 @@ impl Render for Probe {
                                     Some(&cef::MouseEvent {
                                         x,
                                         y,
-                                        ..Default::default()
+                                        modifiers: event_modifiers(
+                                            event.modifiers,
+                                            this.pressed_button,
+                                        ),
                                     }),
                                     delta.0 as i32,
                                     delta.1 as i32,
@@ -959,7 +1170,7 @@ fn run() -> Result<i32> {
                 let result = if require_wayland && !backend.as_ref().is_ok_and(|value| value.starts_with("Wayland")) { Err(anyhow!("required Wayland backend was not selected")) } else { Probe::new(window, cx, outcome_for_window.clone(), output.clone(), smoke) };
                 match result {
                     Ok(probe) => probe,
-                    Err(error) => { outcome_for_window.borrow_mut().error = Some(format!("{error:#}")); cx.quit(); Probe { panes: Vec::new(), focused: 0, focus: cx.focus_handle(), marked: None, outcome: outcome_for_window.clone(), output: output.clone(), smoke, phase: 0, started: Instant::now(), phase_started: Instant::now(), _pump: Task::ready(()) } }
+                    Err(error) => { outcome_for_window.borrow_mut().error = Some(format!("{error:#}")); cx.quit(); Probe { panes: Vec::new(), focused: 0, pressed_button: None, focus: cx.focus_handle(), marked: None, outcome: outcome_for_window.clone(), output: output.clone(), smoke, phase: 0, started: Instant::now(), phase_started: Instant::now(), _pump: Task::ready(()) } }
                 }
             })
         });
@@ -1018,5 +1229,52 @@ fn main() -> std::process::ExitCode {
             eprintln!("{error:#}");
             std::process::ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod input_tests {
+    use super::*;
+
+    #[test]
+    fn named_keys_use_browser_navigation_codes() -> Result<()> {
+        for (name, code) in [
+            ("home", 36),
+            ("end", 35),
+            ("pageup", 33),
+            ("pagedown", 34),
+            ("space", 32),
+        ] {
+            assert_eq!(key_code(name)?, code, "{name}");
+        }
+        assert_eq!(key_code("a")?, 65);
+        assert!(key_code("unknown-name").is_err());
+        assert!(key_code("").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn pointer_metadata_preserves_modifiers_buttons_and_clicks() -> Result<()> {
+        let modifiers = gpui::Modifiers {
+            shift: true,
+            control: true,
+            alt: true,
+            platform: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            pointer_metadata(modifiers, Some(gpui::MouseButton::Left), 2)?,
+            (2 | 4 | 8 | 16 | 128, 2)
+        );
+        assert_eq!(
+            pointer_metadata(Default::default(), Some(gpui::MouseButton::Middle), 1)?,
+            (32, 1)
+        );
+        assert_eq!(
+            pointer_metadata(Default::default(), Some(gpui::MouseButton::Right), 1)?,
+            (64, 1)
+        );
+        assert!(pointer_metadata(Default::default(), None, usize::MAX).is_err());
+        Ok(())
     }
 }

@@ -26,3 +26,12 @@ for (const tick of [20, 30, 40, 50]) {
 }
 assert.equal(matching("teardown").length, 1);
 console.log("Windows packaged-resource/typed-IPC/navigation/API smoke verified; native composition and input remain unverified.");
+
+const failure = JSON.parse(await readFile(new URL("./wry-failure-observed.json", import.meta.url), "utf8"));
+assert.equal(failure.scenario, "unavailable-webview2");
+assert.match(failure.environment.WEBVIEW2_BROWSER_EXECUTABLE_FOLDER, /missing-webview2$/);
+assert.equal(failure.exit_code, 1);
+assert.match(failure.stderr, /browser creation failed: WebView2 error/);
+assert.equal(failure.stdout.filter((entry) => entry.event === "teardown").length, 0);
+assert.equal(failure.stdout.filter((entry) => entry.event === "ipc").length, 0);
+console.log("Unavailable WebView2 initialization fails with exit 1 and no successful teardown marker.");

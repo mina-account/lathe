@@ -7,9 +7,9 @@
 {"event":"bounds","scale":1.75,"x":457.71429443359375,"y":141.14285278320312,"width":426.28570556640625,"height":442.8571472167969}
 {"event":"navigation","url":"http://lathe-probe.localhost/index.html","allowed":true}
 {"event":"resource","path":"/index.html","status":200}
-{"event":"resource","path":"/missing.bin","status":404}
 {"event":"resource","path":"/probe.css","status":200}
 {"event":"resource","path":"/probe.js","status":200}
+{"event":"resource","path":"/missing.bin","status":404}
 {"event":"resource","path":"/missing.bin","status":404}
 {"event":"ipc","session":"left","message":"Hello { session: \"left\", request: 1 }"}
 {"event":"ipc","session":"right","message":"Hello { session: \"right\", request: 1 }"}

@@ -9,8 +9,12 @@ window.receiveHost = (message) => {
 let sequence = 1;
 const input = document.querySelector("#input");
 input.addEventListener("input", () => send({kind: "Input", session, request: ++sequence, text: input.value}));
-for (const [name, event] of [["pointerdown", "pointer"], ["wheel", "wheel"], ["keyup", "key_up"]]) {
-  input.addEventListener(name, () => send({kind: "Event", session, request: ++sequence, event}));
+input.addEventListener("keyup", (event) => send({kind: "Event", session, request: ++sequence, event: "key_up", details: {type: "keyboard", key: event.key, key_code: event.keyCode, selection_start: input.selectionStart, selection_end: input.selectionEnd}}));
+for (const [name, kind] of [["pointerdown", "pointer"], ["pointerup", "pointer_up"], ["pointermove", "drag"], ["dblclick", "double_click"], ["wheel", "wheel"]]) {
+  input.addEventListener(name, (event) => {
+    if (kind === "drag" && !event.buttons) return;
+    send({kind: "Event", session, request: ++sequence, event: kind, details: {type: "pointer", name, shift_key: event.shiftKey, control_key: event.ctrlKey, alt_key: event.altKey, meta_key: event.metaKey, buttons: event.buttons, detail: event.detail}});
+  });
 }
 for (const name of ["compositionstart", "compositionupdate", "compositionend"]) {
   input.addEventListener(name, () => { document.querySelector("#composition").textContent = name; });

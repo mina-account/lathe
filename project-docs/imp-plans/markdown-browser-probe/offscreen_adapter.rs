@@ -26,6 +26,7 @@ pub enum Message {
         session: String,
         request: u32,
         event: EventKind,
+        details: EventDetails,
     },
 }
 
@@ -35,6 +36,29 @@ pub enum EventKind {
     Pointer,
     Wheel,
     KeyUp,
+    Drag,
+    PointerUp,
+    DoubleClick,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EventDetails {
+    Keyboard {
+        key: String,
+        key_code: u32,
+        selection_start: usize,
+        selection_end: usize,
+    },
+    Pointer {
+        name: String,
+        shift_key: bool,
+        control_key: bool,
+        alt_key: bool,
+        meta_key: bool,
+        buttons: u32,
+        detail: i32,
+    },
 }
 
 pub fn document_url(session: &str) -> String {
