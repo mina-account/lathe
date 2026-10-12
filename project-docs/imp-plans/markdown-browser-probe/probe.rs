@@ -1,10 +1,16 @@
 use anyhow::{Result, bail};
-use serde::{Deserialize, Serialize};
+#[cfg(any(target_os = "windows", test))]
+use serde::Deserialize;
+#[cfg(target_os = "windows")]
+use serde::Serialize;
 
+#[cfg(any(target_os = "windows", test))]
 const APPLICATION_URL: &str = "http://lathe-probe.localhost/index.html";
+#[cfg(any(target_os = "windows", test))]
 const MAX_MESSAGE_BYTES: usize = 4096;
 
 #[derive(Debug, Deserialize, PartialEq)]
+#[cfg(any(target_os = "windows", test))]
 #[serde(tag = "kind", deny_unknown_fields)]
 enum ClientMessage {
     Hello {
@@ -23,12 +29,14 @@ enum ClientMessage {
 }
 
 #[derive(Serialize)]
+#[cfg(target_os = "windows")]
 struct HostMessage<'a> {
     kind: &'static str,
     session: &'a str,
     request: u32,
 }
 
+#[cfg(any(target_os = "windows", test))]
 fn validate_message(origin: &str, body: &str, expected_session: &str) -> Result<ClientMessage> {
     if origin != APPLICATION_URL || body.len() > MAX_MESSAGE_BYTES {
         bail!("message origin or size rejected");
@@ -45,6 +53,7 @@ fn validate_message(origin: &str, body: &str, expected_session: &str) -> Result<
     Ok(message)
 }
 
+#[cfg(any(target_os = "windows", test))]
 fn resource(path: &str) -> Option<(&'static str, &'static [u8])> {
     match path {
         "/index.html" => Some(("text/html", include_bytes!("index.html"))),

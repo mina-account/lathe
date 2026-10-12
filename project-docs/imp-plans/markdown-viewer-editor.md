@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Phase 0 baseline frozen; Phase 1 Windows probe exists, but its cross-platform hosting gate remains blocked. Phases 2–6 remain pending; no application editor code implemented.
+Status: Phase 0 baseline frozen; Phase 1 includes a tested Windows/Wayland offscreen-host mini-plan, but its full platform/input/distribution gate remains pending. Phases 2–6 remain pending; no application editor code implemented.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 
@@ -198,12 +198,12 @@ Exit: observable requirements are frozen, renderer scope is finite, and source-p
 
 Depends on Phase 0.
 
-- [x] Build a minimal GPUI browser surface with packaged static content and a typed message round trip (Windows probe only; supported-platform exit remains incomplete).
+- [x] Build a minimal GPUI browser surface with packaged static content and a typed message round trip (Windows Wry comparison plus real CEF offscreen Windows/Wayland proof; parent exit remains incomplete).
 - [ ] Exercise Windows, macOS, Linux X11, and Linux Wayland integration; verify composition, focus, input, multiple panes/windows, and lifecycle behavior listed in Section 5.
 - [ ] Verify resource interception, navigation restrictions, runtime installation requirements, and build/package integration.
 - [ ] Select the host implementation and record platform constraints. Produce a tested design decision before building the full editor.
 
-Evidence: [Windows GPUI/Wry probe, observed round trips, source-backed Wayland blocker, and remaining native matrix](markdown-browser-probe/README.md). Wry's raw child API accepts Xlib but cannot attach to GPUI's Wayland surface; composition-capable alternatives are assessed but no production host is selected. Native composition/input and macOS/Linux execution remain unverified. Do not proceed to Phase 2 until this gate closes.
+Evidence: [Wry comparison and raw-child Wayland mismatch](markdown-browser-probe/README.md), followed by the implemented [offscreen-host mini-plan](markdown-browser-offscreen-host.md) and [real CEF Windows/Wayland executions](markdown-browser-probe/OFFSCREEN.md). The offscreen prototype draws browser pixels in GPUI's scene; Windows renderer readback verifies overlays/clipping and both platforms demonstrate synthetic GPUI input and teardown. macOS/X11, full native IME/selection/accessibility, Wayland pixel readback, installation, and broader workspace acceptance remain pending. CEF is the tested candidate for further proof, not a fully selected production host. Do not proceed to Phase 2 until the parent gate closes.
 
 Exit: supported platforms have a viable in-pane surface with native overlays and input integration. Missing Wayland/composition support is an architecture blocker, not a completed parity milestone.
 

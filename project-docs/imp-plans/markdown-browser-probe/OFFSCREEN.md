@@ -1,0 +1,76 @@
+# Tested GPUI offscreen host
+
+The [offscreen mini-plan](../markdown-browser-offscreen-host.md) is implemented as an isolated **Windows and Linux Wayland feasibility prototype**. The parent Phase 1 is still incomplete: macOS, X11, full native IME/selection/accessibility, distribution, and broader workspace integration remain pending. This code is not initialized by Lathe and does not load Markdown documents.
+
+## Decision and real evidence
+
+Use CPU windowless CEF for the next hosting experiments. Unlike the rejected Wry child path, CEF supplies pixels that GPUI draws inside its scene, without attaching a browser window to a GPUI native parent. Production selection still requires the remaining parent gates.
+
+Bindings are **cef 154.5.0+154.0.34** with matching **CEF 154.0.34**, Chromium **154.0.8037.98**, pinned in the isolated Cargo lockfile. The exact generated interfaces and runtime downloader were inspected from that published crate; [maintained cef-rs](https://github.com/tauri-apps/cef-rs) and [CEF's offscreen/lifecycle documentation](https://chromiumembedded.github.io/cef/general_usage#off-screen-rendering) supplied the implementation baseline. No upstream example's permissive web-security or certificate switches were copied.
+
+- [Windows native observations](offscreen-windows-observed.jsonl): real Win32 GPUI window at 175%, three successive browser sessions, packaged resources, typed round trips, resize, hide/show, separate text inputs, pointer/wheel/key-up events, denied navigation/popups, close callbacks, and runtime shutdown. The smoke exits 0.
+- [Wayland native observations](offscreen-wayland-observed.jsonl): actual GPUI `Wayland` handle at 100%, the same browser lifecycle and input cases, and exit 0. Chromium uses its explicitly selected **headless Ozone backend** for CPU windowless rendering. The launcher unsets `DISPLAY`; no XWayland display was required in this execution. GPUI used WSLg's Wayland socket and Mesa lavapipe software Vulkan, selected with `VK_ICD_FILENAMES`.
+- Windows assertions read pixels from the **real GPUI DirectX renderer**: blue browser content, a red GPUI overlay above it, clipped pane edges, changed frame dimensions after resize, and no right-pane browser pixels while hidden. Representative [initial scene](offscreen-initial.png) and [hidden scene](offscreen-hidden.png) are committed. These are renderer readbacks, not desktop screenshots or external native mouse/keyboard tests. Occluded Windows smoke windows receive no normal presentation callbacks, so the harness explicitly draws the GPUI scene before readback.
+- Linux's window implementation returns `render_to_image not implemented for this platform`. Its real browser frames were uploaded through GPUI's image atlas and scene calls; Linux pixel/overlay readback remains **unverified**, rather than inferred from Windows pixels. The trace records this limitation four times.
+
+`verify-offscreen.mjs` validates both recorded executions, session isolation, finite frame sizes, changed dimensions, input DOM events, host restrictions, recreation, and teardown. It deliberately distinguishes Windows readback from unavailable Wayland readback. Native input used **synthetic dispatch through GPUI's real event/input-handler pipeline**, then CEF, then the actual browser DOM. It does not prove hardware input or an operating-system IME.
+
+## Ownership, bounds, input, and restrictions
+
+CEF subprocess roles execute before GPUI initialization. GPUI owns the application event loop; its foreground task pumps CEF every 16 ms using GPUI executor timers. Browsers close and report their close callbacks before runtime shutdown. The smoke has a 25-second deadline; launchers add a 35-second process limit and reject nonzero exits.
+
+`OnPaint` validates positive dimensions and checked byte length before copying callback-owned bytes. The cap is **16 MiB per frame**. CEF premultiplied BGRA is converted to GPUI's straight BGRA; the image crate wrapper intentionally retains BGRA byte order. Each session retains one pending frame, replacing an older pending frame under backpressure, plus its current GPUI image. Replaced GPUI image atlas entries are explicitly dropped. The message queue is capped at **32 accepted messages**, each at most **4096 UTF-8 bytes**; queue overflow becomes a visible command failure instead of a silently discarded request.
+
+Browser view rectangles use actual pane dimensions in logical pixels; CEF's screen scale maps them to physical paint buffers. Pointer coordinates remain local logical pixels. GPUI forwards pointer movement, three mouse buttons, wheel, key down/up, and text commits to the focused browser. Focus and visibility state are independent per pane. Basic composition calls and CEF caret bounds are wired into GPUI's input handler, but arbitrary DOM selection, `character_index_for_point`, native IME candidate placement/composition, clipboard shortcuts, and accessibility are **not established**. They remain parent gates.
+
+The browser can serve only embedded static HTML/JS/CSS under an exact allowlist. Unknown resources return 404; external requests are cancelled. Navigation is limited to the owning session's exact page. Bridge input is typed, size-bounded, origin/session-validated, and restricted to probe observations. CSP disallows other script origins, frames, objects, base changes, and forms. New-window, download, permission, and browser context-menu policies deny access; navigation and popup denial are exercised, while download/permission requests are not part of this smoke. Chromium popup prefiltering is disabled so the explicit host denial callback is actually tested.
+
+**Prototype limitation:** the CEF sandbox is disabled while proving event-loop/render integration. This executable accepts only its packaged static probe pages; it has no document/file/remote-content opening route. Do not load user Markdown or arbitrary HTML into it, and do not infer production document isolation. General Chromium command-line overrides are disabled. Each process uses a separate generated temporary root cache directory, without sharing another CEF application's profile.
+
+## Reproduction and runtime provenance
+
+Use the repository Rust **1.98.1** toolchain. On Windows, use a Visual Studio C++ developer shell with **CMake and Ninja** available. The inspected environment used VS 2022 BuildTools; its newer VS 18 Community installation lacked those components. Set `CEF_PATH` to a cache outside Git; the pinned `cef-dll-sys` downloader verifies the matching archive, builds the wrapper, and copies runtime files next to the executable. Network access is a contributor setup requirement, not a frontend CDN requirement. Neither executable invokes Node.
+
+```powershell
+$env:CEF_PATH = '<external-cef-cache>'
+cargo test --locked --features offscreen --manifest-path project-docs/imp-plans/markdown-browser-probe/Cargo.toml
+cargo build --locked --features offscreen --bin markdown_offscreen_probe --manifest-path project-docs/imp-plans/markdown-browser-probe/Cargo.toml
+./script/clippy.ps1 -p markdown_browser_probe --locked --manifest-path project-docs/imp-plans/markdown-browser-probe/Cargo.toml
+if ($LASTEXITCODE -ne 0) { throw 'Clippy failed' }
+cargo fmt --manifest-path project-docs/imp-plans/markdown-browser-probe/Cargo.toml -- --check
+./project-docs/imp-plans/markdown-browser-probe/run-offscreen.ps1 -RuntimeDirectory '<built-target>/debug' -ReportPath '<output>/windows.jsonl'
+node project-docs/imp-plans/markdown-browser-probe/verify-offscreen.mjs '<output>/windows.jsonl'
+```
+
+On Linux, install C++/CMake/Ninja/pkg-config, Wayland/xkbcommon/X11/fontconfig/Freetype, Vulkan/Mesa, GLib, SSL and the libraries required by the CEF runtime. The tested system was Ubuntu 24.04 with clang 18, CMake 3.28, Ninja 1.11, Wayland 1.22, xkbcommon 1.6, and an active WSLg Wayland socket. Use an ext4 target/cache when building a Windows checkout in WSL.
+
+```sh
+export CEF_PATH='<external-cef-cache>'
+export CARGO_TARGET_DIR='<ext4-target>'
+cargo +1.98.1 test --locked --features offscreen --manifest-path project-docs/imp-plans/markdown-browser-probe/Cargo.toml
+cargo +1.98.1 build --locked --features offscreen --bin markdown_offscreen_probe --manifest-path project-docs/imp-plans/markdown-browser-probe/Cargo.toml
+# The existing wrapper has CRLF in this Windows checkout; normalize its input only.
+bash <(sed 's/\r$//' script/clippy) -p markdown_browser_probe --locked --manifest-path project-docs/imp-plans/markdown-browser-probe/Cargo.toml
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json dbus-run-session -- bash project-docs/imp-plans/markdown-browser-probe/run-offscreen.sh "$CARGO_TARGET_DIR/debug" '<output>/wayland.jsonl'
+# Verify after copying the report to a machine with Node, if needed.
+node project-docs/imp-plans/markdown-browser-probe/verify-offscreen.mjs '<output>/wayland.jsonl'
+```
+
+Both launchers preflight the executable, CEF library, Unicode data, resources, and locale directory, then report missing components before launching. Rust also checks resource presence and reports initialization failure. Direct dynamic linking means a missing CEF DLL/shared library can fail in the **OS loader before Rust main**; use the launcher for the actionable missing-library path. This is not an installer or automatic runtime repair implementation.
+
+| Runtime archive | SHA-256 | Compressed bytes | Extracted development bytes | Default copied root files + locales |
+| --- | --- | ---: | ---: | ---: |
+| `cef_binary_154.0.34+g14c5a08+chromium-154.0.8037.98_windows64_minimal.tar.bz2` | `c81c34d048d87276f4a18f0b000206710a1709bb67dd658948b87100e1a538da` | 172,752,666 | 441,899,922 | 436,082,485 |
+| `cef_binary_154.0.34+g14c5a08+chromium-154.0.8037.98_linux64_minimal.tar.bz2` | `e87e2c76304372dd28b899ceb6efa4b353f52700594ddc358a8237ec07ec6492` | 326,489,962 | 1,572,404,705 | 1,566,695,955 |
+
+The upstream archive index and build tool also verified SHA-1 `be54bbaf3222191dec59ffd9c9ec7e8a7f44a26d` (Windows) and `15c91ad767097217b2e82ba8b933fe30b134be69` (Linux). Copied payload totals describe this default contributor build, including root build/legal metadata; they are **not optimized production installer sizes**. Redistributing CEF requires the libraries, data/resource packs, locale files, helper-process role, and its `LICENSE.txt`/Chromium credits. Rust bindings use MIT/Apache licensing; CEF and bundled Chromium dependencies require their own notices. No downloaded runtime binaries are committed here.
+
+Observed debug-build paint callback copy/alpha-conversion/lock time was about **33.6 ms per frame on Windows** (24 frames, 76,923,288 copied bytes) and **17.7 ms on Wayland** (22 frames, 22,925,088 bytes). Exact totals are in the traces. These figures exclude GPU uploads, browser execution, and input latency; they are not responsiveness benchmarks. The CPU path, texture upload costs, Chromium process memory, package size, and update maintenance remain material costs for later host/release validation. Peak browser memory was not measured.
+
+## Verification and remaining gates
+
+Four adapter tests first failed for expected missing pixel validation/conversion, DIP translation, and latest-frame behavior. A further runtime-resources test failed against the insufficient library-only preflight before it was corrected. All **10 Rust tests** now pass on Windows and Linux: seven offscreen adapter tests and three earlier Wry protocol tests. Tests include malformed/truncated/oversized frames, transparent alpha, foreign sessions/origins, resource traversal, bounded queue rejection without dropping accepted messages, and missing runtime resources.
+
+Locked builds, both real smokes/evidence verification, isolated formatting, frontend syntax, and repository Clippy wrappers pass on both platforms. Empty-runtime launchers reject execution; a real Windows invocation requiring Wayland exits 1, records runtime shutdown, and creates no browser. These negative results guard against false smoke success. Runtime subprocesses were absent after normal shutdown. The Phase 0 verifier still passes. Root `cargo fmt --all -- --check` retains unrelated baseline failures; no unrelated formatting edits or GPUI platform changes were made.
+
+Continue Phase 1 with macOS/X11 execution, native keyboard and IME/selection/candidate placement, accessibility, actual Wayland pixel readback, clipboard/shortcut arbitration, multiple workspace windows/panes, runtime installation, and application packaging. Only then select and integrate a production host. Phases 2–5 remain blocked on the full parent gate.

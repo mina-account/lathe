@@ -1,6 +1,6 @@
 # Phase 1 browser hosting investigation
 
-Status: **architecture gate remains blocked; Phase 1 is incomplete.** Observed on Windows on 2026-10-12 against repository base `b195bff040`. This is an isolated hosting experiment, outside application initialization and the workspace build. It does not implement a Markdown item or select a production host.
+Status: **Wry child hosting is rejected; parent Phase 1 remains incomplete.** Observed on Windows on 2026-10-12 against repository base `b195bff040`. This is an isolated hosting experiment, outside application initialization and the workspace build. It does not implement a Markdown item or select a production host. The subsequent [tested CEF offscreen prototype](OFFSCREEN.md) supplies real Windows/Wayland frames without this child-window mismatch; its mini-plan is implemented while broader native/platform gates remain pending.
 
 ## Concrete Windows proof
 
@@ -68,4 +68,4 @@ Before implementation, focused tests for typed accepted messages and packaged re
 
 Checks: locked Windows build/test, the repository `script/clippy.ps1` wrapper for this isolated package, probe formatting, JavaScript syntax, evidence verification, the unchanged Phase 0 verifier, and `git diff --check` pass. `cargo fmt --all -- --check` fails on pre-existing base formatting in unrelated crates, including `agent_servers/src/custom.rs` and `ai_accounts/src/ai_accounts.rs`; those files have no changes in this experiment. No GPUI/platform implementation changed, so additional platform unit tests would not establish the missing real input/composition evidence.
 
-The next required work is a selected composition-capable host prototype with native input, access to macOS/Linux test environments, and completion of the matrix above. Keep Phase 1's cross-platform/host-selection exit unchecked until that evidence exists.
+The follow-up [offscreen mini-plan](../markdown-browser-offscreen-host.md) and [CEF evidence](OFFSCREEN.md) supersede the raw-child limitation for Windows/Wayland experiments. Keep Phase 1's cross-platform/host-selection exit unchecked until its remaining native/platform matrix is demonstrated.
