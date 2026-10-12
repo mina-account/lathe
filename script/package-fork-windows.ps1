@@ -98,7 +98,7 @@ try {
     # --- Bundle ConPTY (terminal runtime) ---
     Write-Output "--- Downloading ConPTY ---"
     $conptyUrl = 'https://github.com/microsoft/terminal/releases/download/v1.23.13503.0/Microsoft.Windows.Console.ConPTY.1.23.251216003.nupkg'
-    $conptyNupkg = Join-Path $tempDir 'conpty.nupkg'
+    $conptyNupkg = Join-Path $tempDir 'conpty.nupkg.zip'
     $conptyExtract = Join-Path $tempDir 'conpty'
     Invoke-WebRequest -Uri $conptyUrl -OutFile $conptyNupkg
     Expand-Archive -Path $conptyNupkg -DestinationPath $conptyExtract -Force
@@ -176,7 +176,8 @@ try {
     $iscc = $null
     foreach ($candidate in @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
     )) {
         if (Test-Path $candidate) { $iscc = $candidate; break }
     }

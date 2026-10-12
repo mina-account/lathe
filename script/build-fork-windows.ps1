@@ -59,6 +59,7 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
 }
 
 rustup target add $Target
+if ($LASTEXITCODE -ne 0) { throw "Failed to install Rust target $Target (exit code $LASTEXITCODE)." }
 
 # --- Visual Studio dev shell (provides link.exe, libs) ---
 function Get-VSArch {
@@ -173,6 +174,15 @@ Push-Location
 & $vsDevShell -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture) | Out-Null
 Pop-Location
 
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    $cmakeBin = Join-Path $vsRoot 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
+    if (Test-Path (Join-Path $cmakeBin 'cmake.exe')) {
+        $env:Path = "$cmakeBin;$env:Path"
+    } else {
+        throw 'CMake not found. Install CMake or the Visual Studio C++ CMake tools.'
+    }
+}
+
 # --- Channel and build env ---
 $channel = (Get-Content 'crates/zed/RELEASE_CHANNEL').Trim()
 $env:ZED_RELEASE_CHANNEL = $channel
@@ -199,6 +209,7 @@ Write-Output "Channel: $channel"
 Write-Output "Building release binaries..."
 
 cargo build --release --target $Target --package zed --package cli
+if ($LASTEXITCODE -ne 0) { throw "Cargo build failed (exit code $LASTEXITCODE)." }
 
 $outDir = "target/$Target/release"
 Write-Output ""
