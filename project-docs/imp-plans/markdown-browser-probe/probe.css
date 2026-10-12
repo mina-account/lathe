@@ -1,0 +1,3 @@
+body { margin: 16px; background: #0066cc; color: white; font: 16px system-ui; }
+textarea { width: 95%; font: inherit; }
+button { margin: 8px 0; }
