@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const observations = async (path) => (await readFile(path, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
 const files = process.argv.slice(2);
-if (files.length === 0) files.push(new URL("./offscreen-windows-observed.jsonl", import.meta.url), new URL("./offscreen-wayland-observed.jsonl", import.meta.url));
+if (files.length === 0) files.push(new URL("./offscreen-windows-observed.jsonl", import.meta.url), new URL("./offscreen-wayland-observed.jsonl", import.meta.url), new URL("./offscreen-x11-observed.jsonl", import.meta.url));
 for (const path of files) {
   const entries = await observations(path);
   const matching = (event) => entries.filter((entry) => entry.event === event);
@@ -13,10 +13,12 @@ for (const path of files) {
   assert.equal(runtime.sandbox, false);
   assert.equal(runtime.content, "packaged-static-only");
   const backend = matching("gpui_backend")[0]?.handle;
-  assert.match(backend, /^(Win32|Wayland)\(/);
-  if (backend.startsWith("Wayland")) {
+  assert.equal(matching("gpui_backend").length, 1);
+  assert.match(backend, /^(Win32|Wayland|Xcb|Xlib)\(/);
+  if (!backend.startsWith("Win32")) {
     assert.equal(runtime.chromium_backend, "headless");
-    assert.equal(runtime.display, null);
+    if (backend.startsWith("Wayland")) assert.equal(runtime.display, null);
+    else assert.match(runtime.display, /^(?:[^:]+)?:\d+(?:\.\d+)?$/);
     assert.equal(matching("scene_readback_unavailable").length, 4);
   } else {
     assert.equal(runtime.chromium_backend, "windows-windowless");
@@ -96,5 +98,6 @@ for (const path of files) {
   const layout = betweenPhases(18, 20);
   assert(!layout.some((entry) => entry.event === "ipc" && entry.message.kind === "Event" && entry.message.event === "key_up"));
   assert.equal(matching("runtime_shutdown").length, 1);
-  console.log(`Verified real ${backend.startsWith("Wayland") ? "Wayland/headless-CEF" : "Windows"} offscreen smoke; native IME/accessibility/installer acceptance remains pending.`);
+  const platform = backend.startsWith("Win32") ? "Windows" : backend.startsWith("Wayland") ? "Wayland/headless-CEF" : "X11/headless-CEF";
+  console.log(`Verified real ${platform} offscreen smoke; full native UI/input validation is deferred to Phase 6 and packaging to Phase 5.`);
 }
