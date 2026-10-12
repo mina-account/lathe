@@ -13,6 +13,9 @@ for (const file of files) {
     assert(one("browser_native_undo").text.startsWith("# native 😀"));
     assert(one("browser_native_redo").text.startsWith("# mirrored 😀"));
     assert(one("real_item_flush").passed);
+    assert(one("queued_no_op_acknowledged").passed);
+    assert(one("cancelled_composition_flush").passed);
+    assert(one("disjoint_external_rebase").text.endsWith("X1234L678Y"));
     const pending = one("unacknowledged_draft_dirty");
     const crashed = one("renderer_crash_retained_draft");
     const recreated = one("recreated_browser_retained_draft");

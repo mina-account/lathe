@@ -376,11 +376,11 @@ impl MarkdownEditor {
                     .prepare(&message, !self.source.read(cx).read_only(cx))
                 {
                     Ok(change) => {
-                        if let Some((range, text)) = change {
+                        if let Some(changes) = change.filter(|changes| !changes.is_empty()) {
                             self.buffer.update(cx, |buffer, cx| {
                                 buffer.finalize_last_transaction();
                                 buffer.start_transaction();
-                                buffer.edit([(range, text)], None, cx);
+                                buffer.edit(changes, None, cx);
                                 buffer.end_transaction(cx);
                                 buffer.finalize_last_transaction();
                             });
@@ -892,6 +892,159 @@ mod tests {
                 buffer.set_capability(Capability::ReadOnly, cx)
             });
             assert!(item.is_dirty(cx));
+        });
+    }
+
+    #[gpui::test]
+    fn separate_source_changes_preserve_native_history_and_no_op_acknowledgments(
+        cx: &mut TestAppContext,
+    ) {
+        let (item, cx) = fixture(cx, "0123456789");
+        item.update_in(cx, |item, window, cx| {
+            draft(item, 1, 0, "01234L6789", cx).expect("visual draft");
+            item.buffer.update(cx, |buffer, cx| {
+                buffer.finalize_last_transaction();
+                buffer.start_transaction();
+                buffer.edit([(0..1, "X"), (9..10, "Y")], None, cx);
+                buffer.end_transaction(cx);
+                buffer.finalize_last_transaction();
+            });
+            edit(
+                item,
+                1,
+                1,
+                0,
+                Change {
+                    start: 5,
+                    end: 6,
+                    text: "L".into(),
+                },
+                cx,
+            )
+            .expect("disjoint edit");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "X1234L678Y");
+            assert!(item.protocol.conflict.is_none());
+            let revision = item.protocol.revision;
+            let version = item.buffer.read(cx).snapshot().version().clone();
+            draft(item, 2, revision, "X1234LC678Y", cx).expect("composition draft");
+            draft(item, 3, revision, "X1234L678Y", cx).expect("cancelled composition");
+            assert!(item.protocol.validate_flush(3).is_err());
+            edit(
+                item,
+                2,
+                3,
+                revision,
+                Change {
+                    start: 0,
+                    end: 0,
+                    text: String::new(),
+                },
+                cx,
+            )
+            .expect("no-op acknowledgment");
+            item.protocol
+                .validate_flush(3)
+                .expect("fully acknowledged input");
+            assert_eq!(item.protocol.revision, revision);
+            assert_eq!(item.buffer.read(cx).snapshot().version(), &version);
+            item.source.update(cx, |source, cx| {
+                source.undo(&editor::actions::Undo, window, cx)
+            });
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "X12345678Y");
+            item.source.update(cx, |source, cx| {
+                source.undo(&editor::actions::Undo, window, cx)
+            });
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "0123456789");
+            item.source.update(cx, |source, cx| {
+                source.redo(&editor::actions::Redo, window, cx)
+            });
+            item.source.update(cx, |source, cx| {
+                source.redo(&editor::actions::Redo, window, cx)
+            });
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "X1234L678Y");
+        });
+    }
+
+    #[gpui::test]
+    fn queued_disjoint_local_changes_preserve_intervening_source_edits(cx: &mut TestAppContext) {
+        let (item, cx) = fixture(cx, "0123456789");
+        item.update_in(cx, |item, window, cx| {
+            draft(item, 1, 0, "X12345678Y", cx).expect("queued local changes");
+            item.buffer.update(cx, |buffer, cx| {
+                buffer.edit([(5..6, "L")], None, cx);
+                buffer.finalize_last_transaction();
+            });
+            edit(
+                item,
+                1,
+                1,
+                0,
+                Change {
+                    start: 0,
+                    end: 10,
+                    text: "X12345678Y".into(),
+                },
+                cx,
+            )
+            .expect("disjoint local changes");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "X1234L678Y");
+            assert!(item.protocol.conflict.is_none());
+            item.source.update(cx, |source, cx| {
+                source.undo(&editor::actions::Undo, window, cx)
+            });
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "01234L6789");
+            item.source.update(cx, |source, cx| {
+                source.redo(&editor::actions::Redo, window, cx)
+            });
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "X1234L678Y");
+        });
+    }
+
+    #[gpui::test]
+    fn read_only_cancelled_composition_can_acknowledge_without_native_mutation(
+        cx: &mut TestAppContext,
+    ) {
+        let (item, cx) = fixture(cx, "a");
+        item.update(cx, |item, cx| {
+            draft(item, 1, 0, "ab", cx).expect("composition draft");
+            draft(item, 2, 0, "a", cx).expect("cancelled draft");
+            item.source
+                .update(cx, |source, _| source.set_read_only(true));
+            let version = item.buffer.read(cx).snapshot().version().clone();
+            edit(
+                item,
+                1,
+                2,
+                0,
+                Change {
+                    start: 0,
+                    end: 0,
+                    text: String::new(),
+                },
+                cx,
+            )
+            .expect("read-only no-op acknowledgment");
+            item.protocol
+                .validate_flush(2)
+                .expect("read-only close barrier");
+            assert_eq!(item.buffer.read(cx).snapshot().version(), &version);
+            draft(item, 3, 0, "ab", cx).expect("retained forbidden mutation");
+            edit(
+                item,
+                2,
+                3,
+                0,
+                Change {
+                    start: 1,
+                    end: 1,
+                    text: "b".into(),
+                },
+                cx,
+            )
+            .expect("visible read-only rejection");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "a");
+            assert!(item.protocol.conflict.is_some());
+            assert!(item.protocol.validate_flush(3).is_err());
         });
     }
 

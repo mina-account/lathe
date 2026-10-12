@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DocumentBridge, delta, display, fromDisplay, rebase, withinBudget } from "./application.ts";
+import { DocumentBridge, delta, display, fromDisplay, rebase, separateChanges, withinBudget } from "./application.ts";
 
 test("UTF-16 changes preserve code points and untouched CRLF source", () => {
     assert.deepEqual(delta("😀a", "😁a"), {start:0,end:2,text:"😁"});
@@ -27,6 +27,100 @@ test("one pending edit, local queue, exact acknowledgments, native undo, flush",
     assert.equal(messages.at(-1).kind, "flushed");
     bridge.history("undo"); assert.equal(messages.at(-1).kind, "undo");
     assert.equal(bridge.draft, "abc");
+});
+
+test("queued input returning to committed text waits for its own validated acknowledgment", () => {
+    const messages = [];
+    const bridge = new DocumentBridge("session", "1", message => messages.push(message), () => {}, () => {});
+    bridge.receive({kind:"document",revision:0,text:"a",writable:true,draft:null});
+    bridge.input("ab"); bridge.input("abc"); bridge.input("ab");
+    bridge.receive({kind:"flush",request:7}); bridge.history("undo");
+    bridge.receive({kind:"accepted",request:1,sequence:1,revision:1,text:"ab"});
+    assert.equal(messages.some(message => message.kind === "flushed" || message.kind === "undo"), false);
+    const edit = messages.filter(message => message.kind === "edit").at(-1);
+    assert.equal(edit.request, 2); assert.equal(edit.base_revision, 1);
+    assert.deepEqual(edit.change, {start:0,end:0,text:""});
+    const draft = messages.filter(message => message.kind === "draft").at(-1);
+    assert.equal(draft.sequence, edit.sequence); assert.equal(draft.text, "ab");
+    bridge.receive({kind:"accepted",request:2,sequence:1,revision:1,text:"ab"});
+    assert.equal(messages.some(message => message.kind === "flushed"), false);
+    bridge.receive({kind:"accepted",request:edit.request,sequence:edit.sequence,revision:1,text:"ab"});
+    assert.equal(messages.at(-2).kind, "flushed"); assert.equal(messages.at(-1).kind, "undo");
+});
+
+test("cancelled composition acknowledges its no-op draft before flush and history", () => {
+    const messages = [];
+    const bridge = new DocumentBridge("session", "1", message => messages.push(message), () => {}, () => {});
+    bridge.receive({kind:"document",revision:0,text:"a",writable:true,draft:null});
+    bridge.composing = true; bridge.input("ab"); bridge.input("a");
+    bridge.receive({kind:"flush",request:7}); bridge.history("redo"); bridge.compositionEnd();
+    assert.equal(messages.some(message => message.kind === "flushed" || message.kind === "redo"), false);
+    const edit = messages.filter(message => message.kind === "edit").at(-1);
+    assert.deepEqual(edit.change, {start:0,end:0,text:""}); assert.equal(edit.sequence, 2);
+    bridge.receive({kind:"accepted",request:edit.request,sequence:edit.sequence,revision:0,text:"a"});
+    assert.equal(messages.at(-2).kind, "flushed"); assert.equal(messages.at(-1).kind, "redo");
+});
+
+test("separate external edits rebase around local edits with Unicode and source bytes preserved", () => {
+    assert.equal(rebase("0123456789", "X12345678Y", "01234L6789"), "X1234L678Y");
+    assert.equal(rebase("0123456789", "01234L6789", "X12345678Y"), "X1234L678Y");
+    assert.equal(rebase("0123456789", "prefix 012345678 suffix", "01234L6789"), "prefix 01234L678 suffix");
+    const base = "😀\r\n0123456789\r\n[ref]: /a";
+    assert.equal(rebase(base, base.replace("😀", "😁😁").replace("/a", "/long"), base.replace("5", "L")), "😁😁\r\n01234L6789\r\n[ref]: /long");
+    assert.throws(() => rebase("0123456789", "X1234R678Y", "01234L6789"), /overlap/);
+    assert.throws(() => rebase("0123456789", "01234X56789", "01234L56789"), /overlap/);
+});
+
+test("bounded reconciliation supports sparse changes in an 8 MiB document and retains divergent drafts", () => {
+    const base = "0" + "a".repeat(4*1024*1024-1) + "5" + "b".repeat(4*1024*1024-2) + "9";
+    const current = "X" + base.slice(1,-1) + "Y";
+    assert.equal(rebase(base, current, base.slice(0,4*1024*1024) + "L" + base.slice(4*1024*1024+1)), current.slice(0,4*1024*1024) + "L" + current.slice(4*1024*1024+1));
+    const messages = [], errors = [];
+    const bridge = new DocumentBridge("session", "1", message => messages.push(message), () => {}, error => errors.push(error));
+    bridge.receive({kind:"document",revision:0,text:"a".repeat(256),writable:true,draft:null});
+    bridge.composing = true; bridge.input("a".repeat(128) + "L" + "a".repeat(127));
+    bridge.receive({kind:"document",revision:1,text:"b".repeat(256),writable:true,draft:null});
+    bridge.receive({kind:"flush",request:7}); bridge.compositionEnd();
+    assert.equal(bridge.blocked, true); assert.equal(bridge.draft, "a".repeat(128) + "L" + "a".repeat(127));
+    assert.match(errors.at(-1), /overlap/); assert.equal(messages.some(message => message.kind === "flushed"), false);
+});
+
+test("large disjoint replacements use unchanged anchors in both change sets", () => {
+    const base = "A".repeat(200) + "0123456789" + "B".repeat(200);
+    const sides = "C".repeat(200) + "0123456789" + "D".repeat(200);
+    const middle = base.replace("5", "L"), result = sides.replace("5", "L");
+    assert.equal(rebase(base, sides, middle), result);
+    assert.equal(rebase(base, middle, sides), result);
+    assert.throws(() => rebase(base, sides.replace("5", "R"), middle), /overlap/);
+    const paragraph = "the unchanged paragraph contains ordinary repeated letters\n";
+    const lines = "first ".repeat(200) + "\n" + paragraph + "last ".repeat(200);
+    const newLines = "external first ".repeat(200) + "\n" + paragraph + "external last ".repeat(200);
+    assert.equal(rebase(lines, newLines, lines.replace("ordinary", "local")), newLines.replace("ordinary", "local"));
+});
+
+test("cancelled composition settles after a read-only projection without permitting edits", () => {
+    const messages = [];
+    const bridge = new DocumentBridge("session", "1", message => messages.push(message), () => {}, () => {});
+    bridge.receive({kind:"document",revision:0,text:"a",writable:true,draft:null});
+    bridge.composing = true; bridge.input("ab"); bridge.input("a");
+    bridge.receive({kind:"document",revision:0,text:"a",writable:false,draft:null});
+    bridge.receive({kind:"flush",request:7}); bridge.compositionEnd();
+    const edit = messages.filter(message => message.kind === "edit").at(-1);
+    assert(edit, "read-only no-op input must receive a validated acknowledgment");
+    assert.deepEqual(edit.change, {start:0,end:0,text:""}); assert.equal(bridge.writable, false);
+    bridge.receive({kind:"accepted",request:edit.request,sequence:edit.sequence,revision:0,text:"a"});
+    assert.equal(messages.at(-1).kind, "flushed");
+    bridge.input("ab"); assert.equal(messages.at(-1).kind, "draft");
+    assert.equal(messages.filter(message => message.kind === "edit").length, 1);
+});
+
+test("separate Unicode changes reconstruct their target without touching matching spans", () => {
+    const texts = ["", "a", "b", "ab", "ba", "aba", "bab", "😀a😀", "a\r\nb"];
+    for (const before of texts) for (const after of texts) {
+        let reconstructed = before;
+        for (const change of separateChanges(before, after).reverse()) reconstructed = reconstructed.slice(0,change.start) + change.text + reconstructed.slice(change.end);
+        assert.equal(reconstructed, after);
+    }
 });
 
 test("composition and conflict retain drafts and suppress host replacement", () => {
@@ -137,10 +231,15 @@ test("DOM projections transform selections and reject oversized paste before mut
         bridge.receive({kind:"document",revision:1,text:"prefix hello world",writable:true,draft:null});
         assert.equal(element.selectionStart, 13); assert.equal(element.selectionEnd, 18);
         assert.equal(element.selectionDirection, "backward"); assert.equal(element.scrollTop, 37);
+        bridge.receive({kind:"document",revision:2,text:"0123456789",writable:true,draft:null});
+        element.selectionStart=5; element.selectionEnd=6;
+        bridge.receive({kind:"document",revision:3,text:"X12345678Y",writable:true,draft:null});
+        assert.equal(element.selectionStart, 5); assert.equal(element.selectionEnd, 6);
+        assert.equal(element.selectionDirection, "backward"); assert.equal(element.scrollTop, 37);
         let prevented = false;
         listeners.paste({clipboardData:{getData:()=>"x".repeat(8*1024*1024)},preventDefault(){prevented=true;}});
         assert.equal(prevented, true);
-        assert.equal(element.value, "prefix hello world");
+        assert.equal(element.value, "X12345678Y");
         prevented = false;
         listeners.beforeinput({inputType:"insertText",data:"x".repeat(8*1024*1024),preventDefault(){prevented=true;}});
         assert.equal(prevented, true);

@@ -1,6 +1,9 @@
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, ops::Range};
+use std::{
+    collections::{BTreeMap, HashMap},
+    ops::Range,
+};
 
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_MESSAGE_BYTES: usize = MAX_DOCUMENT_BYTES * 2 + 4096;
@@ -236,7 +239,263 @@ pub fn rebase(base: &str, current: &str, range: Range<usize>) -> Result<Range<us
     {
         return Ok(range);
     }
-    bail!("Concurrent edits overlap; the visual draft is retained for resolution")
+    rebase_across(&separate_changes(base, current)?, range)
+}
+
+fn rebase_across(changes: &[(Range<usize>, String)], range: Range<usize>) -> Result<Range<usize>> {
+    let mut removed = 0;
+    let mut inserted = 0;
+    for (external, text) in changes {
+        if external.end < range.start
+            || (external.end == range.start && external.start != range.start)
+        {
+            removed += external.len();
+            inserted += text.len();
+        } else if !(range.end < external.start
+            || (range.end == external.start && range.start != external.start))
+        {
+            bail!("Concurrent edits overlap; the visual draft is retained for resolution");
+        }
+    }
+    Ok(range.start - removed + inserted..range.end - removed + inserted)
+}
+
+fn unchanged_anchor(before: &str, after: &str) -> Option<(Range<usize>, Range<usize>)> {
+    fn find<'a>(
+        before: impl Iterator<Item = (usize, &'a str)>,
+        after: impl Iterator<Item = (usize, &'a str)>,
+    ) -> Option<(Range<usize>, Range<usize>)> {
+        let mut candidates = HashMap::<&str, (usize, usize, usize, usize)>::new();
+        for (offset, text) in before {
+            if let Some(candidate) = candidates.get_mut(text) {
+                candidate.2 += 1;
+            } else if candidates.len() < 65536 {
+                candidates.insert(text, (offset, 0, 1, 0));
+            }
+        }
+        for (offset, text) in after {
+            if let Some(candidate) = candidates.get_mut(text) {
+                candidate.1 = offset;
+                candidate.3 += 1;
+            }
+        }
+        let mut matching: Vec<_> = candidates
+            .into_iter()
+            .filter(|(_, candidate)| candidate.2 == 1 && candidate.3 == 1)
+            .collect();
+        matching.sort_by_key(|(_, candidate)| candidate.0);
+        matching.get(matching.len() / 2).map(|(text, candidate)| {
+            (
+                candidate.0..candidate.0 + text.len(),
+                candidate.1..candidate.1 + text.len(),
+            )
+        })
+    }
+    fn lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
+        let mut offset = 0;
+        text.split_inclusive('\n').map(move |line| {
+            let start = offset;
+            offset += line.len();
+            (start, line)
+        })
+    }
+    fn characters(text: &str) -> impl Iterator<Item = (usize, &str)> {
+        text.char_indices().filter_map(|(offset, character)| {
+            text.get(offset..offset + character.len_utf8())
+                .map(|character| (offset, character))
+        })
+    }
+    let (old, new) = find(lines(before), lines(after))
+        .or_else(|| find(characters(before), characters(after)))?;
+    let prefix = before
+        .get(..old.start)?
+        .chars()
+        .rev()
+        .zip(after.get(..new.start)?.chars().rev())
+        .take_while(|(left, right)| left == right)
+        .map(|(character, _)| character.len_utf8())
+        .sum::<usize>();
+    let suffix = before
+        .get(old.end..)?
+        .chars()
+        .zip(after.get(new.end..)?.chars())
+        .take_while(|(left, right)| left == right)
+        .map(|(character, _)| character.len_utf8())
+        .sum::<usize>();
+    Some((
+        old.start - prefix..old.end + suffix,
+        new.start - prefix..new.end + suffix,
+    ))
+}
+
+fn separate_changes(before: &str, after: &str) -> Result<Vec<(Range<usize>, String)>> {
+    reconcile_changes(before, after, &mut (64 * 1024 * 1024), 0)
+}
+
+fn reconcile_changes(
+    before: &str,
+    after: &str,
+    budget: &mut usize,
+    depth: usize,
+) -> Result<Vec<(Range<usize>, String)>> {
+    let Some((enclosing, replacement)) = minimal_change(before, after) else {
+        return Ok(Vec::new());
+    };
+    if enclosing.is_empty() || replacement.is_empty() {
+        return Ok(vec![(enclosing, replacement)]);
+    }
+    let left: Vec<char> = before
+        .get(enclosing.clone())
+        .ok_or_else(|| anyhow::anyhow!("Invalid diff range"))?
+        .chars()
+        .collect();
+    let right: Vec<char> = replacement.chars().collect();
+    #[derive(Clone, Default)]
+    struct Path {
+        left: usize,
+        right: usize,
+        changes: Vec<(Range<usize>, Range<usize>)>,
+    }
+    let mut frontier = BTreeMap::<i32, Path>::new();
+    let mut remaining = (*budget).min(32 * 1024 * 1024);
+    // Small character diffs keep fine-grained spans; larger replacements split at unchanged anchors.
+    'search: for distance in 0..=128 {
+        let mut next = BTreeMap::new();
+        for diagonal in (-distance..=distance).step_by(2) {
+            let deletion = frontier
+                .get(&(diagonal - 1))
+                .filter(|path| path.left < left.len());
+            let insertion = frontier
+                .get(&(diagonal + 1))
+                .filter(|path| path.right < right.len());
+            let mut path = if distance == 0 {
+                Path::default()
+            } else {
+                let remove = deletion.is_some_and(|deletion| {
+                    insertion.is_none_or(|insertion| deletion.left >= insertion.left)
+                });
+                let Some(previous) = (if remove { deletion } else { insertion }) else {
+                    continue;
+                };
+                let mut path = previous.clone();
+                let change = (
+                    path.left..path.left + usize::from(remove),
+                    path.right..path.right + usize::from(!remove),
+                );
+                if let Some(last) = path
+                    .changes
+                    .last_mut()
+                    .filter(|last| last.0.end == change.0.start && last.1.end == change.1.start)
+                {
+                    last.0.end = change.0.end;
+                    last.1.end = change.1.end;
+                } else {
+                    path.changes.push(change.clone());
+                }
+                path.left = change.0.end;
+                path.right = change.1.end;
+                path
+            };
+            while let (Some(left), Some(right)) = (left.get(path.left), right.get(path.right)) {
+                let Some(next_remaining) = remaining.checked_sub(1) else {
+                    break 'search;
+                };
+                remaining = next_remaining;
+                *budget -= 1;
+                if left != right {
+                    break;
+                }
+                path.left += 1;
+                path.right += 1;
+            }
+            if path.left == left.len() && path.right == right.len() {
+                let mut left_characters = left.iter();
+                let mut right_characters = right.iter();
+                let mut left_index = 0;
+                let mut right_index = 0;
+                let mut left_offset = enclosing.start;
+                let mut right_offset = 0;
+                let mut changes = Vec::new();
+                for (old, new) in path.changes {
+                    left_offset += left_characters
+                        .by_ref()
+                        .take(old.start - left_index)
+                        .map(|character| character.len_utf8())
+                        .sum::<usize>();
+                    let start = left_offset;
+                    left_offset += left_characters
+                        .by_ref()
+                        .take(old.len())
+                        .map(|character| character.len_utf8())
+                        .sum::<usize>();
+                    right_offset += right_characters
+                        .by_ref()
+                        .take(new.start - right_index)
+                        .map(|character| character.len_utf8())
+                        .sum::<usize>();
+                    let inserted_start = right_offset;
+                    right_offset += right_characters
+                        .by_ref()
+                        .take(new.len())
+                        .map(|character| character.len_utf8())
+                        .sum::<usize>();
+                    let inserted = replacement
+                        .get(inserted_start..right_offset)
+                        .ok_or_else(|| anyhow::anyhow!("Invalid inserted diff range"))?
+                        .to_owned();
+                    changes.push((start..left_offset, inserted));
+                    left_index = old.end;
+                    right_index = new.end;
+                }
+                return Ok(changes);
+            }
+            next.insert(diagonal, path);
+        }
+        frontier = next;
+    }
+    drop(left);
+    drop(right);
+    drop(frontier);
+    let old = before
+        .get(enclosing.clone())
+        .ok_or_else(|| anyhow::anyhow!("Invalid diff range"))?;
+    *budget = budget.checked_sub(3 * (old.len() + replacement.len())).ok_or_else(|| anyhow::anyhow!("Concurrent change reconciliation exceeds its work limit; the visual draft is retained"))?;
+    if depth >= 64 {
+        return Ok(vec![(enclosing, replacement)]);
+    }
+    let Some((old_anchor, new_anchor)) = unchanged_anchor(old, &replacement) else {
+        return Ok(vec![(enclosing, replacement)]);
+    };
+    let mut changes = reconcile_changes(
+        old.get(..old_anchor.start)
+            .ok_or_else(|| anyhow::anyhow!("Invalid anchor start"))?,
+        replacement
+            .get(..new_anchor.start)
+            .ok_or_else(|| anyhow::anyhow!("Invalid replacement anchor start"))?,
+        budget,
+        depth + 1,
+    )?;
+    let later = reconcile_changes(
+        old.get(old_anchor.end..)
+            .ok_or_else(|| anyhow::anyhow!("Invalid anchor end"))?,
+        replacement
+            .get(new_anchor.end..)
+            .ok_or_else(|| anyhow::anyhow!("Invalid replacement anchor end"))?,
+        budget,
+        depth + 1,
+    )?;
+    for (range, _) in &mut changes {
+        range.start += enclosing.start;
+        range.end += enclosing.start;
+    }
+    changes.extend(later.into_iter().map(|(range, text)| {
+        (
+            range.start + enclosing.start + old_anchor.end
+                ..range.end + enclosing.start + old_anchor.end,
+            text,
+        )
+    }));
+    Ok(changes)
 }
 
 impl Protocol {
@@ -338,7 +597,7 @@ impl Protocol {
         &self,
         message: &ClientMessage,
         writable: bool,
-    ) -> Result<Option<(Range<usize>, String)>> {
+    ) -> Result<Option<Vec<(Range<usize>, String)>>> {
         let ClientMessage::Edit {
             request,
             sequence,
@@ -354,9 +613,6 @@ impl Protocol {
                 bail!("Request identifier reused with different content");
             }
             return Ok(None);
-        }
-        if !writable {
-            bail!("Document is read-only; the visual draft is retained");
         }
         if *request <= self.last_request {
             bail!("Out-of-order edit request");
@@ -384,8 +640,16 @@ impl Protocol {
                 bail!("Edit does not match its recovery draft");
             }
         }
-        let range = rebase(base, self.current(), start..end)?;
-        Ok(Some((range, change.text.clone())))
+        let local = separate_changes(base, &draft.text)?;
+        if !writable && (!local.is_empty() || draft.text != self.current()) {
+            bail!("Document is read-only; the visual draft is retained");
+        }
+        let external = separate_changes(base, self.current())?;
+        let mut changes = Vec::new();
+        for (range, text) in local {
+            changes.push((rebase_across(&external, range)?, text));
+        }
+        Ok(Some(changes))
     }
 
     pub fn accept(&mut self, message: ClientMessage, text: String) -> Result<HostMessage> {
@@ -578,7 +842,7 @@ mod tests {
         protocol.update("prefix hello world".into());
         assert_eq!(
             protocol.prepare(&message, true)?,
-            Some((13..18, "WORLD".into()))
+            Some(vec![(13..18, "WORLD".into())])
         );
         protocol.update("prefix hello other".into());
         assert!(protocol.prepare(&message, true).is_err());
@@ -586,6 +850,221 @@ mod tests {
             protocol.draft.as_ref().map(|draft| draft.text.as_str()),
             Some("hello WORLD")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn separate_external_changes_rebase_and_real_overlap_keeps_draft() -> Result<()> {
+        let mut protocol = Protocol::new("session".into(), 1, "0123456789".into());
+        protocol.retain_draft(1, 0, "01234L6789".into())?;
+        let message = edit(
+            &protocol,
+            1,
+            1,
+            Change {
+                start: 5,
+                end: 6,
+                text: "L".into(),
+            },
+        );
+        protocol.update("X12345678Y".into());
+        assert_eq!(
+            protocol.prepare(&message, true)?,
+            Some(vec![(5..6, "L".into())])
+        );
+        protocol.update("prefix 012345678 suffix".into());
+        assert_eq!(
+            protocol.prepare(&message, true)?,
+            Some(vec![(12..13, "L".into())])
+        );
+        protocol.update("X1234R678Y".into());
+        assert!(protocol.prepare(&message, true).is_err());
+        assert_eq!(
+            protocol.draft.as_ref().map(|draft| draft.text.as_str()),
+            Some("01234L6789")
+        );
+        assert!(protocol.validate_flush(1).is_err());
+        assert!(rebase("0123456789", "01234X56789", 5..5).is_err());
+        let base = "😀\r\n0123456789\r\n[ref]: /a";
+        let current = base.replace("😀", "😁😁").replace("/a", "/long");
+        assert_eq!(rebase(base, &current, 11..12)?, 15..16);
+        Ok(())
+    }
+
+    #[test]
+    fn no_op_acknowledgment_validates_draft_revision_sequence_and_permissions() -> Result<()> {
+        let mut protocol = Protocol::new("session".into(), 1, "a".into());
+        protocol.retain_draft(1, 0, "ab".into())?;
+        let first = edit(
+            &protocol,
+            1,
+            1,
+            Change {
+                start: 1,
+                end: 1,
+                text: "b".into(),
+            },
+        );
+        protocol.retain_draft(2, 0, "abc".into())?;
+        protocol.retain_draft(3, 0, "ab".into())?;
+        protocol.prepare(&first, true)?;
+        protocol.accept(first, "ab".into())?;
+        assert!(protocol.validate_flush(3).is_err());
+        let mut no_op = edit(
+            &protocol,
+            2,
+            3,
+            Change {
+                start: 0,
+                end: 0,
+                text: String::new(),
+            },
+        );
+        assert!(protocol.prepare(&no_op, true).is_err());
+        protocol.retain_draft(4, 1, "ab".into())?;
+        if let ClientMessage::Edit {
+            sequence,
+            base_revision,
+            ..
+        } = &mut no_op
+        {
+            *sequence = 4;
+            *base_revision = 1;
+        }
+        assert_eq!(protocol.prepare(&no_op, false)?, Some(Vec::new()));
+        assert!(protocol.validate_flush(4).is_err());
+        assert_eq!(protocol.prepare(&no_op, true)?, Some(Vec::new()));
+        let accepted = protocol.accept(no_op.clone(), "ab".into())?;
+        assert_eq!(protocol.revision, 1);
+        protocol.validate_flush(4)?;
+        assert!(protocol.validate_flush(3).is_err());
+        assert_eq!(protocol.accept(no_op, "ab".into())?, accepted);
+        assert!(protocol.retain_draft(4, 1, "ab".into()).is_err());
+        protocol.retain_draft(5, 1, "abc".into())?;
+        assert!(protocol.validate_flush(5).is_err());
+        let mut real_edit = edit(
+            &protocol,
+            3,
+            5,
+            Change {
+                start: 2,
+                end: 2,
+                text: "c".into(),
+            },
+        );
+        if let ClientMessage::Edit { base_revision, .. } = &mut real_edit {
+            *base_revision = 1;
+        }
+        assert!(protocol.prepare(&real_edit, false).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn large_and_symmetric_disjoint_changes_preserve_both_change_sets() -> Result<()> {
+        for (base, sides) in [
+            ("0123456789".to_owned(), "X12345678Y".to_owned()),
+            (
+                format!("{}0123456789{}", "A".repeat(200), "B".repeat(200)),
+                format!("{}0123456789{}", "C".repeat(200), "D".repeat(200)),
+            ),
+            (
+                format!(
+                    "{}\nthe unchanged paragraph contains ordinary repeated letters\n{}",
+                    "first ".repeat(200),
+                    "last ".repeat(200)
+                ),
+                format!(
+                    "{}\nthe unchanged paragraph contains ordinary repeated letters\n{}",
+                    "external first ".repeat(200),
+                    "external last ".repeat(200)
+                ),
+            ),
+        ] {
+            let middle = if base.contains('5') {
+                base.replace('5', "L")
+            } else {
+                base.replace("ordinary", "local")
+            };
+            let expected = if sides.contains('5') {
+                sides.replace('5', "L")
+            } else {
+                sides.replace("ordinary", "local")
+            };
+            for (current, draft) in [(&sides, &middle), (&middle, &sides)] {
+                let mut protocol = Protocol::new("session".into(), 1, base.clone());
+                protocol.retain_draft(1, 0, draft.clone())?;
+                let (range, text) = minimal_change(&base, draft).expect("local change");
+                let message = edit(
+                    &protocol,
+                    1,
+                    1,
+                    Change {
+                        start: base
+                            .get(..range.start)
+                            .expect("start")
+                            .encode_utf16()
+                            .count(),
+                        end: base.get(..range.end).expect("end").encode_utf16().count(),
+                        text,
+                    },
+                );
+                protocol.update(current.clone());
+                let changes = protocol.prepare(&message, true)?.expect("new edit");
+                let mut result = current.clone();
+                for (range, text) in changes.into_iter().rev() {
+                    result.replace_range(range, &text);
+                }
+                assert_eq!(result, expected);
+                protocol.accept(message, result)?;
+                protocol.validate_flush(1)?;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_reconciliation_supports_sparse_large_changes_and_retains_divergent_drafts()
+    -> Result<()> {
+        let base = format!(
+            "0{}5{}9",
+            "a".repeat(MAX_DOCUMENT_BYTES / 2 - 1),
+            "b".repeat(MAX_DOCUMENT_BYTES / 2 - 2)
+        );
+        let current = format!("X{}Y", &base[1..base.len() - 1]);
+        assert_eq!(
+            rebase(
+                &base,
+                &current,
+                MAX_DOCUMENT_BYTES / 2..MAX_DOCUMENT_BYTES / 2 + 1
+            )?,
+            MAX_DOCUMENT_BYTES / 2..MAX_DOCUMENT_BYTES / 2 + 1
+        );
+        let mut protocol = Protocol::new("session".into(), 1, "a".repeat(256));
+        let draft = format!("{}L{}", "a".repeat(128), "a".repeat(127));
+        protocol.retain_draft(1, 0, draft.clone())?;
+        protocol.update("b".repeat(256));
+        let message = edit(
+            &protocol,
+            1,
+            1,
+            Change {
+                start: 128,
+                end: 129,
+                text: "L".into(),
+            },
+        );
+        assert!(
+            protocol
+                .prepare(&message, true)
+                .expect_err("bounded conflict")
+                .to_string()
+                .contains("overlap")
+        );
+        assert_eq!(
+            protocol.draft.as_ref().map(|draft| draft.text.as_str()),
+            Some(draft.as_str())
+        );
+        assert!(protocol.validate_flush(1).is_err());
         Ok(())
     }
 
