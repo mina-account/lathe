@@ -4334,8 +4334,10 @@ impl Workspace {
         let project = self.project.clone();
         cx.spawn_in(window, async move |workspace, cx| {
             for (_, item) in &candidates {
-                cx.update(|window, cx| item.prepare_to_save(window, cx))?
-                    .await?;
+                cx.update(|window, cx| {
+                    Pane::prepare_related_items_to_save(item.as_ref(), window, cx)
+                })?
+                .await?;
             }
             if project.read_with(cx, |project, cx| project.is_disconnected(cx)) {
                 return Ok(true);

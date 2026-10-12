@@ -1380,6 +1380,17 @@ mod tests {
     async fn source_save_and_autosave_flush_related_visual_input_before_disk_write(
         cx: &mut TestAppContext,
     ) {
+        source_save_flush_fixture(cx, false).await;
+    }
+
+    #[gpui::test]
+    async fn floating_source_save_and_autosave_flush_related_visual_input_before_disk_write(
+        cx: &mut TestAppContext,
+    ) {
+        source_save_flush_fixture(cx, true).await;
+    }
+
+    async fn source_save_flush_fixture(cx: &mut TestAppContext, floating: bool) {
         use fs::Fs;
         use util::path;
         cx.update(|cx| {
@@ -1447,7 +1458,50 @@ mod tests {
             item.attach(Box::new(FakeBrowserSurface::default()), cx)
                 .expect("surface")
         });
-        for (sequence, autosave) in [(1, false), (2, true)] {
+        let (workspace, pane, source, mut saving_context) = if floating {
+            let app_state = workspace.read_with(cx, |workspace, _| workspace.app_state().clone());
+            let floating_window = cx.update(|_, cx| {
+                cx.open_window(Default::default(), |window, cx| {
+                    let workspace = cx.new(|cx| {
+                        workspace::Workspace::new_floating(project.clone(), app_state, window, cx)
+                    });
+                    cx.new(|cx| workspace::MultiWorkspace::new(workspace, window, cx))
+                })
+                .expect("floating source window")
+            });
+            let (workspace, pane, source) = floating_window
+                .update(cx, |multi, window, cx| {
+                    let workspace = multi.workspace().clone();
+                    let pane = workspace.read(cx).active_pane().clone();
+                    let source = cx.new(|cx| {
+                        Editor::for_buffer(buffer.clone(), Some(project.clone()), window, cx)
+                    });
+                    pane.update(cx, |pane, cx| {
+                        pane.add_item(Box::new(source.clone()), true, true, None, window, cx)
+                    });
+                    (workspace, pane, source)
+                })
+                .expect("floating source item");
+            (
+                workspace,
+                pane,
+                source,
+                VisualTestContext::from_window(floating_window.into(), &cx.cx),
+            )
+        } else {
+            let window = cx.update(|window, _| window.window_handle());
+            (
+                workspace,
+                pane,
+                source,
+                VisualTestContext::from_window(window, &cx.cx),
+            )
+        };
+        saving_context.focus(&source);
+        saving_context.update(|window, cx| window.draw(cx).clear(cx));
+        for (sequence, autosave, save_all) in
+            [(1, false, false), (2, true, false), (3, false, true)]
+        {
             if autosave {
                 buffer.update(cx, |buffer, cx| {
                     let end = buffer.snapshot().len();
@@ -1459,26 +1513,34 @@ mod tests {
                 .load(path!("/project/file.md").as_ref())
                 .await
                 .expect("disk before");
-            let save = workspace.update_in(cx, |_, window, cx| {
-                if autosave {
-                    workspace::Pane::autosave_item(&source, project.clone(), window, cx)
-                } else {
-                    let project = project.clone();
-                    let pane = pane.clone();
-                    let source = source.clone();
-                    cx.spawn_in(window, async move |_, cx| {
-                        workspace::Pane::save_item(
-                            project,
-                            pane,
-                            &source,
-                            workspace::SaveIntent::SaveWithoutFormat,
-                            cx,
-                        )
-                        .await
-                        .map(|_| ())
-                    })
-                }
-            });
+            let save = if save_all {
+                saving_context.dispatch_action(workspace::SaveAll {
+                    save_intent: Some(workspace::SaveIntent::SaveWithoutFormat),
+                });
+                Task::ready(Ok(()))
+            } else {
+                let save = workspace.update_in(&mut saving_context, |_, window, cx| {
+                    if autosave {
+                        workspace::Pane::autosave_item(&source, project.clone(), window, cx)
+                    } else {
+                        let project = project.clone();
+                        let pane = pane.clone();
+                        let source = source.clone();
+                        cx.spawn_in(window, async move |_, cx| {
+                            workspace::Pane::save_item(
+                                project,
+                                pane,
+                                &source,
+                                workspace::SaveIntent::SaveWithoutFormat,
+                                cx,
+                            )
+                            .await
+                            .map(|_| ())
+                        })
+                    }
+                });
+                save
+            };
             cx.run_until_parked();
             assert_eq!(
                 filesystem
@@ -1519,6 +1581,28 @@ mod tests {
                 .expect("related flush");
             });
             save.await.expect("source save");
+            cx.run_until_parked();
+            if save_all {
+                for _ in 0..8 {
+                    if visual.read_with(cx, |item, _| item.flushes.is_empty()) {
+                        break;
+                    }
+                    visual.update(cx, |item, cx| {
+                        item.receive(
+                            ClientMessage::Flushed {
+                                session: item.protocol.session.clone(),
+                                document: item.protocol.document,
+                                request: item.flush_request,
+                                sequence,
+                            },
+                            cx,
+                        )
+                        .expect("Save All follow-up flush");
+                    });
+                    cx.run_until_parked();
+                }
+                assert!(visual.read_with(cx, |item, _| item.flushes.is_empty()));
+            }
             assert_eq!(
                 filesystem
                     .load(path!("/project/file.md").as_ref())

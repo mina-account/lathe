@@ -6,6 +6,12 @@ pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_MESSAGE_BYTES: usize = MAX_DOCUMENT_BYTES * 2 + 4096;
 pub const ORIGIN: &str = "https://lathe-markdown.invalid";
 
+pub fn within_document_budget(text: &str) -> bool {
+    text.len() <= MAX_DOCUMENT_BYTES
+        && serde_json::to_string(text)
+            .is_ok_and(|serialized| serialized.len() <= MAX_DOCUMENT_BYTES)
+}
+
 mod document_identifier {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
 
@@ -290,15 +296,13 @@ impl Protocol {
         HostMessage::Document {
             revision: self.revision,
             text: self.current().to_owned(),
-            writable,
+            writable: writable && within_document_budget(self.current()),
             draft: self.draft.as_ref().map(|draft| draft.text.clone()),
         }
     }
 
     pub fn retain_draft(&mut self, sequence: u64, base_revision: u64, text: String) -> Result<()> {
-        if text.len() > MAX_DOCUMENT_BYTES {
-            bail!("Visual draft exceeds the document size limit");
-        }
+        let oversized = !within_document_budget(&text);
         if sequence == 0 || sequence == self.last_sequence && self.draft.is_none() {
             bail!("Visual draft sequence was already acknowledged");
         }
@@ -323,6 +327,9 @@ impl Protocol {
             if let Some(middle) = self.drafts.keys().nth(1).copied() {
                 self.drafts.remove(&middle);
             }
+        }
+        if oversized {
+            bail!("Visual draft exceeds the document size limit; input retained for recovery");
         }
         Ok(())
     }
@@ -480,6 +487,32 @@ mod tests {
             base_revision: 0,
             change,
         }
+    }
+
+    #[test]
+    fn oversized_documents_are_not_editable_and_oversized_input_is_retained() {
+        let text = "x".repeat(MAX_DOCUMENT_BYTES + 1);
+        let mut protocol = Protocol::new("session".into(), 1, text.clone());
+        assert!(matches!(
+            protocol.document_message(true),
+            HostMessage::Document {
+                writable: false,
+                ..
+            }
+        ));
+        assert!(
+            protocol
+                .retain_draft(1, 0, format!("{text} input"))
+                .is_err()
+        );
+        assert_eq!(
+            protocol
+                .draft
+                .as_ref()
+                .expect("oversized input recovery")
+                .text,
+            format!("{text} input")
+        );
     }
 
     #[test]

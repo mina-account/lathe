@@ -35,6 +35,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ordinary_and_unmapped_keys_never_fail_the_browser_session() {
+        for key in (1..=24)
+            .map(|number| format!("f{number}"))
+            .chain(["menu", "back", "forward", "unmapped-native-key"].map(str::to_owned))
+        {
+            let keystroke = gpui::Keystroke {
+                key,
+                ..Default::default()
+            };
+            for kind in [KeyEventType::RAWKEYDOWN, KeyEventType::KEYUP] {
+                assert!(translated_key(&keystroke, kind).is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn native_insertions_reserve_bounded_recovery_space() -> Result<()> {
+        check_native_insertion_budget("ordinary IME input")?;
+        assert!(check_native_insertion_budget(&"x".repeat(adapter::MAX_DOCUMENT_BYTES)).is_err());
+        assert!(
+            check_native_insertion_budget(&"\n".repeat(adapter::MAX_DOCUMENT_BYTES / 2)).is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
     fn renderer_failure_is_reported_after_queued_recovery_messages_are_drained() {
         let draft = Message::Draft {
             session: "session".into(),
@@ -718,6 +744,7 @@ impl BrowserSurface for Surface {
         self.execute(&format!("(()=>{{{source}}})()"))
     }
     fn text(&mut self, text: &str, range: Option<std::ops::Range<usize>>) -> Result<()> {
+        check_native_insertion_budget(text)?;
         let range = range
             .map(|range| -> Result<cef::Range> {
                 Ok(cef::Range {
@@ -736,6 +763,7 @@ impl BrowserSurface for Surface {
         range: Option<std::ops::Range<usize>>,
         selection: Option<std::ops::Range<usize>>,
     ) -> Result<()> {
+        check_native_insertion_budget(text)?;
         let range = range
             .map(|range| -> Result<cef::Range> {
                 Ok(cef::Range {
@@ -857,6 +885,14 @@ impl BrowserSurface for Surface {
     }
 }
 
+fn check_native_insertion_budget(text: &str) -> Result<()> {
+    // Reserve room for the existing document and CRLF expansion in the recovery IPC.
+    if serde_json::to_string(text)?.len() > adapter::MAX_DOCUMENT_BYTES / 2 {
+        bail!("Input exceeds the visual insertion limit; use the source editor");
+    }
+    Ok(())
+}
+
 fn key_code(key: &str) -> Result<i32> {
     Ok(match key {
         "backspace" => 8,
@@ -913,19 +949,9 @@ fn translated_key(
 ) -> Result<Option<cef::KeyEvent>> {
     let code = match key_code(&keystroke.key) {
         Ok(code) => code,
-        Err(error) => {
-            let mut characters = keystroke.key.chars();
-            if characters
-                .next()
-                .is_some_and(|character| !character.is_control())
-                && characters.next().is_none()
-            {
-                // GPUI does not expose a layout-independent physical code. Keep text commits separate
-                // rather than inventing a virtual key for a printable character from another layout.
-                return Ok(None);
-            }
-            return Err(error);
-        }
+        // Native actions may consume key-down while key-up still reaches the surface.
+        // Unknown physical keys must not disable document editing or recovery.
+        Err(_) => return Ok(None),
     };
     let mut modifiers = keystroke.modifiers;
     // GPUI consumes Shift into punctuation key names on Windows (and simulated keystrokes).

@@ -21,6 +21,16 @@ export function rebase(base: string, current: string, draft: string): string {
     throw new Error("Concurrent edits overlap. The visual draft is retained; use Recover Draft.");
 }
 export function display(text: string): string { return text.replace(/\r\n|\r/g, "\n"); }
+export function transformOffset(offset: number, change: Change | null): number {
+    if (!change || offset < change.start) return offset;
+    if (offset >= change.end) return offset + change.text.length - (change.end - change.start);
+    return change.start + change.text.length;
+}
+const maximumDocumentBytes = 8 * 1024 * 1024;
+export function withinBudget(text: string): boolean {
+    const encoder = new TextEncoder();
+    return encoder.encode(text).length <= maximumDocumentBytes && encoder.encode(JSON.stringify(text)).length <= maximumDocumentBytes;
+}
 export function fromDisplay(original: string, changed: string): string {
     const change = delta(display(original), changed);
     if (!change) return original;
@@ -39,6 +49,7 @@ export class DocumentBridge {
     session: string; document: string; revision = 0; sequence = 0; request = 0;
     base = ""; draft = ""; pending: Pending | null = null; composing = false; blocked = false; writable = true;
     flushes: number[] = []; afterFlush: (() => void)[] = [];
+    deferredDocument: any = null; deferredAccepted: any = null; reconciling = false; initialized = false;
     send: (message: Record<string, unknown>) => void;
     show: (text: string) => void;
     status: (text: string) => void;
@@ -50,16 +61,27 @@ export class DocumentBridge {
         if (text === this.draft) { this.finishFlush(); return; }
         this.draft = text; this.sequence++;
         this.emit({ kind: "draft", sequence: this.sequence, base_revision: this.revision, text });
+        if (!withinBudget(text)) {
+            this.blocked = true; this.status("Input exceeds the visual document limit and is retained for Recover Draft."); this.show(this.draft); return;
+        }
         this.submit();
     }
     submit() {
-        if (this.pending || this.composing || this.blocked || !this.writable) return;
+        if (this.pending || this.composing || this.reconciling || this.blocked || !this.writable) return;
         const change = delta(this.base, this.draft);
         if (!change) { this.finishFlush(); return; }
         this.pending = { request: ++this.request, sequence: this.sequence, before: this.base, after: this.draft };
         this.emit({ kind: "edit", request: this.request, sequence: this.sequence, base_revision: this.revision, change });
     }
     receive(message: any) {
+        if (this.composing && (message.kind === "accepted" || message.kind === "document") || this.pending && message.kind === "document") {
+            if (message.kind === "document") {
+                if (!this.deferredDocument || message.revision >= this.deferredDocument.revision) this.deferredDocument = message;
+            } else if (this.pending && message.request === this.pending.request && message.sequence === this.pending.sequence) {
+                this.deferredAccepted = message;
+            }
+            return;
+        }
         if (message.kind === "flush") { this.flushes.push(message.request); this.submit(); this.finishFlush(); return; }
         if (message.kind === "conflict") {
             this.pending = null; this.blocked = true;
@@ -74,27 +96,40 @@ export class DocumentBridge {
             this.base = message.text; this.revision = message.revision;
             if (this.draft !== this.base) { this.sequence++; this.emit({ kind: "draft", sequence: this.sequence, base_revision: this.revision, text: this.draft }); }
             if (!this.composing) this.show(this.draft);
-            this.submit(); this.finishFlush(); return;
+            this.reconcile(); this.submit(); this.finishFlush(); return;
         }
         if (message.kind === "document") {
+            if (message.revision < this.revision) return;
             this.writable = message.writable;
-            if (this.pending || this.composing || this.blocked) return;
-            try { this.draft = message.draft ?? rebase(this.base, message.text, this.draft); }
+            if (this.blocked) return;
+            const recovered = !this.initialized && message.draft !== null && message.draft !== undefined;
+            try { this.draft = recovered ? message.draft : rebase(this.base, message.text, this.draft); }
             catch (error) { this.blocked = true; this.status(String(error)); return; }
-            this.base = message.text; this.revision = message.revision;
-            if (message.draft !== null && message.draft !== undefined) { this.blocked = true; this.status("Recovered visual draft. Use Recover Draft to preserve or resolve it."); }
+            this.base = message.text; this.revision = message.revision; this.initialized = true;
+            if (recovered) { this.blocked = true; this.status("Recovered visual draft. Use Recover Draft to preserve or resolve it."); }
+            else if (this.draft !== this.base) { this.sequence++; this.emit({ kind: "draft", sequence: this.sequence, base_revision: this.revision, text: this.draft }); }
+            if (!withinBudget(this.base)) this.status("This document exceeds the visual editing limit. Open Source to edit it.");
             this.show(this.draft);
         }
     }
     finishFlush() {
-        if (this.pending || this.composing || this.blocked || this.draft !== this.base) return;
+        if (this.pending || this.composing || this.reconciling || this.blocked || this.draft !== this.base) return;
         for (const request of this.flushes.splice(0)) this.emit({ kind: "flushed", request, sequence: this.sequence });
         for (const callback of this.afterFlush.splice(0)) callback();
     }
     history(kind: "undo" | "redo") {
         this.afterFlush.push(() => this.emit({ kind, request: ++this.request, base_revision: this.revision })); this.submit(); this.finishFlush();
     }
-    compositionEnd() { this.composing = false; this.submit(); }
+    reconcile() {
+        if (this.composing || this.reconciling) return;
+        this.reconciling = true;
+        const accepted = this.deferredAccepted, document = this.deferredDocument;
+        this.deferredAccepted = null; this.deferredDocument = null;
+        if (accepted) this.receive(accepted);
+        if (document && document.revision >= this.revision) this.receive(document);
+        this.reconciling = false;
+    }
+    compositionEnd() { this.composing = false; this.reconcile(); this.submit(); this.finishFlush(); }
 }
 
 if (typeof window !== "undefined") {
@@ -103,17 +138,35 @@ if (typeof window !== "undefined") {
     const parameters = new URL(location.href).searchParams;
     let projection = "";
     const bridge = new DocumentBridge(parameters.get("session") ?? "", parameters.get("document") ?? "", message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), text => {
-        const start = element.selectionStart, end = element.selectionEnd, scroll = element.scrollTop;
-        projection = text; element.value = display(text); element.readOnly = !bridge.writable;
-        element.setSelectionRange(Math.min(start, element.value.length), Math.min(end, element.value.length)); element.scrollTop = scroll;
+        const start = element.selectionStart, end = element.selectionEnd, direction = element.selectionDirection, scroll = element.scrollTop;
+        const change = delta(element.value, display(text));
+        projection = text; element.value = display(text); element.readOnly = !bridge.writable || bridge.blocked;
+        element.setSelectionRange(transformOffset(start, change), transformOffset(end, change), direction); element.scrollTop = scroll;
     }, text => { status.textContent = text; });
     (window as any).latheMarkdown = bridge;
     element.addEventListener("input", () => { projection = fromDisplay(projection, element.value); bridge.input(projection); });
     element.addEventListener("compositionstart", () => { bridge.composing = true; });
     element.addEventListener("compositionend", () => bridge.compositionEnd());
     element.addEventListener("select", () => bridge.emit({ kind: "selection", start: element.selectionStart, end: element.selectionEnd }));
+    const allowInsertion = (text: string): boolean => {
+        const candidate = element.value.slice(0, element.selectionStart) + text + element.value.slice(element.selectionEnd);
+        if (withinBudget(fromDisplay(projection, candidate))) return true;
+        status.textContent = "This edit exceeds the visual document limit. Use the source editor for larger documents."; return false;
+    };
+    element.addEventListener("paste", event => {
+        const text = event.clipboardData?.getData("text/plain");
+        if (text !== undefined && !allowInsertion(text)) event.preventDefault();
+    });
+    element.addEventListener("drop", event => {
+        const text = event.dataTransfer?.getData("text/plain");
+        if (text !== undefined && !allowInsertion(text)) event.preventDefault();
+    });
     element.addEventListener("beforeinput", event => {
         if (event.inputType === "historyUndo" || event.inputType === "historyRedo") { event.preventDefault(); bridge.history(event.inputType === "historyUndo" ? "undo" : "redo"); }
+        else {
+            const text = event.data ?? event.dataTransfer?.getData("text/plain") ?? (event.inputType === "insertLineBreak" || event.inputType === "insertParagraph" ? "\n" : null);
+            if (text !== null && !allowInsertion(text)) event.preventDefault();
+        }
     });
     element.addEventListener("keydown", event => {
         if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {

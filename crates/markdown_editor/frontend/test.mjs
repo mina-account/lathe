@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DocumentBridge, delta, display, fromDisplay, rebase } from "./application.ts";
+import { DocumentBridge, delta, display, fromDisplay, rebase, withinBudget } from "./application.ts";
 
 test("UTF-16 changes preserve code points and untouched CRLF source", () => {
     assert.deepEqual(delta("😀a", "😁a"), {start:0,end:2,text:"😁"});
@@ -69,4 +69,83 @@ test("document identities above JavaScript integer precision remain opaque strin
     bridge.receive({kind:"document",revision:0,text:"base",writable:true,draft:null});
     bridge.input("base visual");
     assert(messages.every(message => JSON.parse(message).document === identifier));
+});
+
+test("acknowledgments and projections wait for composition before rebasing", () => {
+    const messages = [], shown = [];
+    const bridge = new DocumentBridge("session", "1", message => messages.push(message), text => shown.push(text), () => {});
+    bridge.receive({kind:"document",revision:0,text:"a",writable:true,draft:null});
+    bridge.input("ab"); bridge.composing = true; bridge.input("abc");
+    bridge.receive({kind:"accepted",request:1,sequence:1,revision:2,text:"prefix ab"});
+    assert.equal(bridge.base, "a");
+    bridge.input("abcd"); bridge.compositionEnd();
+    assert.equal(bridge.draft, "prefix abcd");
+    assert.equal(shown.at(-1), "prefix abcd");
+    assert.deepEqual(messages.filter(message => message.kind === "edit").at(-1).change, {start:9,end:9,text:"cd"});
+    const other = new DocumentBridge("session", "2", () => {}, () => {}, () => {});
+    other.receive({kind:"document",revision:0,text:"hello",writable:true,draft:null});
+    other.composing = true; other.input("hello world");
+    other.receive({kind:"document",revision:1,text:"prefix hello",writable:true,draft:null});
+    other.compositionEnd();
+    assert.equal(other.draft, "prefix hello world");
+    assert.equal(other.revision, 1);
+    const draft = messages.filter(message => message.kind === "draft").at(-1);
+    const edit = messages.filter(message => message.kind === "edit").at(-1);
+    assert.equal(draft.sequence, edit.sequence); assert.equal(draft.base_revision, edit.base_revision);
+});
+
+test("composition coalesces projections and replays same-revision capability changes", () => {
+    const bridge = new DocumentBridge("session", "1", () => {}, () => {}, () => {});
+    bridge.receive({kind:"document",revision:0,text:"hello",writable:true,draft:null});
+    bridge.composing = true;
+    for (let revision=1; revision<=1000; revision++) bridge.receive({kind:"document",revision,text:`prefix ${revision} hello`,writable:true,draft:null});
+    bridge.receive({kind:"document",revision:1000,text:"prefix 1000 hello",writable:false,draft:null});
+    assert.equal(bridge.deferredDocument.revision, 1000);
+    bridge.compositionEnd();
+    assert.equal(bridge.base, "prefix 1000 hello"); assert.equal(bridge.writable, false);
+    bridge.composing = true;
+    bridge.receive({kind:"document",revision:1000,text:bridge.base,writable:true,draft:null});
+    bridge.compositionEnd(); assert.equal(bridge.writable, true);
+    bridge.receive({kind:"document",revision:999,text:"stale",writable:false,draft:null});
+    assert.equal(bridge.base, "prefix 1000 hello"); assert.equal(bridge.writable, true);
+});
+
+test("budget counts UTF-8 and JSON escaping and retains noncancelable overflow", () => {
+    assert.equal(withinBudget("😀".repeat(3*1024*1024)), false);
+    assert.equal(withinBudget("\u0000".repeat(2*1024*1024)), false);
+    const messages = [], errors = [];
+    const bridge = new DocumentBridge("session", "1", message => messages.push(message), () => {}, text => errors.push(text));
+    bridge.receive({kind:"document",revision:0,text:"base",writable:true,draft:null});
+    const overflow = "x".repeat(8*1024*1024+1);
+    bridge.input(overflow);
+    assert.equal(messages.at(-1).kind, "draft"); assert.equal(messages.at(-1).text, overflow);
+    assert.equal(bridge.blocked, true); assert.match(errors.at(-1), /retained/);
+});
+
+test("DOM projections transform selections and reject oversized paste before mutation", async () => {
+    const listeners = {};
+    const element = {value:"", selectionStart:0, selectionEnd:0, selectionDirection:"backward", scrollTop:37,
+        addEventListener(kind, callback) { listeners[kind] = callback; },
+        setSelectionRange(start,end,direction) { this.selectionStart=start; this.selectionEnd=end; this.selectionDirection=direction; }};
+    globalThis.window = {}; globalThis.document = {getElementById(id) { return id === "document" ? element : {}; }};
+    globalThis.location = {href:"https://lathe-markdown.invalid/?session=session&document=1"};
+    try {
+        await import("./application.ts?dom-selection");
+        const bridge = window.latheMarkdown;
+        bridge.receive({kind:"document",revision:0,text:"hello world",writable:true,draft:null});
+        element.selectionStart=6; element.selectionEnd=11;
+        bridge.receive({kind:"document",revision:1,text:"prefix hello world",writable:true,draft:null});
+        assert.equal(element.selectionStart, 13); assert.equal(element.selectionEnd, 18);
+        assert.equal(element.selectionDirection, "backward"); assert.equal(element.scrollTop, 37);
+        let prevented = false;
+        listeners.paste({clipboardData:{getData:()=>"x".repeat(8*1024*1024)},preventDefault(){prevented=true;}});
+        assert.equal(prevented, true);
+        assert.equal(element.value, "prefix hello world");
+        prevented = false;
+        listeners.beforeinput({inputType:"insertText",data:"x".repeat(8*1024*1024),preventDefault(){prevented=true;}});
+        assert.equal(prevented, true);
+        prevented = false;
+        listeners.drop({dataTransfer:{getData:()=>"x".repeat(8*1024*1024)},preventDefault(){prevented=true;}});
+        assert.equal(prevented, true);
+    } finally { delete globalThis.window; delete globalThis.document; delete globalThis.location; }
 });

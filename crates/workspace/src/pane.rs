@@ -2299,7 +2299,7 @@ impl Pane {
         cx.notify();
     }
 
-    fn prepare_related_items_to_save(
+    pub(crate) fn prepare_related_items_to_save(
         item: &dyn ItemHandle,
         window: &mut Window,
         cx: &mut App,
@@ -2307,10 +2307,11 @@ impl Pane {
         let item = item.boxed_clone();
         window.spawn(cx, async move |cx| {
             let tasks = cx.update(|window, cx| {
-                let mut related = vec![item.boxed_clone()];
+                let current_window = window.window_handle();
+                let mut related = vec![(current_window, item.boxed_clone())];
                 if item.buffer_kind(cx) == ItemBufferKind::Singleton {
                     let model_ids = item.project_item_model_ids(cx);
-                    let workspaces = window
+                    let current_workspaces = window
                         .root::<crate::MultiWorkspace>()
                         .flatten()
                         .map(|multi| multi.read(cx).workspaces().cloned().collect::<Vec<_>>())
@@ -2321,25 +2322,56 @@ impl Pane {
                                 .map(|workspace| vec![workspace])
                         })
                         .unwrap_or_default();
-                    for workspace in workspaces {
+                    let mut workspaces = current_workspaces
+                        .into_iter()
+                        .map(|workspace| (current_window, workspace))
+                        .collect::<Vec<_>>();
+                    for other_window in cx.windows() {
+                        if other_window.window_id() == current_window.window_id() {
+                            continue;
+                        }
+                        if let Some(multi_window) = other_window.downcast::<crate::MultiWorkspace>()
+                        {
+                            let multi = multi_window.read(cx)?;
+                            workspaces.extend(
+                                multi
+                                    .workspaces()
+                                    .cloned()
+                                    .map(|workspace| (other_window, workspace)),
+                            );
+                        } else if other_window.downcast::<Workspace>().is_some() {
+                            let workspace = other_window
+                                .read::<Workspace, _, _>(cx, |workspace, _| workspace)?;
+                            workspaces.push((other_window, workspace));
+                        }
+                    }
+                    for (item_window, workspace) in workspaces {
                         for candidate in workspace.read(cx).items(cx) {
-                            if candidate.item_id() != item.item_id()
+                            if !related
+                                .iter()
+                                .any(|(_, item)| item.item_id() == candidate.item_id())
                                 && candidate.buffer_kind(cx) == ItemBufferKind::Singleton
                                 && candidate
                                     .project_item_model_ids(cx)
                                     .iter()
                                     .any(|id| model_ids.contains(id))
                             {
-                                related.push(candidate.boxed_clone());
+                                related.push((item_window, candidate.boxed_clone()));
                             }
                         }
                     }
                 }
                 related
                     .iter()
-                    .map(|item| item.prepare_to_save(window, cx))
-                    .collect::<Vec<_>>()
-            })?;
+                    .map(|(item_window, item)| {
+                        if item_window.window_id() == current_window.window_id() {
+                            Ok(item.prepare_to_save(window, cx))
+                        } else {
+                            item_window.update(cx, |_, window, cx| item.prepare_to_save(window, cx))
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })??;
             for task in tasks {
                 task.await?;
             }
