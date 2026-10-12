@@ -85,6 +85,9 @@ use terminal::InteractivePromptKind as _TerminalLatheGuard;
 #[allow(unused_imports)]
 use theme::{ColorCategory as _ColorsLatheGuard, LatheThemeColors as _LatheColorsGuard};
 
+#[allow(unused_imports)]
+use markdown_editor::{MarkdownEditor as _MarkdownEditorGuard, init as _markdown_editor_init};
+
 /// Guards `mod lathe;` in `project/src/git_store.rs`, whose contents are
 /// inherent `GitStore` methods rather than a namespaced path.
 #[allow(dead_code)]

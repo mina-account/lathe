@@ -28,4 +28,23 @@ pub fn init(cx: &mut App) {
     pr_ui::init(cx);
     git_graph::init(cx);
     mobile_dev::init(cx);
+    markdown_editor::init(cx);
+}
+
+pub fn run_browser_subprocess_if_invoked() {
+    #[cfg(all(
+        feature = "markdown-browser",
+        any(target_os = "windows", target_os = "linux")
+    ))]
+    markdown_editor::browser::run_subprocess_if_invoked();
+}
+
+pub fn shutdown_browser_runtime() {
+    #[cfg(all(
+        feature = "markdown-browser",
+        any(target_os = "windows", target_os = "linux")
+    ))]
+    if let Err(error) = markdown_editor::browser::shutdown_desktop() {
+        eprintln!("Markdown browser shutdown: {error:#}");
+    }
 }
