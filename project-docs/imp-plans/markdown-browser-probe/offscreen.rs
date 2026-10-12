@@ -45,6 +45,16 @@ fn key_code(key: &str) -> Result<i32> {
         key if key.len() == 1 && key.as_bytes()[0].is_ascii_alphanumeric() => {
             key.as_bytes()[0].to_ascii_uppercase() as i32
         }
+        "!" => 49,
+        "@" => 50,
+        "#" => 51,
+        "$" => 52,
+        "%" => 53,
+        "^" => 54,
+        "&" => 55,
+        "*" => 56,
+        "(" => 57,
+        ")" => 48,
         ";" | ":" => 186,
         "=" | "+" => 187,
         "," | "<" => 188,
@@ -58,6 +68,54 @@ fn key_code(key: &str) -> Result<i32> {
         "'" | "\"" => 222,
         key => bail!("unsupported GPUI key: {key:?}"),
     })
+}
+
+fn translated_key(
+    keystroke: &gpui::Keystroke,
+    type_: cef::KeyEventType,
+) -> Result<Option<cef::KeyEvent>> {
+    let code = match key_code(&keystroke.key) {
+        Ok(code) => code,
+        Err(error) => {
+            let mut characters = keystroke.key.chars();
+            if characters
+                .next()
+                .is_some_and(|character| !character.is_control())
+                && characters.next().is_none()
+            {
+                // GPUI does not expose a layout-independent physical code. Keep text commits separate
+                // rather than inventing a virtual key for a printable character from another layout.
+                return Ok(None);
+            }
+            return Err(error);
+        }
+    };
+    let mut modifiers = keystroke.modifiers;
+    // GPUI consumes Shift into punctuation key names on Windows (and simulated keystrokes).
+    if keystroke.key.len() == 1 && "!@#$%^&*():+<_>?~{|}\"".contains(&keystroke.key) {
+        modifiers.shift = true;
+    }
+    let character = keystroke
+        .key_char
+        .as_deref()
+        .unwrap_or_else(|| {
+            if keystroke.key.chars().count() == 1 {
+                &keystroke.key
+            } else {
+                ""
+            }
+        })
+        .encode_utf16()
+        .next()
+        .unwrap_or(0);
+    Ok(Some(cef::KeyEvent {
+        type_,
+        windows_key_code: code,
+        modifiers: event_modifiers(modifiers, None),
+        character,
+        unmodified_character: character,
+        ..Default::default()
+    }))
 }
 
 fn event_modifiers(modifiers: gpui::Modifiers, pressed_button: Option<gpui::MouseButton>) -> u32 {
@@ -94,22 +152,27 @@ struct Outcome {
 struct Pane {
     surface: Surface,
     image: Option<Arc<RenderImage>>,
+    hitbox: Option<gpui::HitboxId>,
     bounds: Bounds<Pixels>,
     acknowledged: bool,
     visible: bool,
     text: String,
     events: BTreeMap<EventKind, EventDetails>,
+    event_count: u64,
 }
 struct Probe {
     panes: Vec<Pane>,
-    focused: usize,
+    focused: Option<usize>,
     pressed_button: Option<gpui::MouseButton>,
+    pressed_pane: Option<usize>,
+    pointer_position: gpui::Point<Pixels>,
     focus: FocusHandle,
     marked: Option<Range<usize>>,
     outcome: Rc<RefCell<Outcome>>,
     output: PathBuf,
     smoke: bool,
     phase: u32,
+    hidden_event_count: u64,
     started: Instant,
     phase_started: Instant,
     _pump: Task<()>,
@@ -133,11 +196,13 @@ impl Probe {
             panes.push(Pane {
                 surface,
                 image: None,
+                hitbox: None,
                 bounds: Bounds::default(),
                 acknowledged: false,
                 visible: true,
                 text: String::new(),
                 events: BTreeMap::new(),
+                event_count: 0,
             });
         }
         let focus = cx.focus_handle();
@@ -161,14 +226,17 @@ impl Probe {
         });
         Ok(Self {
             panes,
-            focused: 0,
+            focused: Some(0),
             pressed_button: None,
+            pressed_pane: None,
+            pointer_position: point(px(0.), px(0.)),
             focus,
             marked: None,
             outcome,
             output,
             smoke,
             phase: 0,
+            hidden_event_count: 0,
             started: Instant::now(),
             phase_started: Instant::now(),
             _pump: pump,
@@ -182,16 +250,29 @@ impl Probe {
             .host()
     }
     fn send_key(&self, keystroke: &gpui::Keystroke, type_: cef::KeyEventType) -> Result<()> {
-        let code = key_code(&keystroke.key)?;
-        let modifiers = event_modifiers(keystroke.modifiers, None);
-        self.host(self.focused)?
-            .send_key_event(Some(&cef::KeyEvent {
-                type_,
-                windows_key_code: code,
-                modifiers,
-                ..Default::default()
-            }));
+        if self.focused.is_none() {
+            return Ok(());
+        }
+        if let Some(event) = translated_key(keystroke, type_)? {
+            self.focused_host()?.send_key_event(Some(&event));
+        } else {
+            println!(
+                "{}",
+                serde_json::json!({"event":"printable_key_without_physical_code", "key":keystroke.key, "pane":self.focused})
+            );
+        }
         Ok(())
+    }
+    fn focused_host(&self) -> Result<cef::BrowserHost> {
+        let index = self.focused.ok_or_else(|| anyhow!("no focused browser"))?;
+        let pane = self
+            .panes
+            .get(index)
+            .ok_or_else(|| anyhow!("pane missing"))?;
+        if !pane.visible {
+            bail!("focused browser is hidden");
+        }
+        pane.surface.host()
     }
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<()> {
         if let Some(error) = &self.outcome.borrow().error {
@@ -246,6 +327,7 @@ impl Probe {
                     Message::Acknowledged { request: 1, .. } => pane.acknowledged = true,
                     Message::Input { text, .. } => pane.text = text,
                     Message::Event { event, details, .. } => {
+                        pane.event_count += 1;
                         pane.events.insert(event, details);
                     }
                     _ => bail!("unexpected bridge request"),
@@ -299,13 +381,13 @@ impl Probe {
             }
             1 => {
                 self.capture(window, "resized")?;
-                self.set_visible(1, false)?;
+                self.set_visible(1, false, window, cx)?;
                 cx.notify();
             }
             2 => {
                 self.capture(window, "hidden")?;
-                self.set_visible(1, true)?;
-                self.set_focus(0, window, cx)?;
+                self.set_visible(1, true, window, cx)?;
+                self.set_focus(Some(0), window, cx)?;
                 self.panes
                     .first()
                     .ok_or_else(|| anyhow!("left pane missing"))?
@@ -362,7 +444,7 @@ impl Probe {
                 {
                     bail!("GPUI navigation/space did not edit at the expected caret");
                 }
-                self.set_focus(1, window, cx)?;
+                self.set_focus(Some(1), window, cx)?;
                 self.panes.get(1).ok_or_else(|| anyhow!("right pane missing"))?.surface.execute("document.querySelector('#input').focus(); document.querySelector('#navigation').click(); document.querySelector('#popup').click();")?;
                 cx.notify();
             }
@@ -404,6 +486,7 @@ impl Probe {
                             meta_key: false,
                             buttons: actual_buttons,
                             detail: actual_detail,
+                            ..
                         }) if actual_name == name
                             && *actual_buttons == buttons
                             && *actual_detail == detail
@@ -413,13 +496,111 @@ impl Probe {
                         }
                     }
                 }
+                self.dispatch_capture_regression(window, cx)?;
+            }
+            14 => {
+                let left = self
+                    .panes
+                    .first()
+                    .ok_or_else(|| anyhow!("left pane missing"))?;
+                match left.events.get(&EventKind::PointerUp) {
+                    Some(EventDetails::Pointer {
+                        client_x, client_y, ..
+                    }) if *client_x <= -30 && *client_y <= -30 => {}
+                    actual => {
+                        bail!("captured release did not return to originating browser: {actual:?}")
+                    }
+                }
+                if self.panes.get(1).is_none_or(|pane| {
+                    [EventKind::Pointer, EventKind::Drag, EventKind::PointerUp]
+                        .iter()
+                        .any(|kind| pane.events.contains_key(kind))
+                }) {
+                    bail!("captured pointer leaked to the other browser");
+                }
+                left.surface
+                    .execute("document.querySelector('#input').setSelectionRange(17, 17);")?;
+                self.set_focus(Some(1), window, cx)?;
+                self.dispatch_pointer(1, window, cx)?;
+            }
+            15 => {
+                self.set_visible(1, false, window, cx)?;
+                cx.notify();
+            }
+            16 => {
+                self.hidden_event_count = self
+                    .panes
+                    .get(1)
+                    .ok_or_else(|| anyhow!("right pane missing"))?
+                    .event_count;
+                self.dispatch_hidden_regression(window, cx)?;
+            }
+            17 => {
+                if self.focused != Some(0)
+                    || self.pressed_button.is_some()
+                    || window.captured_hitbox().is_some()
+                {
+                    bail!("hidden pane retained focus or capture");
+                }
+                if self.panes.get(1).is_none_or(|pane| {
+                    pane.text != "b" || pane.event_count != self.hidden_event_count
+                }) || self
+                    .panes
+                    .first()
+                    .is_none_or(|pane| pane.text != "alpha\nbeta\ngamma ht")
+                {
+                    bail!("hidden-pane input mutated the wrong browser");
+                }
+                println!(
+                    "{}",
+                    serde_json::json!({"event":"hidden_input_verified", "focused":self.focused, "pressed_pane":self.pressed_pane, "captured":window.captured_hitbox().is_some(), "right_events":self.hidden_event_count})
+                );
+                self.dispatch_key("!", Some("!"), window, cx);
+            }
+            18 => {
+                self.expect_key("!", 49, Some(20))?;
+                self.dispatch_key("\u{e9}", Some("\u{e9}"), window, cx);
+            }
+            19 => self.dispatch_key("\u{754c}", Some("\u{754c}"), window, cx),
+            20 => {
+                if self
+                    .panes
+                    .first()
+                    .is_none_or(|pane| pane.text != "alpha\nbeta\ngamma ht!\u{e9}\u{754c}")
+                {
+                    bail!("printable punctuation/layout text did not reach browser");
+                }
+                self.set_visible(0, false, window, cx)?;
+                self.dispatch_key("x", Some("x"), window, cx);
+                self.dispatch_key("z", Some("z"), window, cx);
+                cx.notify();
+            }
+            21 => {
+                if self.focused.is_some()
+                    || self.pressed_pane.is_some()
+                    || window.captured_hitbox().is_some()
+                    || self
+                        .panes
+                        .first()
+                        .is_none_or(|pane| pane.text != "alpha\nbeta\ngamma ht!\u{e9}\u{754c}")
+                    || self.panes.get(1).is_none_or(|pane| pane.text != "b")
+                {
+                    bail!("all-hidden panes retained focus/capture or accepted input");
+                }
+                println!(
+                    "{}",
+                    serde_json::json!({"event":"all_hidden_input_verified", "focused":self.focused})
+                );
+                self.set_visible(0, true, window, cx)?;
+                self.set_visible(1, true, window, cx)?;
                 self.panes
                     .get(1)
                     .ok_or_else(|| anyhow!("right pane missing"))?
                     .surface
                     .close()?;
+                cx.notify();
             }
-            14 => {
+            22 => {
                 if !self
                     .panes
                     .get(1)
@@ -450,13 +631,13 @@ impl Probe {
                 pane.events.clear();
                 cx.notify();
             }
-            15 => {
+            23 => {
                 self.capture(window, "recreated")?;
                 for pane in &self.panes {
                     pane.surface.close()?;
                 }
             }
-            16 => {
+            24 => {
                 if self.panes.iter().any(|pane| {
                     pane.surface
                         .shared
@@ -470,6 +651,138 @@ impl Probe {
             }
             _ => bail!("unexpected smoke phase"),
         }
+        Ok(())
+    }
+    fn defer_inputs(
+        &self,
+        inputs: Vec<gpui::PlatformInput>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let handle = window.window_handle();
+        let outcome = self.outcome.clone();
+        cx.defer(move |cx| {
+            if let Err(error) = handle.update(cx, |_, window, cx| {
+                for input in inputs {
+                    window.dispatch_event(input, cx);
+                }
+            }) {
+                outcome.borrow_mut().error =
+                    Some(format!("deferred pointer regression failed: {error:#}"));
+            }
+        });
+    }
+    fn pointer_down(position: gpui::Point<Pixels>) -> gpui::PlatformInput {
+        gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+            position,
+            button: gpui::MouseButton::Left,
+            modifiers: Default::default(),
+            click_count: 1,
+            first_mouse: false,
+        })
+    }
+    fn dispatch_pointer(
+        &self,
+        index: usize,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Result<()> {
+        let pane = self
+            .panes
+            .get(index)
+            .ok_or_else(|| anyhow!("pane missing"))?;
+        self.defer_inputs(
+            vec![Self::pointer_down(
+                pane.bounds.origin + point(px(50.), px(180.)),
+            )],
+            window,
+            cx,
+        );
+        Ok(())
+    }
+    fn dispatch_capture_regression(&self, window: &Window, cx: &mut Context<Self>) -> Result<()> {
+        let left = self
+            .panes
+            .first()
+            .ok_or_else(|| anyhow!("left pane missing"))?;
+        let right = self
+            .panes
+            .get(1)
+            .ok_or_else(|| anyhow!("right pane missing"))?;
+        let start = left.bounds.origin + point(px(50.), px(180.));
+        let destinations = [
+            point(
+                left.bounds.origin.x + left.bounds.size.width + px(8.),
+                start.y,
+            ),
+            right.bounds.origin + point(px(50.), px(180.)),
+            left.bounds.origin - point(px(30.), px(30.)),
+        ];
+        let mut inputs = Vec::new();
+        for position in destinations {
+            inputs.push(gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+                position: start,
+                pressed_button: None,
+                modifiers: Default::default(),
+            }));
+            inputs.push(Self::pointer_down(start));
+            inputs.push(gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+                position,
+                pressed_button: Some(gpui::MouseButton::Left),
+                modifiers: Default::default(),
+            }));
+            inputs.push(gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                position,
+                button: gpui::MouseButton::Left,
+                modifiers: Default::default(),
+                click_count: 1,
+            }));
+        }
+        let outcome = self.outcome.clone();
+        // Chromium applies DOM pointer capture asynchronously; allow each native event to be processed.
+        cx.spawn_in(window, async move |_, cx| {
+            for input in inputs {
+                cx.background_executor()
+                    .timer(Duration::from_millis(40))
+                    .await;
+                if let Err(error) = cx.update(|window, cx| {
+                    window.dispatch_event(input, cx);
+                }) {
+                    outcome.borrow_mut().error =
+                        Some(format!("captured pointer dispatch failed: {error:#}"));
+                    break;
+                }
+            }
+        })
+        .detach();
+        Ok(())
+    }
+    fn dispatch_hidden_regression(&self, window: &Window, cx: &mut Context<Self>) -> Result<()> {
+        let right = self
+            .panes
+            .get(1)
+            .ok_or_else(|| anyhow!("right pane missing"))?;
+        let position = right.bounds.origin + point(px(50.), px(180.));
+        self.defer_inputs(
+            vec![
+                Self::pointer_down(position),
+                gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                    position,
+                    button: gpui::MouseButton::Left,
+                    modifiers: Default::default(),
+                    click_count: 1,
+                }),
+                gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
+                    position,
+                    delta: gpui::ScrollDelta::Pixels(point(px(0.), px(-20.))),
+                    ..Default::default()
+                }),
+            ],
+            window,
+            cx,
+        );
+        self.dispatch_key("h", Some("h"), window, cx);
+        self.dispatch_key("t", Some("t"), window, cx);
         Ok(())
     }
     fn expect_key(&self, key: &str, code: u32, caret: Option<usize>) -> Result<()> {
@@ -574,8 +887,8 @@ impl Probe {
         let handle = window.window_handle();
         let outcome = self.outcome.clone();
         let target = self
-            .panes
-            .get(self.focused)
+            .focused
+            .and_then(|index| self.panes.get(index))
             .map(|pane| pane.bounds.origin + point(px(50.), px(180.)));
         // Event listeners update this entity, so dispatch only after this update has returned.
         cx.defer(move |cx| {
@@ -668,7 +981,39 @@ impl Probe {
             }
         });
     }
-    fn set_visible(&mut self, index: usize, visible: bool) -> Result<()> {
+    fn set_visible(
+        &mut self,
+        index: usize,
+        visible: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<()> {
+        if !visible {
+            if self.pressed_pane == Some(index)
+                && let Some(button) = self.pressed_button
+            {
+                self.mouse(
+                    index,
+                    gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                        position: self.pointer_position,
+                        button,
+                        modifiers: Default::default(),
+                        click_count: 1,
+                    }),
+                    window,
+                    cx,
+                )?;
+            }
+            if self.focused == Some(index) {
+                let next = self
+                    .panes
+                    .iter()
+                    .enumerate()
+                    .find(|(candidate, pane)| *candidate != index && pane.visible)
+                    .map(|(candidate, _)| candidate);
+                self.set_focus(next, window, cx)?;
+            }
+        }
         self.host(index)?.was_hidden(i32::from(!visible));
         self.panes
             .get_mut(index)
@@ -680,14 +1025,32 @@ impl Probe {
         );
         Ok(())
     }
-    fn set_focus(&mut self, index: usize, window: &mut Window, cx: &mut App) -> Result<()> {
+    fn set_focus(&mut self, index: Option<usize>, window: &mut Window, cx: &mut App) -> Result<()> {
+        if let Some(index) = index {
+            let pane = self
+                .panes
+                .get(index)
+                .ok_or_else(|| anyhow!("pane missing"))?;
+            if !pane.visible {
+                return Ok(());
+            }
+        }
+        if self.marked.take().is_some()
+            && let Some(previous) = self.focused
+        {
+            self.host(previous)?.ime_cancel_composition();
+        }
         for (candidate, pane) in self.panes.iter().enumerate() {
             pane.surface
                 .host()?
-                .set_focus(i32::from(candidate == index));
+                .set_focus(i32::from(Some(candidate) == index));
         }
         self.focused = index;
-        self.focus.focus(window, cx);
+        if index.is_some() {
+            self.focus.focus(window, cx);
+        } else {
+            window.blur(cx);
+        }
         println!("{}", serde_json::json!({"event":"focus", "pane":index}));
         Ok(())
     }
@@ -725,9 +1088,50 @@ impl Probe {
             ),
             _ => bail!("unsupported pointer input"),
         };
+        if !self
+            .panes
+            .get(index)
+            .ok_or_else(|| anyhow!("pane missing"))?
+            .visible
+        {
+            return Ok(());
+        }
+        let captured = self.pressed_pane == Some(index);
+        if up && (!captured || button != self.pressed_button) {
+            return Ok(());
+        }
+        if button.is_none() && self.pressed_pane.is_some() && !captured {
+            return Ok(());
+        }
+        let pressed_button = if button.is_some() && !up {
+            pressed_button
+        } else if captured && !up {
+            self.pressed_button
+        } else {
+            None
+        };
+        self.pointer_position = position;
         self.pressed_button = pressed_button;
         if button.is_some() && !up {
-            self.set_focus(index, window, cx)?;
+            self.pressed_pane = Some(index);
+            if let Some(hitbox) = self.panes.get(index).and_then(|pane| pane.hitbox) {
+                window.capture_pointer(hitbox);
+            }
+            println!(
+                "{}",
+                serde_json::json!({"event":"pointer_capture", "pane":index})
+            );
+        }
+        if up {
+            self.pressed_pane = None;
+            window.release_pointer();
+            println!(
+                "{}",
+                serde_json::json!({"event":"pointer_release", "pane":index})
+            );
+        }
+        if button.is_some() && !up {
+            self.set_focus(Some(index), window, cx)?;
         }
         let pane = self
             .panes
@@ -736,7 +1140,7 @@ impl Probe {
         if !pane.visible {
             return Ok(());
         }
-        let (x, y) = offscreen_adapter::local_point(
+        let (x, y) = offscreen_adapter::pointer_point(
             (position.x.into(), position.y.into()),
             (pane.bounds.origin.x.into(), pane.bounds.origin.y.into()),
             (
@@ -744,8 +1148,13 @@ impl Probe {
                 pane.bounds.size.height.into(),
             ),
             window.scale_factor(),
+            captured,
         )?;
         let (modifiers, click_count) = pointer_metadata(modifiers, pressed_button, click_count)?;
+        println!(
+            "{}",
+            serde_json::json!({"event":"pointer_route", "pane":index, "x":x, "y":y, "captured":captured, "up":up, "buttons":pressed_button.is_some()})
+        );
         let event = cef::MouseEvent { x, y, modifiers };
         let host = pane.surface.host()?;
         if let Some(button) = button {
@@ -782,7 +1191,8 @@ impl Render for Probe {
             let visible = pane.visible;
             let focus = self.focus.clone();
             let element = canvas(move |bounds, window, cx| {
-                entity.update(cx, |this, _| { if let Some(pane) = this.panes.get_mut(index) { pane.bounds = bounds; } });
+                let hitbox = window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal);
+                entity.update(cx, |this, _| { if let Some(pane) = this.panes.get_mut(index) { pane.bounds = bounds; pane.hitbox = Some(hitbox.id); } });
                 let mut resized = false;
                 if let Ok(mut state) = shared.lock() {
                     let width = f32::from(bounds.size.width).floor().max(1.) as i32; let height = f32::from(bounds.size.height).floor().max(1.) as i32; let scale = window.scale_factor();
@@ -802,6 +1212,36 @@ impl Render for Probe {
                             Err(error) => paint_outcome.borrow_mut().error = Some(format!("GPUI frame paint failed: {error:#}")),
                         }
                     }
+                }
+                if index == 0 {
+                    window.on_mouse_event({
+                        let entity = paint_entity.clone();
+                        move |event: &gpui::MouseMoveEvent, phase, window, cx| {
+                            if phase == gpui::DispatchPhase::Capture {
+                                entity.update(cx, |this, cx| {
+                                    if let Some(index) = this.pressed_pane {
+                                        let result = this.mouse(index, gpui::PlatformInput::MouseMove(event.clone()), window, cx);
+                                        this.input_error(result, cx);
+                                        cx.stop_propagation();
+                                    }
+                                });
+                            }
+                        }
+                    });
+                    window.on_mouse_event({
+                        let entity = paint_entity.clone();
+                        move |event: &gpui::MouseUpEvent, phase, window, cx| {
+                            if phase == gpui::DispatchPhase::Capture {
+                                entity.update(cx, |this, cx| {
+                                    if let Some(index) = this.pressed_pane {
+                                        let result = this.mouse(index, gpui::PlatformInput::MouseUp(event.clone()), window, cx);
+                                        this.input_error(result, cx);
+                                        cx.stop_propagation();
+                                    }
+                                });
+                            }
+                        }
+                    });
                 }
                 window.handle_input(&focus, gpui::ElementInputHandler::new(bounds, paint_entity.clone()), cx);
             }).size_full();
@@ -903,6 +1343,9 @@ impl Render for Probe {
                                     .panes
                                     .get(index)
                                     .ok_or_else(|| anyhow!("pane missing"))?;
+                                if !pane.visible {
+                                    return Ok(());
+                                }
                                 let (x, y) = offscreen_adapter::local_point(
                                     (event.position.x.into(), event.position.y.into()),
                                     (pane.bounds.origin.x.into(), pane.bounds.origin.y.into()),
@@ -926,7 +1369,11 @@ impl Render for Probe {
                                         y,
                                         modifiers: event_modifiers(
                                             event.modifiers,
-                                            this.pressed_button,
+                                            if this.pressed_pane == Some(index) {
+                                                this.pressed_button
+                                            } else {
+                                                None
+                                            },
                                         ),
                                     }),
                                     delta.0 as i32,
@@ -984,7 +1431,7 @@ impl gpui::EntityInputHandler for Probe {
     ) -> Option<String> {
         let units = self
             .panes
-            .get(self.focused)?
+            .get(self.focused?)?
             .text
             .encode_utf16()
             .collect::<Vec<_>>();
@@ -998,7 +1445,7 @@ impl gpui::EntityInputHandler for Probe {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<gpui::UTF16Selection> {
-        let length = self.panes.get(self.focused)?.text.encode_utf16().count();
+        let length = self.panes.get(self.focused?)?.text.encode_utf16().count();
         Some(gpui::UTF16Selection {
             range: length..length,
             reversed: false,
@@ -1012,8 +1459,12 @@ impl gpui::EntityInputHandler for Probe {
         self.marked.clone()
     }
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.focused.is_none() {
+            self.marked = None;
+            return;
+        }
         let result = self
-            .host(self.focused)
+            .focused_host()
             .map(|host| host.ime_finish_composing_text(1));
         self.marked = None;
         self.input_error(result, cx);
@@ -1025,6 +1476,9 @@ impl gpui::EntityInputHandler for Probe {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.focused.is_none() {
+            return;
+        }
         println!(
             "{}",
             serde_json::json!({"event":"text_commit", "text":text, "pane":self.focused})
@@ -1033,7 +1487,7 @@ impl gpui::EntityInputHandler for Probe {
             from: range.start as u32,
             to: range.end as u32,
         });
-        let result = self.host(self.focused).map(|host| {
+        let result = self.focused_host().map(|host| {
             if self.marked.is_some() || range.is_some() {
                 host.ime_commit_text(Some(&text.into()), range.as_ref(), 0);
             } else {
@@ -1059,6 +1513,9 @@ impl gpui::EntityInputHandler for Probe {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.focused.is_none() {
+            return;
+        }
         let replacement = range.map(|range| cef::Range {
             from: range.start as u32,
             to: range.end as u32,
@@ -1069,7 +1526,7 @@ impl gpui::EntityInputHandler for Probe {
             from: selection.start as u32,
             to: selection.end as u32,
         };
-        let result = self.host(self.focused).map(|host| {
+        let result = self.focused_host().map(|host| {
             host.ime_set_composition(
                 Some(&text.into()),
                 None,
@@ -1087,7 +1544,7 @@ impl gpui::EntityInputHandler for Probe {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
-        let pane = self.panes.get(self.focused)?;
+        let pane = self.panes.get(self.focused?)?;
         let state = pane.surface.shared.lock().ok()?;
         let caret = state.caret.as_ref()?;
         Some(Bounds::new(
@@ -1170,7 +1627,7 @@ fn run() -> Result<i32> {
                 let result = if require_wayland && !backend.as_ref().is_ok_and(|value| value.starts_with("Wayland")) { Err(anyhow!("required Wayland backend was not selected")) } else { Probe::new(window, cx, outcome_for_window.clone(), output.clone(), smoke) };
                 match result {
                     Ok(probe) => probe,
-                    Err(error) => { outcome_for_window.borrow_mut().error = Some(format!("{error:#}")); cx.quit(); Probe { panes: Vec::new(), focused: 0, pressed_button: None, focus: cx.focus_handle(), marked: None, outcome: outcome_for_window.clone(), output: output.clone(), smoke, phase: 0, started: Instant::now(), phase_started: Instant::now(), _pump: Task::ready(()) } }
+                    Err(error) => { outcome_for_window.borrow_mut().error = Some(format!("{error:#}")); cx.quit(); Probe { panes: Vec::new(), focused: Some(0), pressed_button: None, pressed_pane: None, pointer_position: point(px(0.), px(0.)), focus: cx.focus_handle(), marked: None, outcome: outcome_for_window.clone(), output: output.clone(), smoke, phase: 0, hidden_event_count: 0, started: Instant::now(), phase_started: Instant::now(), _pump: Task::ready(()) } }
                 }
             })
         });
@@ -1250,6 +1707,65 @@ mod input_tests {
         assert_eq!(key_code("a")?, 65);
         assert!(key_code("unknown-name").is_err());
         assert!(key_code("").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn unmapped_layout_keys_preserve_text_without_inventing_virtual_keys() -> Result<()> {
+        for key in ["\u{e9}", "\u{754c}", "\u{1f600}"] {
+            assert!(
+                translated_key(
+                    &gpui::Keystroke {
+                        key: key.into(),
+                        key_char: Some(key.into()),
+                        ..Default::default()
+                    },
+                    cef::KeyEventType::RAWKEYDOWN
+                )?
+                .is_none()
+            );
+        }
+        assert!(
+            translated_key(
+                &gpui::Keystroke {
+                    key: "unknown-name".into(),
+                    ..Default::default()
+                },
+                cef::KeyEventType::RAWKEYDOWN
+            )
+            .is_err()
+        );
+        let event = translated_key(
+            &gpui::Keystroke {
+                key: "!".into(),
+                key_char: Some("!".into()),
+                ..Default::default()
+            },
+            cef::KeyEventType::RAWKEYDOWN,
+        )?
+        .ok_or_else(|| anyhow!("punctuation event missing"))?;
+        assert_eq!(event.windows_key_code, 49);
+        assert_eq!(event.modifiers & 2, 2);
+        assert_eq!(event.character, u16::from(b'!'));
+        Ok(())
+    }
+
+    #[test]
+    fn printable_shifted_keys_are_not_rejected() -> Result<()> {
+        for (key, code) in [
+            ("!", 49),
+            ("@", 50),
+            ("#", 51),
+            ("$", 52),
+            ("%", 53),
+            ("^", 54),
+            ("&", 55),
+            ("*", 56),
+            ("(", 57),
+            (")", 48),
+        ] {
+            assert_eq!(key_code(key)?, code);
+        }
         Ok(())
     }
 

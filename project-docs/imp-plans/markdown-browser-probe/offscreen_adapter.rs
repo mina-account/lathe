@@ -58,6 +58,8 @@ pub enum EventDetails {
         meta_key: bool,
         buttons: u32,
         detail: i32,
+        client_x: i32,
+        client_y: i32,
     },
 }
 
@@ -130,6 +132,16 @@ pub fn local_point(
     bounds: (f32, f32),
     scale: f32,
 ) -> Result<(i32, i32)> {
+    pointer_point(point, origin, bounds, scale, false)
+}
+
+pub fn pointer_point(
+    point: (f32, f32),
+    origin: (f32, f32),
+    bounds: (f32, f32),
+    scale: f32,
+    captured: bool,
+) -> Result<(i32, i32)> {
     if !scale.is_finite()
         || scale <= 0.0
         || [point.0, point.1, origin.0, origin.1, bounds.0, bounds.1]
@@ -139,7 +151,7 @@ pub fn local_point(
         bail!("invalid pane geometry");
     }
     let point = (point.0 - origin.0, point.1 - origin.1);
-    if point.0 < 0.0 || point.1 < 0.0 || point.0 >= bounds.0 || point.1 >= bounds.1 {
+    if !captured && (point.0 < 0.0 || point.1 < 0.0 || point.0 >= bounds.0 || point.1 >= bounds.1) {
         bail!("point outside pane");
     }
     Ok((point.0.floor() as i32, point.1.floor() as i32))
@@ -213,6 +225,15 @@ mod tests {
             local_point((150., 75.), (100., 25.), (200., 100.), 1.75)?,
             (50, 50)
         );
+        assert_eq!(
+            pointer_point((70., -5.), (100., 25.), (200., 100.), 1.75, true)?,
+            (-30, -30)
+        );
+        assert_eq!(
+            pointer_point((350., 75.), (100., 25.), (200., 100.), 1.75, true)?,
+            (250, 50)
+        );
+        assert!(pointer_point((f32::NAN, 75.), (100., 25.), (200., 100.), 1.75, true).is_err());
         assert!(local_point((99., 75.), (100., 25.), (200., 100.), 1.75).is_err());
         assert!(local_point((150., 75.), (100., 25.), (200., 100.), f32::NAN).is_err());
         Ok(())

@@ -59,7 +59,39 @@ for (const path of files) {
   for (const [event, name, buttons, detail, alt_key] of [["pointer","pointerdown",1,0,false], ["drag","pointermove",1,0,false], ["pointer_up","pointerup",0,0,false], ["double_click","dblclick",0,2,false], ["wheel","wheel",0,0,true], ["wheel","wheel",1,0,true]]) {
     assert(events.some((entry) => entry.event === event && entry.details.type === "pointer" && entry.details.name === name && entry.details.shift_key === true && entry.details.control_key === false && entry.details.alt_key === alt_key && entry.details.meta_key === false && entry.details.buttons === buttons && entry.details.detail === detail), `Missing browser pointer metadata for ${name}, buttons=${buttons}`);
   }
-  assert.deepEqual(matching("smoke_phase").map((entry) => entry.phase), Array.from({length: 17}, (_, index) => index));
+  assert.deepEqual(matching("smoke_phase").map((entry) => entry.phase), Array.from({length: 25}, (_, index) => index));
+  const betweenPhases = (start, end) => entries.slice(entries.findIndex((entry) => entry.event === "smoke_phase" && entry.phase === start) + 1, entries.findIndex((entry) => entry.event === "smoke_phase" && entry.phase === end));
+  const captured = betweenPhases(13, 14);
+  const releases = captured.filter((entry) => entry.event === "pointer_route" && entry.up);
+  assert.equal(releases.length, 3);
+  assert(releases.every((entry) => entry.pane === 0 && entry.captured && !entry.buttons));
+  const leftBounds = matching("bounds").filter((entry) => entry.session === "left").at(-1);
+  assert(releases[0].x > leftBounds.width && releases[1].x > releases[0].x);
+  assert(releases[2].x <= -30 && releases[2].y <= -30);
+  const domReleases = captured.filter((entry) => entry.event === "ipc" && entry.message.kind === "Event" && entry.message.event === "pointer_up");
+  assert.equal(domReleases.length, 3);
+  assert(domReleases.every((entry) => entry.message.session === "left" && entry.message.details.buttons === 0));
+  assert(domReleases[0].message.details.client_x > leftBounds.width && domReleases[1].message.details.client_x > domReleases[0].message.details.client_x);
+  assert(domReleases[2].message.details.client_x <= -30 && domReleases[2].message.details.client_y <= -30);
+  assert(!captured.some((entry) => entry.event === "ipc" && entry.message.session === "right" && entry.message.kind === "Event"));
+  assert.equal(matching("pointer_capture").length, matching("pointer_release").length);
+  const hidden = betweenPhases(16, 20);
+  assert(!hidden.some((entry) => entry.event === "ipc" && entry.message.session === "right" && ["Input", "Event"].includes(entry.message.kind)));
+  assert(!hidden.some((entry) => entry.event === "focus" && entry.pane === 1));
+  assert.equal(matching("hidden_input_verified").length, 1);
+  assert.equal(matching("hidden_input_verified")[0].focused, 0);
+  assert.equal(matching("hidden_input_verified")[0].pressed_pane, null);
+  assert.equal(matching("hidden_input_verified")[0].captured, false);
+  assert.equal(matching("all_hidden_input_verified").length, 1);
+  assert.equal(matching("all_hidden_input_verified")[0].focused, null);
+  assert(!betweenPhases(20, 21).some((entry) => entry.event === "ipc" && ["Input", "Event"].includes(entry.message.kind)));
+  assert(events.some(({event, details}) => event === "key_up" && details.key === "!" && details.key_code === 49 && details.selection_start === 20 && details.selection_end === 20));
+  assert(matching("ipc").some((entry) => entry.message.kind === "Input" && entry.message.session === "left" && entry.message.text === "alpha\nbeta\ngamma ht!\u00e9\u754c"));
+  for (const key of ["\u00e9", "\u754c"]) {
+    assert.equal(matching("printable_key_without_physical_code").filter((entry) => entry.key === key && entry.pane === 0).length, 2);
+  }
+  const layout = betweenPhases(18, 20);
+  assert(!layout.some((entry) => entry.event === "ipc" && entry.message.kind === "Event" && entry.message.event === "key_up"));
   assert.equal(matching("runtime_shutdown").length, 1);
   console.log(`Verified real ${backend.startsWith("Wayland") ? "Wayland/headless-CEF" : "Windows"} offscreen smoke; native IME/accessibility/installer acceptance remains pending.`);
 }
