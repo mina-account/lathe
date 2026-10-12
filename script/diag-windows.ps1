@@ -7,7 +7,7 @@ Param(
 # Best-effort diagnostic for "lathe-editor.exe launches but no window appears"
 # style failures on a Windows install. Prints install layout, signature
 # state, Mark-of-the-Web, Defender threats/exclusions, recent Application
-# event log entries mentioning lathe/zed, the latest Zed log tail, and the
+# event log entries mentioning lathe/zed, the latest Lathe log tail, and the
 # editor's stdout/stderr when launched with --foreground.
 #
 # Usage:
@@ -137,11 +137,11 @@ try {
 
 # ---------------------------------------------------------------------------
 
-Section "Lathe/Zed log dirs"
+Section "Lathe log dirs"
 $logCandidates = @(
-    "$env:LOCALAPPDATA\Zed\logs",
-    "$env:APPDATA\Zed\logs",
-    "$env:USERPROFILE\.config\zed\logs"
+    "$env:LOCALAPPDATA\Lathe\logs",
+    "$env:APPDATA\Lathe\logs",
+    "$env:USERPROFILE\.config\lathe\logs"
 )
 $primaryLog = $null
 foreach ($dir in $logCandidates) {
@@ -154,7 +154,7 @@ foreach ($dir in $logCandidates) {
                 Write-Output ("    {0:yyyy-MM-dd HH:mm:ss}  {1,10:N0}  {2}" -f $_.LastWriteTime, $_.Length, $_.Name)
             }
         if (-not $primaryLog) {
-            $primaryLog = Join-Path $dir 'Zed.log'
+            $primaryLog = Join-Path $dir 'Lathe.log'
             if (-not (Test-Path $primaryLog)) { $primaryLog = $null }
         }
     }

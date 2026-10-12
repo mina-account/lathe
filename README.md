@@ -97,6 +97,10 @@ script/install-fork-windows.ps1
 
 It installs as **Lathe** and runs alongside stock Zed without stepping on it.
 
+On Windows, Lathe stores settings in `%APPDATA%\Lathe` and databases,
+extensions, and logs in `%LOCALAPPDATA%\Lathe`. These are separate from
+official Zed's folders.
+
 Want to try a build without installing it to `/Applications`? Launch the bundle where it sits:
 
 ```sh
