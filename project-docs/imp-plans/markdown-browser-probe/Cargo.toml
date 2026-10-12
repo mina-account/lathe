@@ -1,0 +1,34 @@
+[package]
+name = "markdown_browser_probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+offscreen = ["dep:cef", "dep:gpui", "dep:gpui_platform", "dep:image", "dep:raw-window-handle"]
+
+[[bin]]
+name = "markdown_browser_probe"
+path = "probe.rs"
+
+[[bin]]
+name = "markdown_offscreen_probe"
+path = "offscreen.rs"
+required-features = ["offscreen"]
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+cef = { version = "=154.5.0", default-features = false, optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+raw-window-handle = { version = "0.6", optional = true }
+gpui = { path = "../../../crates/gpui", default-features = false, optional = true, features = ["test-support"] }
+gpui_platform = { path = "../../../crates/gpui_platform", default-features = false, optional = true, features = ["wayland", "x11", "test-support"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+gpui = { path = "../../../crates/gpui", default-features = false }
+gpui_platform = { path = "../../../crates/gpui_platform", default-features = false }
+wry = "=0.57.0"

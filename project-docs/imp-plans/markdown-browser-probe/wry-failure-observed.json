@@ -1,0 +1,15 @@
+{
+  "scenario": "unavailable-webview2",
+  "environment": {
+    "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER": "C:/tmp/lathe-fix-smokes/missing-webview2"
+  },
+  "exit_code": 1,
+  "stdout": [
+    {
+      "event": "runtime",
+      "wry": "0.57.0",
+      "webview": "unavailable: WebView2 error: WindowsError(Error { code: HRESULT(0x80070002), message: \"The system cannot find the file specified.\" })"
+    }
+  ],
+  "stderr": "browser creation failed: WebView2 error: WindowsError(Error { code: HRESULT(0x80070002), message: \"The system cannot find the file specified.\" })"
+}

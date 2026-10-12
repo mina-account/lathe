@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Packaged hosting probe</title>
+  <link rel="stylesheet" href="probe.css">
+  <script src="probe.js" defer></script>
+</head>
+<body>
+  <h1>Packaged browser surface</h1>
+  <p id="status">Waiting for the native host</p>
+  <label for="input">IME and focus smoke input</label>
+  <textarea id="input" rows="5">Untouched source: 日本語 👩🏽‍💻</textarea>
+  <p id="composition">Composition idle</p>
+  <button id="navigation">Attempt forbidden navigation</button>
+  <button id="popup">Attempt forbidden popup</button>
+  <p>The native red rectangle should cover this browser content.</p>
+</body>
+</html>

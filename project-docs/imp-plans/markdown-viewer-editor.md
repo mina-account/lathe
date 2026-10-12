@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Phase 0 baseline frozen; no application code implemented. Phases 1–6 remain pending.
+Status: Phases 0 and 1 complete under the revised scope: the baseline is frozen and automated CPU offscreen CEF viability is demonstrated on Windows, Linux X11, and Linux Wayland. Phases 2–6 remain pending; no application editor code implemented.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 
@@ -9,6 +9,8 @@ Repository baseline: `b58ba5990a`, with existing local changes excluded from thi
 Add a Markdown workspace item to Lathe with functional parity with [zaaack.markdown-editor on the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=zaaack.markdown-editor). Users must be able to read rendered Markdown, edit through instant rendering, WYSIWYG, or split mode, and open the same document in Lathe's source editor without creating independent document copies.
 
 The target is a complete editor, including formatting, image insertion, themes, custom CSS, extended Markdown syntax, and the reference extension's diagram support. A source editor with a read-only preview is an intermediate milestone, not completion of this plan.
+
+Scope revision: supported delivery platforms are Windows and Linux (X11 and Wayland). macOS checks, accessibility checks, and visual pixel-readback acceptance are excluded from deliverables. Historical evidence remains recorded. The user will run the full native/manual UI acceptance suite and resolve UI bugs at the end of all implementation phases, in Phase 6. Native input, IME, selection, shortcuts, focus, overlays, DPI, and workspace/window interactions still require implementation; automated correctness checks continue during each phase. Packaging and installed-runtime acceptance belong to Phase 5. This revision does not reduce feature parity, document fidelity, shared history, bridge validation, or security requirements.
 
 ## 2. Reference baseline and scope
 
@@ -28,7 +30,7 @@ Do not automatically include every optional Vditor capability. Microphone record
 
 ## 3. Feature parity and acceptance matrix
 
-Every row is required unless explicitly identified as a source-baseline addition. Maintain a fixture and a test or manual verification record for each row during implementation.
+Every row is required unless explicitly identified as a source-baseline addition. Maintain fixtures and automated correctness evidence during implementation; record full native/manual UI evidence in the user's final Phase 6 acceptance run. Earlier synthetic browser/GPUI evidence must not be described as proof of native input or final UI acceptance.
 
 | ID | Capability | Lathe behavior and acceptance evidence |
 | --- | --- | --- |
@@ -78,7 +80,7 @@ Repository search did not find an existing desktop embedded-webview abstraction 
 
 Use **Vditor in an embedded browser surface inside a GPUI workspace item**, backed by Lathe's existing document model. This recommendation follows from the requested combination of editing modes, real CSS, and JavaScript renderers. A native rewrite would require a new rich-text editing engine and equivalents for those browser capabilities.
 
-This is a proposed design, conditional on Phase 1 proving that embedding works across supported desktop platforms. Do not silently reduce parity to native preview plus formatting buttons if embedding fails. Record the blocking platform issue and revise the architecture explicitly.
+Phase 1 selects pinned CPU offscreen CEF for Phase 2 integration, with automated viability evidence on Windows, X11, and Wayland. The static-only prototype disables the sandbox and cannot load user documents. Before enabling user documents, implement and verify sandboxing or explicit production confinement together with the document/resource/bridge boundaries in Section 7. Do not silently reduce parity to native preview plus formatting buttons if integration fails; record the issue and revise the architecture explicitly.
 
 ```mermaid
 flowchart LR
@@ -99,11 +101,9 @@ flowchart LR
 
 ### Browser-host feasibility
 
-Evaluate [Wry's documented integration options](https://github.com/tauri-apps/wry) first. Wry documents child webviews on Windows/macOS/Linux X11, while its Wayland path uses GTK integration. Lathe's Linux GPUI backend uses its own X11/Wayland infrastructure, so this is a material integration uncertainty.
+The [Wry investigation](markdown-browser-probe/README.md) rejected native child hosting because its Wayland raw-handle path cannot attach to GPUI. The [CEF offscreen proof](markdown-browser-probe/OFFSCREEN.md) supplies owned CPU pixels through GPUI scene/image APIs without a native browser child. Pin bindings/runtime versions and retain contributor runtime preflight, provenance, dependency costs, and subprocess lifecycle evidence.
 
-Phase 1 must demonstrate pane clipping, native popup/menu overlays, bounds updates, split panes, tab hiding, focus transfer, IME, DPI, window moves, resource serving, and teardown. A native child webview may sit above GPUI-drawn menus; a plain rectangular child surface is not sufficient evidence of correct composition.
-
-Validate Windows WebView2 availability/install behavior, macOS WKWebView integration, and Linux runtime/distribution requirements for the selected host. Check both X11 and Wayland. If Wry cannot fit GPUI composition or Wayland, compare platform-native adapters or an offscreen browser approach and document dependency, memory, distribution, and maintenance costs before selecting one. Do not assume those alternatives are drop-in replacements.
+Phase 1 requires real GPUI Windows, X11, and Wayland runs with finite validated browser frames, packaged resources, typed IPC, synthetic adapter/input correctness, resize, visibility/focus state, independent sessions, restrictions, and clean teardown. Frame-buffer validation and bounds/scale conversion remain correctness gates. Existing Windows pixel evidence is retained as historical evidence; pixel readback is not an acceptance deliverable. Full native/manual pane clipping, popup/menu overlays, keyboard/IME/selection, DPI, window moves, clipboard/shortcuts, and workspace interactions are deferred to the user's Phase 6 run. Runtime installation and application packaging are Phase 5 deliverables.
 
 ## 6. Document synchronization and history
 
@@ -154,13 +154,15 @@ Load only packaged application scripts under a restrictive content security poli
 
 Allow bridge mutations only from the current application surface/session and only when the buffer is writable. Deny arbitrary navigation, new-window creation, downloads, filesystem writes, and permission requests; dispatch permitted links through Lathe's link-opening behavior. Custom CSS comes from user settings, remains scoped to the embedded editor, and cannot enable script execution or unrestricted resource fetching.
 
+The Phase 1 no-sandbox executable remains confined to its packaged static fixture pages. Production sandboxing/confinement must be resolved and verified before a browser surface accepts user documents; the static probe's success is not proof of production document isolation.
+
 ## 8. User interaction and settings
 
 Proposed action namespace: `markdown_editor`. Provide Open, OpenToTheSide, OpenSource, ShowPreview, SetMode, CopyMarkdown, CopyHtml, InsertImage, ToggleOutline, and ResetPreferences actions; use data-bearing actions for mode/editor-choice values.
 
 Open commands target the focused document. Project-panel and tab-menu actions target the clicked path/item, even if another editor is active. Return focus from the embedded surface to the command palette, pane navigation, and other native controls using normal workspace actions.
 
-Match the reference opening shortcut: `ctrl-shift-alt-m` on Windows/Linux and `cmd-shift-alt-m` on macOS, scoped to Markdown. Preserve the existing native-preview shortcuts. Formatting, Save, Undo/Redo, Find, Escape, and pane-navigation keys must have one clearly defined owner across GPUI and browser dispatch. Check collisions before assigning defaults.
+Match the reference opening shortcut: `ctrl-shift-alt-m` on Windows/Linux, scoped to Markdown. Preserve the existing native-preview shortcuts. Formatting, Save, Undo/Redo, Find, Escape, and pane-navigation keys must have one clearly defined owner across GPUI and browser dispatch. Check collisions before assigning defaults; validate full native shortcut behavior in Phase 6.
 
 Proposed `markdown_editor` settings:
 
@@ -190,7 +192,7 @@ Add settings schema/defaults and settings UI integration, serialize item identit
 - [x] Record source round-trip behavior for references, front matter, raw HTML, math, unknown fences, Unicode, CRLF, and missing final newlines.
 - [x] Identify project APIs for remote asset writes and resource reads, save delegation, preference storage, and open routing.
 
-Evidence: [frozen baseline, fixtures, reproduction, preservation risks, and API findings](markdown-editor-baseline/README.md). Published 0.1.21 and the pinned source match, including Find/table-wrap; real-browser results cover all three modes and the finite renderer inventory. This milestone freezes requirements; every Lathe parity row and the native hosting gate remain pending.
+Evidence: [frozen baseline, fixtures, reproduction, preservation risks, and API findings](markdown-editor-baseline/README.md). Published 0.1.21 and the pinned source match, including Find/table-wrap; real-browser results cover all three modes and the finite renderer inventory. This milestone freezes requirements; Lathe parity rows remain pending and Phase 1's scoped automated hosting gate is now complete.
 
 Exit: observable requirements are frozen, renderer scope is finite, and source-preservation risks are documented. Later phases must not infer parity from current Vditor documentation alone.
 
@@ -198,18 +200,21 @@ Exit: observable requirements are frozen, renderer scope is finite, and source-p
 
 Depends on Phase 0.
 
-- [ ] Build a minimal GPUI browser surface with packaged static content and a typed message round trip.
-- [ ] Exercise Windows, macOS, Linux X11, and Linux Wayland integration; verify composition, focus, input, multiple panes/windows, and lifecycle behavior listed in Section 5.
-- [ ] Verify resource interception, navigation restrictions, runtime installation requirements, and build/package integration.
-- [ ] Select the host implementation and record platform constraints. Produce a tested design decision before building the full editor.
+- [x] Build a minimal GPUI browser surface with packaged static content and a typed message round trip; preserve the rejected Wry comparison.
+- [x] Execute real GPUI/CEF smokes on Windows, Linux X11, and Linux Wayland; verify validated frames, bounds/scale, two panes, synthetic input/state, lifecycle, and clean teardown.
+- [x] Verify static resource interception, navigation restrictions, bounded/session-validated messages, actionable runtime preflight, locked contributor setup, and runtime provenance/costs.
+- [x] Select pinned CPU offscreen CEF for Phase 2 integration and record the static-only/no-sandbox limitation. Defer native/manual UI acceptance to Phase 6 and application installation/packaging to Phase 5.
 
-Exit: supported platforms have a viable in-pane surface with native overlays and input integration. Missing Wayland/composition support is an architecture blocker, not a completed parity milestone.
+Evidence: [Wry comparison and raw-child Wayland mismatch](markdown-browser-probe/README.md), the completed [offscreen-host mini-plan](markdown-browser-offscreen-host.md), and [real CEF Windows/X11/Wayland executions](markdown-browser-probe/OFFSCREEN.md). All three traces pass the 25-stage verifier, including nine ordered DOM capture acknowledgments and three originating-pane releases. Windows historical renderer readback demonstrates overlays/clipping; Linux pixel readback is unavailable and is excluded from deliverables. Synthetic GPUI input and actual browser DOM results establish adapter correctness, not full native input/IME/selection or workspace behavior. The existing 18 Rust tests pass on Windows/Linux. No user document is accepted by this no-sandbox prototype.
+
+Exit: scoped automated hosting viability and contributor-runtime gates are supported on all delivery backends, and the pinned CEF integration choice is recorded. Phase 2 may proceed. Production document confinement remains a gate before enabling user documents; final native/manual UI acceptance is a Phase 6 obligation.
 
 ### Phase 2: Shared document item and synchronization
 
 Depends on Phase 1.
 
 - [ ] Add the feature crate, Lathe initialization, `Item`/`SerializableItem` integration, controller, and fake browser surface.
+- [ ] Integrate the selected pinned CPU offscreen CEF host; implement and verify production sandboxing/confinement before enabling user documents.
 - [ ] Open the visual item against the same buffer as a native source editor. Implement edit acknowledgments, stale-revision handling, Unicode offsets, subscriptions, and cancellation.
 - [ ] Implement save/close flush barriers, dirty state, Save As, rename, external reload, read-only behavior, and native undo/redo routing.
 - [ ] Prove pending visual edits survive concurrent source/collaboration edits and browser failure. Implement source preservation before accepting rich editing.
@@ -222,10 +227,10 @@ Depends on Phase 2.
 
 - [ ] Integrate pinned Vditor instant rendering, WYSIWYG, split mode, and preview-only presentation.
 - [ ] Implement P07 toolbar controls and P08 copying, plus outline, links, find, table wrapping, preference reset, and mode persistence.
-- [ ] Test source-preserving mode transitions, table operations, nested lists, task toggles, selection, IME, and browser/native shortcut arbitration.
-- [ ] Provide editable-source handling for unsupported syntax and accessible names/focus order for controls.
+- [ ] Implement source-preserving mode transitions, table operations, nested lists, task toggles, selection, IME, and browser/native shortcut arbitration with automated correctness coverage. Defer full native/manual acceptance to Phase 6.
+- [ ] Provide editable-source handling for unsupported syntax and control focus behavior.
 
-Exit: P01-P08, P14-P15, P18, and P20-P22 are demonstrated; ordinary editing does not rewrite unrelated source.
+Exit: P01-P08, P14-P15, P18, and P20-P22 are implemented with automated evidence; ordinary editing does not rewrite unrelated source. Full native/manual acceptance remains for Phase 6.
 
 ### Phase 4: Images, math, diagrams, and themes
 
@@ -236,7 +241,7 @@ Depends on Phase 3.
 - [ ] Connect Lathe theme updates and custom CSS without document reinitialization or history loss.
 - [ ] Run offline and remote-project fixtures, malformed-renderer cases, resource confinement, and document-HTML isolation checks.
 
-Exit: P09-P12, P16-P17, and P19 pass; every renderer has a recorded result and any service dependency is explicit.
+Exit: P09-P12, P16-P17, and P19 have automated correctness evidence; every renderer has a recorded result and any service dependency is explicit. Full native/manual UI acceptance remains for Phase 6.
 
 ### Phase 5: Opening workflows, persistence, and packaging
 
@@ -244,16 +249,17 @@ Depends on Phases 2-4.
 
 - [ ] Add palette actions, platform keymaps, project-panel/tab menus, editor selection, and configurable defaults with legacy-preview precedence.
 - [ ] Register settings and restore buffer identity, item path, mode, themes, outline, and reading position across reopen/restart.
-- [ ] Integrate locked frontend builds and assets into Windows/macOS/Linux build and packaging scripts; test packaged installations without Node and without network access for local features.
+- [ ] Integrate locked frontend builds, CEF runtime/helper processes/notices, and assets into Windows/Linux build and packaging scripts; verify missing-runtime/install behavior and packaged installations without Node and without network access for local features.
 - [ ] Add user documentation covering modes, image destinations, settings, defaults, shortcuts, and renderer service requirements.
 
-Exit: P13 and remaining lifecycle/settings requirements pass in installed builds; native preview and unrelated file opening behave correctly.
+Exit: P13 and remaining lifecycle/settings requirements are implemented, installed-build/package checks pass, and automated routing regressions cover native preview and unrelated file opening. Full native/manual UI acceptance remains for Phase 6.
 
 ### Phase 6: Release validation
 
 Depends on all previous phases.
 
 - [ ] Complete the parity matrix with baseline comparisons and evidence on each supported platform.
+- [ ] Have the user run the full native/manual UI acceptance suite on Windows/Linux after all implementation phases: hardware keyboard/pointer, IME composition/candidate placement, selection, focus, clipboard/shortcuts, native overlays/clipping, DPI, tab/pane/window interactions, moves, and multiple workspace windows. Resolve UI bugs from that run before final completion; do not claim these cases proven by synthetic smokes.
 - [ ] Run focused Rust/controller/frontend tests, required formatting/lint checks, and native-editor/preview/workspace regression checks.
 - [ ] Measure startup, typing response, renderer settling, and memory with representative large documents and multiple visual tabs; resolve responsiveness failures before declaring completion.
 - [ ] Review packaged dependencies/licenses and include notices for Vditor and redistributed renderers.
@@ -269,11 +275,12 @@ Exit: all required parity rows pass, architecture gates are closed, and no unres
 | Lifecycle | Untitled Save As/cancel, file rename/move/delete, read-only buffer, remote disconnection, browser crash/recreation, workspace restart, and tab/window switching during async work. |
 | Assets | Clipboard image and file paths, picker, multi-image drop, naming collisions, spaces/UNC/Unicode, worktree-root expansion, permissions, partial failures, and anchor movement during upload. |
 | Rendering | Baseline syntax corpus plus one valid and one invalid fixture for every enabled renderer; delayed images/diagrams must not jump the caret or fight user scroll. |
-| Input and browser boundaries | IME, selection, keyboard-only operation, accessibility labels, focus transfer, hostile HTML/SVG/URLs/messages, CSS resource requests, oversized assets, and forged writes to read-only documents. |
+| Browser boundaries (automated throughout implementation) | Hostile HTML/SVG/URLs/messages, CSS resource requests, oversized assets, forged writes to read-only documents, and production sandboxing/confinement before enabling user documents. |
+| Native/manual UI (user's final Phase 6 run) | Hardware input, IME, selection, keyboard-only operation, focus transfer, clipboard/shortcut arbitration, overlays/clipping, DPI, tab/pane/window interactions, and multiple workspace windows. Accessibility checks and pixel-readback acceptance are excluded. |
 | Integration | Context-menu target correctness, default-mode precedence, existing preview commands/search/checkbox edits, restoration, and non-Markdown opening. |
-| Platforms and distribution | Windows/macOS/Linux X11/Wayland, multiple DPI scales, native menus over the browser, packaged assets, missing browser runtime, and contributor build reproducibility. |
+| Platforms and distribution | Windows/Linux X11/Wayland automated viability and contributor runtime/build reproducibility in Phase 1; packaged assets and missing-runtime/install behavior in Phase 5; full native/manual DPI/menu/window acceptance in Phase 6. |
 
-Put GPUI controller/item tests next to the affected component and use its test executor, including `cx.background_executor().timer(...)` for scheduled delays. Use real frontend/browser tests for Vditor serialization, composition, DOM selection, rendering, and history integration; fake surfaces cannot prove those behaviors. Native embedding requires platform smoke tests beyond browser-only tests.
+Put GPUI controller/item tests next to the affected component and use its test executor, including `cx.background_executor().timer(...)` for scheduled delays. Use real frontend/browser tests for Vditor serialization, composition, DOM selection, rendering, and history integration; fake surfaces cannot prove those behaviors. Native hosting uses real automated platform smokes in Phase 1, while the user runs the full native/manual UI suite at the end of all phases. Browser tests and synthetic GPUI dispatch do not establish hardware input or OS IME behavior. Frame validation and document fidelity remain automated correctness requirements; visual pixel validation is excluded.
 
 Suggested commands after the implementation creates the new crate/frontend, adjusted to the final feature flags and selected package manager:
 
@@ -293,7 +300,8 @@ Use the repository's `script/clippy` wrapper, including its Windows wrapper wher
 
 | Risk | Required resolution |
 | --- | --- |
-| Browser integration, especially Wayland and native overlay composition | Phase 1 evidence before committing to full editor implementation; revise hosting design if the gate fails. |
+| Browser integration, especially Wayland and native overlay composition | Phase 1 automated viability is recorded for Windows/X11/Wayland; implement native interaction behavior during integration and resolve UI bugs from the user's final Phase 6 run. |
+| Static no-sandbox prototype mistaken for document isolation | Resolve and verify production sandboxing/confinement before enabling user documents; retain resource/HTML/bridge security tests throughout implementation. |
 | Vditor serialization changes unrelated Markdown | Corpus tests and source mapping/preservation; unsupported blocks remain source-editable. |
 | Competing browser/native undo histories | Host-owned history with tested browser adapter; no double undo or history reset on resync. |
 | Concurrent edits or delayed input overwrite newer content | Revisioned protocol, draft retention, conflict handling, and save/close barriers. |
@@ -303,4 +311,4 @@ Use the repository's `script/clippy` wrapper, including its Windows wrapper wher
 | New browser/toolchain distribution costs | Locked builds, installed-package tests, runtime checks, and dependency/license notices. |
 | Upstream merges drop Lathe integration | Initialize through the existing umbrella; keep upstream seams small and add existing-style compile guards where a new single-call integration would otherwise disappear silently. |
 
-Implementation is complete only when the required matrix passes on supported platforms, the shared document and history remain correct, local editing/rendering works from packaged assets, and all renderer requirements are accounted for. Any unresolved feature gap must remain marked incomplete; the phased milestones do not redefine the requested parity.
+Implementation is complete only when the required matrix passes on Windows/Linux X11/Wayland, the user's final native/manual UI run and resulting UI fixes are complete, the shared document and history remain correct, local editing/rendering works from packaged assets, production document confinement is verified, and all renderer requirements are accounted for. macOS, accessibility, and visual pixel-readback checks are excluded from deliverables. Any unresolved feature gap must remain marked incomplete; the phased milestones do not redefine the requested parity.
