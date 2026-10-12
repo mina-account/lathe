@@ -1274,7 +1274,9 @@ impl Pane {
         let existing_item_index = self.items.iter().position(|existing_item| {
             if existing_item.item_id() == item.item_id() {
                 true
-            } else if existing_item.buffer_kind(cx) == ItemBufferKind::Singleton {
+            } else if existing_item.buffer_kind(cx) == ItemBufferKind::Singleton
+                && existing_item.to_any_view().entity_type() == item.to_any_view().entity_type()
+            {
                 existing_item
                     .project_entry_ids(cx)
                     .first()
@@ -2015,6 +2017,10 @@ impl Pane {
         };
         cx.spawn_in(window, async move |pane, cx| {
             for item in &items_to_close {
+                cx.update(|window, cx| {
+                    Self::prepare_related_items_to_save(item.as_ref(), window, cx)
+                })?
+                .await?;
                 let Some(confirmation) = cx.update(|_, cx| item.close_confirmation(cx))? else {
                     continue;
                 };
@@ -2293,6 +2299,85 @@ impl Pane {
         cx.notify();
     }
 
+    pub(crate) fn prepare_related_items_to_save(
+        item: &dyn ItemHandle,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<Result<()>> {
+        let item = item.boxed_clone();
+        window.spawn(cx, async move |cx| {
+            let tasks = cx.update(|window, cx| {
+                let current_window = window.window_handle();
+                let mut related = vec![(current_window, item.boxed_clone())];
+                let model_ids = item.project_item_model_ids(cx);
+                if !model_ids.is_empty() {
+                    let current_workspaces = window
+                        .root::<crate::MultiWorkspace>()
+                        .flatten()
+                        .map(|multi| multi.read(cx).workspaces().cloned().collect::<Vec<_>>())
+                        .or_else(|| {
+                            window
+                                .root::<Workspace>()
+                                .flatten()
+                                .map(|workspace| vec![workspace])
+                        })
+                        .unwrap_or_default();
+                    let mut workspaces = current_workspaces
+                        .into_iter()
+                        .map(|workspace| (current_window, workspace))
+                        .collect::<Vec<_>>();
+                    for other_window in cx.windows() {
+                        if other_window.window_id() == current_window.window_id() {
+                            continue;
+                        }
+                        if let Some(multi_window) = other_window.downcast::<crate::MultiWorkspace>()
+                        {
+                            let multi = multi_window.read(cx)?;
+                            workspaces.extend(
+                                multi
+                                    .workspaces()
+                                    .cloned()
+                                    .map(|workspace| (other_window, workspace)),
+                            );
+                        } else if other_window.downcast::<Workspace>().is_some() {
+                            let workspace = other_window
+                                .read::<Workspace, _, _>(cx, |workspace, _| workspace)?;
+                            workspaces.push((other_window, workspace));
+                        }
+                    }
+                    for (item_window, workspace) in workspaces {
+                        for candidate in workspace.read(cx).items(cx) {
+                            if !related
+                                .iter()
+                                .any(|(_, item)| item.item_id() == candidate.item_id())
+                                && candidate
+                                    .project_item_model_ids(cx)
+                                    .iter()
+                                    .any(|id| model_ids.contains(id))
+                            {
+                                related.push((item_window, candidate.boxed_clone()));
+                            }
+                        }
+                    }
+                }
+                related
+                    .iter()
+                    .map(|(item_window, item)| {
+                        if item_window.window_id() == current_window.window_id() {
+                            Ok(item.prepare_to_save(window, cx))
+                        } else {
+                            item_window.update(cx, |_, window, cx| item.prepare_to_save(window, cx))
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })??;
+            for task in tasks {
+                task.await?;
+            }
+            Ok(())
+        })
+    }
+
     pub async fn save_item(
         project: Entity<Project>,
         pane: Entity<Pane>,
@@ -2303,6 +2388,9 @@ impl Pane {
         const CONFLICT_MESSAGE: &str = "This file has changed on disk since you started editing it. Do you want to overwrite it?";
 
         const DELETED_MESSAGE: &str = "This file has been deleted on disk since you started editing it. Do you want to recreate it?";
+
+        cx.update(|window, cx| Self::prepare_related_items_to_save(item, window, cx))?
+            .await?;
 
         let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
         if save_intent == SaveIntent::Skip {
@@ -2596,20 +2684,31 @@ impl Pane {
             item.workspace_settings(cx).autosave,
             AutosaveSetting::AfterDelay { .. }
         );
-        if item.can_autosave(cx) {
-            item.save(
-                SaveOptions {
-                    format,
-                    force_format: false,
-                    autosave: true,
-                },
-                project,
-                window,
-                cx,
-            )
-        } else {
-            Task::ready(Ok(()))
+        if !item.can_autosave(cx) {
+            return Task::ready(Ok(()));
         }
+        let barrier = Self::prepare_related_items_to_save(item, window, cx);
+        let item = item.boxed_clone();
+        window.spawn(cx, async move |cx| {
+            barrier.await?;
+            let save = cx.update(|window, cx| {
+                if item.can_autosave(cx) {
+                    item.save(
+                        SaveOptions {
+                            format,
+                            force_format: false,
+                            autosave: true,
+                        },
+                        project,
+                        window,
+                        cx,
+                    )
+                } else {
+                    Task::ready(Ok(()))
+                }
+            })?;
+            save.await
+        })
     }
 
     pub fn focus_active_item(&mut self, window: &mut Window, cx: &mut Context<Self>) {

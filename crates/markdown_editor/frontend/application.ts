@@ -1,0 +1,297 @@
+type Change = { start: number; end: number; text: string };
+type Pending = { request: number; sequence: number; before: string; after: string };
+export function delta(before: string, after: string): Change | null {
+    if (before === after) return null;
+    const left = Array.from(before), right = Array.from(after);
+    let prefix = 0, suffix = 0;
+    while (prefix < left.length && prefix < right.length && left[prefix] === right[prefix]) prefix++;
+    while (suffix < left.length - prefix && suffix < right.length - prefix && left[left.length - suffix - 1] === right[right.length - suffix - 1]) suffix++;
+    return { start: left.slice(0, prefix).join("").length, end: before.length - left.slice(left.length - suffix).join("").length, text: right.slice(prefix, right.length - suffix).join("") };
+}
+export function apply(text: string, change: Change): string { return text.slice(0, change.start) + change.text + text.slice(change.end); }
+function unchangedAnchor(before: string, after: string): { before: number; after: number; text: string } | null {
+    const find = (parts: (text: string) => Iterable<string>) => {
+        const candidates = new Map<string, { before: number; after: number; leftCount: number; rightCount: number }>();
+        let offset = 0;
+        for (const text of parts(before)) {
+            const existing = candidates.get(text);
+            if (existing) existing.leftCount++;
+            else if (candidates.size < 65536) candidates.set(text, { before: offset, after: 0, leftCount: 1, rightCount: 0 });
+            offset += text.length;
+        }
+        offset = 0;
+        for (const text of parts(after)) {
+            const candidate = candidates.get(text);
+            if (candidate) { candidate.rightCount++; candidate.after = offset; }
+            offset += text.length;
+        }
+        const matches = [];
+        for (const [text, candidate] of candidates) if (candidate.leftCount === 1 && candidate.rightCount === 1) matches.push({ before: candidate.before, after: candidate.after, text });
+        return matches[Math.floor(matches.length / 2)] ?? null;
+    };
+    const anchor = find(text => text.match(/[^\n]*\n|[^\n]+$/g) ?? []) ?? find(text => text);
+    if (!anchor) return null;
+    let leftStart = anchor.before, rightStart = anchor.after, leftEnd = leftStart + anchor.text.length, rightEnd = rightStart + anchor.text.length;
+    const previous = (text: string, offset: number) => offset - (offset >= 2 && text.charCodeAt(offset - 1) >= 0xdc00 && text.charCodeAt(offset - 1) <= 0xdfff && text.charCodeAt(offset - 2) >= 0xd800 && text.charCodeAt(offset - 2) <= 0xdbff ? 2 : 1);
+    while (leftStart > 0 && rightStart > 0) {
+        const left = previous(before, leftStart), right = previous(after, rightStart);
+        if (before.slice(left, leftStart) !== after.slice(right, rightStart)) break;
+        leftStart = left; rightStart = right;
+    }
+    while (leftEnd < before.length && rightEnd < after.length && before.codePointAt(leftEnd) === after.codePointAt(rightEnd)) {
+        const length = before.codePointAt(leftEnd)! > 0xffff ? 2 : 1;
+        leftEnd += length; rightEnd += length;
+    }
+    return { before: leftStart, after: rightStart, text: before.slice(leftStart, leftEnd) };
+}
+export function separateChanges(before: string, after: string): Change[] {
+    return reconcileChanges(before, after, { remaining: 64 * 1024 * 1024 }, 0);
+}
+function reconcileChanges(before: string, after: string, budget: { remaining: number }, depth: number): Change[] {
+    const enclosing = delta(before, after);
+    if (!enclosing) return [];
+    if (enclosing.start === enclosing.end || enclosing.text.length === 0) return [enclosing];
+    const left = Array.from(before.slice(enclosing.start, enclosing.end)), right = Array.from(enclosing.text);
+    type Path = { left: number; right: number; changes: { start: number; end: number; insertedStart: number; insertedEnd: number }[] };
+    let frontier = new Map<number, Path>();
+    let remaining = Math.min(budget.remaining, 32 * 1024 * 1024);
+    // Small character diffs keep fine-grained spans; larger replacements split at unchanged anchors.
+    search:
+    for (let distance = 0; distance <= 128; distance++) {
+        const next = new Map<number, Path>();
+        for (let diagonal = -distance; diagonal <= distance; diagonal += 2) {
+            const deletion = frontier.get(diagonal - 1), insertion = frontier.get(diagonal + 1);
+            const canDelete = deletion && deletion.left < left.length, canInsert = insertion && insertion.right < right.length;
+            let path: Path;
+            if (distance === 0) path = { left: 0, right: 0, changes: [] };
+            else {
+                const remove = canDelete && (!canInsert || deletion.left >= insertion.left);
+                const previous = remove ? deletion : canInsert ? insertion : null;
+                if (!previous) continue;
+                path = { left: previous.left, right: previous.right, changes: previous.changes.map(change => ({ ...change })) };
+                const change = { start: path.left, end: path.left + (remove ? 1 : 0), insertedStart: path.right, insertedEnd: path.right + (remove ? 0 : 1) };
+                const last = path.changes.at(-1);
+                if (last && last.end === change.start && last.insertedEnd === change.insertedStart) { last.end = change.end; last.insertedEnd = change.insertedEnd; }
+                else path.changes.push(change);
+                path.left = change.end; path.right = change.insertedEnd;
+            }
+            while (path.left < left.length && path.right < right.length) {
+                if (--remaining < 0) break search;
+                budget.remaining--;
+                if (left[path.left] !== right[path.right]) break;
+                path.left++; path.right++;
+            }
+            if (path.left === left.length && path.right === right.length) {
+                let leftIndex = 0, rightIndex = 0, leftOffset = enclosing.start, rightOffset = 0;
+                return path.changes.map(change => {
+                    while (leftIndex < change.start) leftOffset += left[leftIndex++].length;
+                    const start = leftOffset;
+                    while (leftIndex < change.end) leftOffset += left[leftIndex++].length;
+                    while (rightIndex < change.insertedStart) rightOffset += right[rightIndex++].length;
+                    const insertedStart = rightOffset;
+                    while (rightIndex < change.insertedEnd) rightOffset += right[rightIndex++].length;
+                    return { start, end: leftOffset, text: enclosing.text.slice(insertedStart, rightOffset) };
+                });
+            }
+            next.set(diagonal, path);
+        }
+        frontier = next;
+    }
+    const old = before.slice(enclosing.start, enclosing.end), replacement = enclosing.text;
+    budget.remaining -= 3 * (old.length + replacement.length);
+    if (budget.remaining < 0) throw new Error("Concurrent change reconciliation exceeds its work limit. The visual draft is retained; use Recover Draft.");
+    if (depth >= 64) return [enclosing];
+    const anchor = unchangedAnchor(old, replacement);
+    if (!anchor) return [enclosing];
+    const earlier = reconcileChanges(old.slice(0, anchor.before), replacement.slice(0, anchor.after), budget, depth + 1);
+    const later = reconcileChanges(old.slice(anchor.before + anchor.text.length), replacement.slice(anchor.after + anchor.text.length), budget, depth + 1);
+    return [...earlier.map(change => ({ ...change, start: change.start + enclosing.start, end: change.end + enclosing.start })),
+        ...later.map(change => ({ ...change, start: change.start + enclosing.start + anchor.before + anchor.text.length, end: change.end + enclosing.start + anchor.before + anchor.text.length }))];
+}
+export function rebase(base: string, current: string, draft: string): string {
+    const local = delta(base, draft), external = delta(base, current);
+    if (!local) return current;
+    if (!external) return draft;
+    if (external.end < local.start || external.end === local.start && external.start !== local.start) {
+        const distance = external.text.length - (external.end - external.start);
+        return apply(current, { ...local, start: local.start + distance, end: local.end + distance });
+    }
+    if (local.end < external.start || local.end === external.start && local.start !== external.start) return apply(current, local);
+    const externalChanges = separateChanges(base, current);
+    const localChanges = separateChanges(base, draft).map(local => {
+        let distance = 0;
+        for (const change of externalChanges) {
+            if (change.end < local.start || change.end === local.start && change.start !== local.start) distance += change.text.length - (change.end - change.start);
+            else if (!(local.end < change.start || local.end === change.start && local.start !== change.start)) throw new Error("Concurrent edits overlap. The visual draft is retained; use Recover Draft.");
+        }
+        return { ...local, start: local.start + distance, end: local.end + distance };
+    });
+    for (const change of localChanges.reverse()) current = apply(current, change);
+    return current;
+}
+export function display(text: string): string { return text.replace(/\r\n|\r/g, "\n"); }
+export function transformOffset(offset: number, change: Change | null): number {
+    if (!change || offset < change.start) return offset;
+    if (offset >= change.end) return offset + change.text.length - (change.end - change.start);
+    return change.start + change.text.length;
+}
+const maximumDocumentBytes = 8 * 1024 * 1024;
+export function withinBudget(text: string): boolean {
+    const encoder = new TextEncoder();
+    return encoder.encode(text).length <= maximumDocumentBytes && encoder.encode(JSON.stringify(text)).length <= maximumDocumentBytes;
+}
+export function fromDisplay(original: string, changed: string): string {
+    const change = delta(display(original), changed);
+    if (!change) return original;
+    const rawOffset = (offset: number): number => {
+        let raw = 0, shown = 0;
+        while (shown < offset && raw < original.length) {
+            if (original[raw] === "\r" && original[raw + 1] === "\n") raw++;
+            raw++; shown++;
+        }
+        return raw;
+    };
+    return apply(original, { start: rawOffset(change.start), end: rawOffset(change.end), text: change.text.replace(/\n/g, original.includes("\r\n") ? "\r\n" : "\n") });
+}
+
+export class DocumentBridge {
+    session: string; document: string; revision = 0; sequence = 0; request = 0; acknowledgedSequence = 0;
+    base = ""; draft = ""; pending: Pending | null = null; composing = false; blocked = false; writable = true;
+    flushes: number[] = []; afterFlush: (() => void)[] = [];
+    deferredDocument: any = null; deferredAccepted: any = null; reconciling = false; initialized = false;
+    send: (message: Record<string, unknown>) => void;
+    show: (text: string) => void;
+    status: (text: string) => void;
+    constructor(session: string, document: string, send: (message: Record<string, unknown>) => void, show: (text: string) => void, status: (text: string) => void) {
+        this.session = session; this.document = document; this.send = send; this.show = show; this.status = status;
+    }
+    emit(message: Record<string, unknown>) { this.send({ ...message, session: this.session, document: this.document }); }
+    input(text: string) {
+        if (text === this.draft) { this.finishFlush(); return; }
+        this.draft = text; this.sequence++;
+        this.emit({ kind: "draft", sequence: this.sequence, base_revision: this.revision, text });
+        if (!withinBudget(text)) {
+            this.blocked = true; this.status("Input exceeds the visual document limit and is retained for Recover Draft."); this.show(this.draft); return;
+        }
+        this.submit();
+    }
+    submit() {
+        if (this.pending || this.composing || this.reconciling || this.blocked) return;
+        const difference = delta(this.base, this.draft);
+        if (!this.writable && difference) return;
+        const change = difference ?? { start: 0, end: 0, text: "" };
+        if (this.sequence === this.acknowledgedSequence) { this.finishFlush(); return; }
+        this.pending = { request: ++this.request, sequence: this.sequence, before: this.base, after: this.draft };
+        this.emit({ kind: "edit", request: this.request, sequence: this.sequence, base_revision: this.revision, change });
+    }
+    receive(message: any) {
+        if (this.composing && (message.kind === "accepted" || message.kind === "document") || this.pending && message.kind === "document") {
+            if (message.kind === "document") {
+                if (!this.deferredDocument || message.revision >= this.deferredDocument.revision) this.deferredDocument = message;
+            } else if (this.pending && message.request === this.pending.request && message.sequence === this.pending.sequence) {
+                this.deferredAccepted = message;
+            }
+            return;
+        }
+        if (message.kind === "flush") { this.flushes.push(message.request); this.submit(); this.finishFlush(); return; }
+        if (message.kind === "conflict") {
+            this.pending = null; this.blocked = true;
+            this.status(message.reason + " — visual draft retained; use Recover Draft."); return;
+        }
+        if (message.kind === "accepted") {
+            if (!this.pending || this.pending.request !== message.request || this.pending.sequence !== message.sequence) return;
+            const pending = this.pending;
+            this.pending = null;
+            try { this.draft = rebase(pending.after, message.text, this.draft); }
+            catch (error) { this.blocked = true; this.status(String(error)); return; }
+            this.base = message.text; this.revision = message.revision;
+            this.acknowledgedSequence = pending.sequence;
+            if (this.draft !== this.base || this.sequence > this.acknowledgedSequence) { this.sequence++; this.emit({ kind: "draft", sequence: this.sequence, base_revision: this.revision, text: this.draft }); }
+            if (!this.composing) this.show(this.draft);
+            this.reconcile(); this.submit(); this.finishFlush(); return;
+        }
+        if (message.kind === "document") {
+            if (message.revision < this.revision) return;
+            this.writable = message.writable;
+            if (this.blocked) return;
+            const recovered = !this.initialized && message.draft !== null && message.draft !== undefined;
+            try { this.draft = recovered ? message.draft : rebase(this.base, message.text, this.draft); }
+            catch (error) { this.blocked = true; this.status(String(error)); return; }
+            this.base = message.text; this.revision = message.revision; this.initialized = true;
+            if (recovered) { this.blocked = true; this.status("Recovered visual draft. Use Recover Draft to preserve or resolve it."); }
+            else if (this.draft !== this.base || this.sequence > this.acknowledgedSequence) { this.sequence++; this.emit({ kind: "draft", sequence: this.sequence, base_revision: this.revision, text: this.draft }); }
+            if (!withinBudget(this.base)) this.status("This document exceeds the visual editing limit. Open Source to edit it.");
+            this.show(this.draft);
+        }
+    }
+    finishFlush() {
+        if (this.pending || this.composing || this.reconciling || this.blocked || this.draft !== this.base || this.sequence !== this.acknowledgedSequence) return;
+        for (const request of this.flushes.splice(0)) this.emit({ kind: "flushed", request, sequence: this.sequence });
+        for (const callback of this.afterFlush.splice(0)) callback();
+    }
+    history(kind: "undo" | "redo") {
+        this.afterFlush.push(() => this.emit({ kind, request: ++this.request, base_revision: this.revision })); this.submit(); this.finishFlush();
+    }
+    reconcile() {
+        if (this.composing || this.reconciling) return;
+        this.reconciling = true;
+        const accepted = this.deferredAccepted, document = this.deferredDocument;
+        this.deferredAccepted = null; this.deferredDocument = null;
+        if (accepted) this.receive(accepted);
+        if (document && document.revision >= this.revision) this.receive(document);
+        this.reconciling = false;
+    }
+    compositionEnd() { this.composing = false; this.reconcile(); this.submit(); this.finishFlush(); }
+}
+
+if (typeof window !== "undefined") {
+    const element = document.getElementById("document") as HTMLTextAreaElement;
+    const status = document.getElementById("status") as HTMLElement;
+    const parameters = new URL(location.href).searchParams;
+    let projection = "";
+    const bridge = new DocumentBridge(parameters.get("session") ?? "", parameters.get("document") ?? "", message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), text => {
+        let start = element.selectionStart, end = element.selectionEnd;
+        const direction = element.selectionDirection, scroll = element.scrollTop;
+        let changes: Change[];
+        try { changes = separateChanges(element.value, display(text)); }
+        catch (error) {
+            console.warn("Selection reconciliation: " + String(error));
+            const enclosing = delta(element.value, display(text)); changes = enclosing ? [enclosing] : [];
+        }
+        for (const change of changes.reverse()) { start = transformOffset(start, change); end = transformOffset(end, change); }
+        projection = text; element.value = display(text); element.readOnly = !bridge.writable || bridge.blocked;
+        element.setSelectionRange(start, end, direction); element.scrollTop = scroll;
+    }, text => { status.textContent = text; });
+    (window as any).latheMarkdown = bridge;
+    element.addEventListener("input", () => { projection = fromDisplay(projection, element.value); bridge.input(projection); });
+    element.addEventListener("compositionstart", () => { bridge.composing = true; });
+    element.addEventListener("compositionend", () => bridge.compositionEnd());
+    element.addEventListener("select", () => bridge.emit({ kind: "selection", start: element.selectionStart, end: element.selectionEnd }));
+    const allowInsertion = (text: string): boolean => {
+        const candidate = element.value.slice(0, element.selectionStart) + text + element.value.slice(element.selectionEnd);
+        if (withinBudget(fromDisplay(projection, candidate))) return true;
+        status.textContent = "This edit exceeds the visual document limit. Use the source editor for larger documents."; return false;
+    };
+    element.addEventListener("paste", event => {
+        const text = event.clipboardData?.getData("text/plain");
+        if (text !== undefined && !allowInsertion(text)) event.preventDefault();
+    });
+    element.addEventListener("drop", event => {
+        const text = event.dataTransfer?.getData("text/plain");
+        if (text !== undefined && !allowInsertion(text)) event.preventDefault();
+    });
+    element.addEventListener("beforeinput", event => {
+        if (event.inputType === "historyUndo" || event.inputType === "historyRedo") { event.preventDefault(); bridge.history(event.inputType === "historyUndo" ? "undo" : "redo"); }
+        else {
+            const text = event.data ?? event.dataTransfer?.getData("text/plain") ?? (event.inputType === "insertLineBreak" || event.inputType === "insertParagraph" ? "\n" : null);
+            if (text !== null && !allowInsertion(text)) event.preventDefault();
+        }
+    });
+    element.addEventListener("keydown", event => {
+        if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
+            event.preventDefault(); bridge.history(event.shiftKey || event.key.toLowerCase() === "y" ? "redo" : "undo");
+        }
+    });
+    bridge.emit({ kind: "ready" });
+    status.textContent = "Markdown Editor";
+}

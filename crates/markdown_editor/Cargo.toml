@@ -1,0 +1,50 @@
+[package]
+name = "markdown_editor"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-or-later"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/markdown_editor.rs"
+doctest = false
+
+[features]
+default = ["application"]
+application = ["dep:editor", "dep:gpui", "dep:language", "dep:project", "dep:workspace", "dep:ui", "dep:util", "dep:futures", "dep:log"]
+browser = ["application", "dep:cef", "dep:image"]
+test-support = ["application", "gpui/test-support", "editor/test-support", "workspace/test-support", "dep:db", "db/test-support", "dep:fs", "fs/test-support", "dep:gpui_platform", "gpui_platform/test-support", "gpui_platform/wayland", "gpui_platform/x11", "dep:raw-window-handle", "dep:sysinfo", "dep:settings"]
+
+[dependencies]
+anyhow.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+editor = { workspace = true, optional = true }
+gpui = { workspace = true, optional = true }
+language = { workspace = true, optional = true }
+project = { workspace = true, optional = true }
+workspace = { workspace = true, optional = true }
+ui = { workspace = true, optional = true }
+util = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+db = { workspace = true, optional = true }
+gpui_platform = { workspace = true, optional = true }
+fs = { workspace = true, optional = true }
+raw-window-handle = { workspace = true, optional = true }
+sysinfo = { workspace = true, optional = true }
+settings = { workspace = true, optional = true }
+
+[[bin]]
+name = "markdown_editor_smoke"
+path = "src/smoke.rs"
+required-features = ["browser", "test-support"]
+
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
+cef = { version = "=154.5.0", default-features = false, optional = true }
+
+[dev-dependencies]
