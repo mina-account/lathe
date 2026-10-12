@@ -258,6 +258,9 @@ impl MarkdownEditor {
                     | BufferEvent::Saved
             ) {
                 this.synchronize(cx);
+                if matches!(event, BufferEvent::Edited { .. }) {
+                    cx.emit(ItemEvent::Edit);
+                }
                 cx.emit(ItemEvent::UpdateTab);
                 cx.notify();
             }
@@ -729,7 +732,7 @@ impl MarkdownEditor {
 mod tests {
     use super::*;
     use crate::protocol::Change;
-    use gpui::{TestAppContext, VisualTestContext};
+    use gpui::{TestAppContext, UpdateGlobal, VisualTestContext};
 
     fn fixture<'a>(
         cx: &'a mut TestAppContext,
@@ -1530,21 +1533,22 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn source_save_and_autosave_flush_related_visual_input_before_disk_write(
+    async fn fallback_typing_schedules_delayed_autosave_with_only_markdown_item(
         cx: &mut TestAppContext,
     ) {
-        source_save_flush_fixture(cx, false).await;
+        wrapper_autosave_fixture(cx, false).await;
     }
 
     #[gpui::test]
-    async fn floating_source_save_and_autosave_flush_related_visual_input_before_disk_write(
+    async fn visual_undo_redo_schedule_delayed_autosave_with_only_markdown_item(
         cx: &mut TestAppContext,
     ) {
-        source_save_flush_fixture(cx, true).await;
+        wrapper_autosave_fixture(cx, true).await;
     }
 
-    async fn source_save_flush_fixture(cx: &mut TestAppContext, floating: bool) {
+    async fn wrapper_autosave_fixture(cx: &mut TestAppContext, history: bool) {
         use fs::Fs;
+        use settings::SettingsStore;
         use util::path;
         cx.update(|cx| {
             cx.set_global(db::AppDatabase::test_new());
@@ -1555,6 +1559,202 @@ mod tests {
         let filesystem = project::FakeFs::new(cx.executor());
         filesystem
             .insert_tree(path!("/project"), serde_json::json!({ "file.md": "base" }))
+            .await;
+        let project = Project::test(filesystem.clone(), [path!("/project").as_ref()], cx).await;
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_local_buffer(path!("/project/file.md"), cx)
+            })
+            .await
+            .expect("buffer");
+        let (multi, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi.read_with(cx, |multi, _| multi.workspace().clone());
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        let (visual, source) = workspace.update_in(cx, |_, window, cx| {
+            let source =
+                cx.new(|cx| Editor::for_buffer(buffer.clone(), Some(project.clone()), window, cx));
+            let visual =
+                cx.new(|cx| MarkdownEditor::new(source.clone(), buffer.clone(), window, cx));
+            pane.update(cx, |pane, cx| {
+                pane.add_item(Box::new(visual.clone()), true, true, None, window, cx)
+            });
+            (visual, source)
+        });
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
+        if history {
+            source.update_in(cx, |source, window, cx| {
+                source.handle_input("native ", window, cx)
+            });
+            source
+                .update_in(cx, |source, window, cx| {
+                    source.save(
+                        SaveOptions {
+                            format: false,
+                            ..Default::default()
+                        },
+                        project.clone(),
+                        window,
+                        cx,
+                    )
+                })
+                .await
+                .expect("initial native save");
+            visual.update(cx, |item, cx| {
+                item.attach(Box::new(FakeBrowserSurface::default()), cx)
+                    .expect("surface");
+            });
+        }
+        cx.update(|_, cx| {
+            SettingsStore::update_global(cx, |settings, cx| {
+                settings.update_user_settings(cx, |settings| {
+                    settings.workspace.autosave = Some(workspace::AutosaveSetting::AfterDelay {
+                        milliseconds: 500.into(),
+                    });
+                })
+            });
+        });
+        cx.run_until_parked();
+        for redo in if history {
+            vec![false, true]
+        } else {
+            vec![false]
+        } {
+            let before = filesystem
+                .load(path!("/project/file.md").as_ref())
+                .await
+                .expect("disk before");
+            if history {
+                visual.update(cx, |item, cx| {
+                    let request = if redo { 2 } else { 1 };
+                    let session = item.protocol.session.clone();
+                    let document = item.protocol.document;
+                    let base_revision = item.protocol.revision;
+                    item.receive(
+                        if redo {
+                            ClientMessage::Redo {
+                                session,
+                                document,
+                                request,
+                                base_revision,
+                            }
+                        } else {
+                            ClientMessage::Undo {
+                                session,
+                                document,
+                                request,
+                                base_revision,
+                            }
+                        },
+                        cx,
+                    )
+                    .expect("native visual history");
+                });
+            } else {
+                assert!(visual.read_with(cx, |item, _| item.surface.is_none()));
+                cx.focus(&source);
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+                cx.simulate_input("native ");
+            }
+            cx.run_until_parked();
+            let expected = buffer.read_with(cx, |buffer, _| buffer.snapshot().text());
+            assert_ne!(expected, before);
+            assert!(buffer.read_with(cx, |buffer, _| buffer.is_dirty()));
+            cx.executor().advance_clock(Duration::from_millis(250));
+            cx.run_until_parked();
+            assert_eq!(
+                filesystem
+                    .load(path!("/project/file.md").as_ref())
+                    .await
+                    .expect("disk before delay"),
+                before
+            );
+            cx.executor().advance_clock(Duration::from_millis(250));
+            cx.run_until_parked();
+            if history {
+                assert_eq!(visual.read_with(cx, |item, _| item.flushes.len()), 1);
+                assert_eq!(
+                    filesystem
+                        .load(path!("/project/file.md").as_ref())
+                        .await
+                        .expect("disk before flush"),
+                    before
+                );
+                for _ in 0..3 {
+                    if visual.read_with(cx, |item, _| item.flushes.is_empty()) {
+                        break;
+                    }
+                    visual.update(cx, |item, cx| {
+                        item.receive(
+                            ClientMessage::Flushed {
+                                session: item.protocol.session.clone(),
+                                document: item.protocol.document,
+                                request: item.flush_request,
+                                sequence: 0,
+                            },
+                            cx,
+                        )
+                        .expect("autosave flush acknowledgment");
+                    });
+                    cx.run_until_parked();
+                }
+                assert!(visual.read_with(cx, |item, _| item.flushes.is_empty()));
+            }
+            assert_eq!(
+                filesystem
+                    .load(path!("/project/file.md").as_ref())
+                    .await
+                    .expect("autosaved disk"),
+                expected
+            );
+            assert!(!buffer.read_with(cx, |buffer, _| buffer.is_dirty()));
+        }
+    }
+
+    #[gpui::test]
+    async fn source_save_and_autosave_flush_related_visual_input_before_disk_write(
+        cx: &mut TestAppContext,
+    ) {
+        source_save_flush_fixture(cx, false, false).await;
+    }
+
+    #[gpui::test]
+    async fn floating_source_save_and_autosave_flush_related_visual_input_before_disk_write(
+        cx: &mut TestAppContext,
+    ) {
+        source_save_flush_fixture(cx, true, false).await;
+    }
+
+    #[gpui::test]
+    async fn multibuffer_save_and_autosave_flush_related_visual_input_before_disk_write(
+        cx: &mut TestAppContext,
+    ) {
+        source_save_flush_fixture(cx, false, true).await;
+    }
+
+    #[gpui::test]
+    async fn floating_multibuffer_save_and_autosave_flush_related_visual_input_before_disk_write(
+        cx: &mut TestAppContext,
+    ) {
+        source_save_flush_fixture(cx, true, true).await;
+    }
+
+    async fn source_save_flush_fixture(cx: &mut TestAppContext, floating: bool, multibuffer: bool) {
+        use fs::Fs;
+        use util::path;
+        cx.update(|cx| {
+            cx.set_global(db::AppDatabase::test_new());
+            workspace::AppState::test(cx);
+            editor::init(cx);
+            super::init(cx);
+        });
+        let filesystem = project::FakeFs::new(cx.executor());
+        filesystem
+            .insert_tree(
+                path!("/project"),
+                serde_json::json!({ "file.md": "base", "other.md": "other" }),
+            )
             .await;
         let project = Project::test(filesystem.clone(), [path!("/project").as_ref()], cx).await;
         let buffer = project
@@ -1611,6 +1811,29 @@ mod tests {
             item.attach(Box::new(FakeBrowserSurface::default()), cx)
                 .expect("surface")
         });
+        let saving_buffer = if multibuffer {
+            let other = project
+                .update(cx, |project, cx| {
+                    project.open_local_buffer(path!("/project/other.md"), cx)
+                })
+                .await
+                .expect("other buffer");
+            Some(cx.new(|cx| {
+                let mut excerpts = editor::MultiBuffer::new(Capability::ReadWrite);
+                for buffer in [other, buffer.clone()] {
+                    let end = buffer.read(cx).snapshot().max_point();
+                    excerpts.set_excerpts_for_buffer(
+                        buffer,
+                        [language::Point::new(0, 0)..end],
+                        0,
+                        cx,
+                    );
+                }
+                excerpts
+            }))
+        } else {
+            None
+        };
         let (workspace, pane, source, mut saving_context) = if floating {
             let app_state = workspace.read_with(cx, |workspace, _| workspace.app_state().clone());
             let floating_window = cx.update(|_, cx| {
@@ -1626,8 +1849,17 @@ mod tests {
                 .update(cx, |multi, window, cx| {
                     let workspace = multi.workspace().clone();
                     let pane = workspace.read(cx).active_pane().clone();
-                    let source = cx.new(|cx| {
-                        Editor::for_buffer(buffer.clone(), Some(project.clone()), window, cx)
+                    let source = cx.new(|cx| match &saving_buffer {
+                        Some(buffer) => Editor::new(
+                            editor::EditorMode::full(),
+                            buffer.clone(),
+                            Some(project.clone()),
+                            window,
+                            cx,
+                        ),
+                        None => {
+                            Editor::for_buffer(buffer.clone(), Some(project.clone()), window, cx)
+                        }
                     });
                     pane.update(cx, |pane, cx| {
                         pane.add_item(Box::new(source.clone()), true, true, None, window, cx)
@@ -1642,6 +1874,25 @@ mod tests {
                 VisualTestContext::from_window(floating_window.into(), &cx.cx),
             )
         } else {
+            let source = if let Some(buffer) = saving_buffer {
+                workspace.update_in(cx, |_, window, cx| {
+                    let source = cx.new(|cx| {
+                        Editor::new(
+                            editor::EditorMode::full(),
+                            buffer,
+                            Some(project.clone()),
+                            window,
+                            cx,
+                        )
+                    });
+                    pane.update(cx, |pane, cx| {
+                        pane.add_item(Box::new(source.clone()), true, true, None, window, cx)
+                    });
+                    source
+                })
+            } else {
+                source
+            };
             let window = cx.update(|window, _| window.window_handle());
             (
                 workspace,
@@ -1650,12 +1901,26 @@ mod tests {
                 VisualTestContext::from_window(window, &cx.cx),
             )
         };
+        source.read_with(&saving_context, |source, cx| {
+            assert_eq!(
+                source.buffer_kind(cx),
+                if multibuffer {
+                    ItemBufferKind::Multibuffer
+                } else {
+                    ItemBufferKind::Singleton
+                }
+            );
+            assert_eq!(
+                source.buffer().read(cx).all_buffers().len(),
+                if multibuffer { 2 } else { 1 }
+            );
+        });
         saving_context.focus(&source);
         saving_context.update(|window, cx| window.draw(cx).clear(cx));
         for (sequence, autosave, save_all) in
             [(1, false, false), (2, true, false), (3, false, true)]
         {
-            if autosave {
+            if autosave || (multibuffer && !save_all) {
                 buffer.update(cx, |buffer, cx| {
                     let end = buffer.snapshot().len();
                     buffer.edit([(end..end, " native")], None, cx);

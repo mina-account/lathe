@@ -10863,6 +10863,7 @@ dependencies = [
  "raw-window-handle",
  "serde",
  "serde_json",
+ "settings",
  "sysinfo 0.39.6",
  "ui",
  "util",

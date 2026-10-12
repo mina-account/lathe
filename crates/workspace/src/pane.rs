@@ -2309,8 +2309,8 @@ impl Pane {
             let tasks = cx.update(|window, cx| {
                 let current_window = window.window_handle();
                 let mut related = vec![(current_window, item.boxed_clone())];
-                if item.buffer_kind(cx) == ItemBufferKind::Singleton {
-                    let model_ids = item.project_item_model_ids(cx);
+                let model_ids = item.project_item_model_ids(cx);
+                if !model_ids.is_empty() {
                     let current_workspaces = window
                         .root::<crate::MultiWorkspace>()
                         .flatten()
@@ -2350,7 +2350,6 @@ impl Pane {
                             if !related
                                 .iter()
                                 .any(|(_, item)| item.item_id() == candidate.item_id())
-                                && candidate.buffer_kind(cx) == ItemBufferKind::Singleton
                                 && candidate
                                     .project_item_model_ids(cx)
                                     .iter()
