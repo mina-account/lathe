@@ -12,7 +12,7 @@ use offscreen_host::Surface;
 use raw_window_handle::HasWindowHandle;
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     ops::Range,
     path::PathBuf,
     rc::Rc,
@@ -143,6 +143,122 @@ fn pointer_metadata(
     ))
 }
 
+fn expect_captured_releases(expected: &[(i32, i32)], observed: &[(i32, i32)]) -> Result<()> {
+    if expected.len() == 3
+        && observed.len() == expected.len()
+        && expected
+            .iter()
+            .zip(observed)
+            .all(|(expected, observed)| captured_point_matches(*expected, *observed))
+    {
+        return Ok(());
+    }
+    bail!("captured release mismatch: expected {expected:?}, observed {observed:?}");
+}
+
+fn captured_point_matches(expected: (i32, i32), observed: (i32, i32)) -> bool {
+    // Chromium floors coordinates after the physical-pixel round trip at fractional screen scales.
+    let matches = |expected: i32, observed: i32| {
+        observed == expected || (observed < expected && expected.abs_diff(observed) == 1)
+    };
+    matches(expected.0, observed.0) && matches(expected.1, observed.1)
+}
+
+struct CaptureStep {
+    inputs: Vec<gpui::PlatformInput>,
+    event: EventKind,
+    position: (i32, i32),
+}
+
+struct CaptureReplay {
+    queued: VecDeque<CaptureStep>,
+    waiting: Option<CaptureStep>,
+    dispatched: Instant,
+    expected_releases: Vec<(i32, i32)>,
+    observed_releases: Vec<(i32, i32)>,
+}
+
+impl CaptureReplay {
+    fn next_inputs(&mut self, now: Instant) -> Result<Option<Vec<gpui::PlatformInput>>> {
+        if let Some(step) = &self.waiting {
+            if now.duration_since(self.dispatched) > Duration::from_secs(2) {
+                bail!(
+                    "captured pointer DOM acknowledgment timed out for {:?} at {:?}",
+                    step.event,
+                    step.position
+                );
+            }
+            return Ok(None);
+        }
+        if let Some(mut step) = self.queued.pop_front() {
+            let inputs = std::mem::take(&mut step.inputs);
+            self.waiting = Some(step);
+            self.dispatched = now;
+            return Ok(Some(inputs));
+        }
+        expect_captured_releases(&self.expected_releases, &self.observed_releases)?;
+        Ok(None)
+    }
+
+    fn observe(&mut self, session: &str, event: &EventKind, details: &EventDetails) -> Result<()> {
+        let expected_name = match event {
+            EventKind::Pointer => "pointerdown",
+            EventKind::Drag => "pointermove",
+            EventKind::PointerUp => "pointerup",
+            _ => return Ok(()),
+        };
+        if session != "left" {
+            bail!("captured pointer reached foreign browser {session}");
+        }
+        let step = self
+            .waiting
+            .as_ref()
+            .ok_or_else(|| anyhow!("unexpected captured pointer DOM event: {event:?}"))?;
+        if *event != step.event {
+            bail!(
+                "captured pointer DOM event out of order: expected {:?}, received {event:?}",
+                step.event
+            );
+        }
+        let buttons = if *event == EventKind::PointerUp { 0 } else { 1 };
+        match details {
+            EventDetails::Pointer {
+                name,
+                shift_key: false,
+                control_key: false,
+                alt_key: false,
+                meta_key: false,
+                buttons: actual_buttons,
+                client_x,
+                client_y,
+                ..
+            } if captured_point_matches(step.position, (*client_x, *client_y))
+                && *actual_buttons == buttons
+                && name == expected_name =>
+            {
+                if *event == EventKind::PointerUp {
+                    self.observed_releases.push((*client_x, *client_y));
+                }
+                println!(
+                    "{}",
+                    serde_json::json!({"event":"capture_dom_ack", "kind":event, "x":client_x, "y":client_y})
+                );
+                self.waiting = None;
+                Ok(())
+            }
+            actual => {
+                bail!("captured pointer DOM acknowledgment mismatch for {event:?}: {actual:?}")
+            }
+        }
+    }
+
+    fn complete(&self) -> bool {
+        self.waiting.is_none()
+            && self.queued.is_empty()
+            && expect_captured_releases(&self.expected_releases, &self.observed_releases).is_ok()
+    }
+}
+
 #[derive(Default)]
 struct Outcome {
     surfaces: Vec<Surface>,
@@ -173,6 +289,7 @@ struct Probe {
     smoke: bool,
     phase: u32,
     hidden_event_count: u64,
+    capture_replay: Option<CaptureReplay>,
     started: Instant,
     phase_started: Instant,
     _pump: Task<()>,
@@ -237,6 +354,7 @@ impl Probe {
             smoke,
             phase: 0,
             hidden_event_count: 0,
+            capture_replay: None,
             started: Instant::now(),
             phase_started: Instant::now(),
             _pump: pump,
@@ -326,7 +444,15 @@ impl Probe {
                     ))?,
                     Message::Acknowledged { request: 1, .. } => pane.acknowledged = true,
                     Message::Input { text, .. } => pane.text = text,
-                    Message::Event { event, details, .. } => {
+                    Message::Event {
+                        session,
+                        event,
+                        details,
+                        ..
+                    } => {
+                        if let Some(replay) = &mut self.capture_replay {
+                            replay.observe(&session, &event, &details)?;
+                        }
                         pane.event_count += 1;
                         pane.events.insert(event, details);
                     }
@@ -339,6 +465,11 @@ impl Probe {
             cx.notify();
         }
         if self.smoke {
+            if let Some(replay) = &mut self.capture_replay
+                && let Some(inputs) = replay.next_inputs(Instant::now())?
+            {
+                self.defer_inputs(inputs, window, cx);
+            }
             let handle = Window::window_handle(window);
             let outcome = self.outcome.clone();
             // Occluded Windows probes receive no presentation callbacks; render their real scene for readback.
@@ -356,6 +487,10 @@ impl Probe {
                 bail!("smoke timed out in phase {}", self.phase);
             }
             if !changed
+                && self
+                    .capture_replay
+                    .as_ref()
+                    .is_none_or(CaptureReplay::complete)
                 && self
                     .panes
                     .iter()
@@ -499,6 +634,11 @@ impl Probe {
                 self.dispatch_capture_regression(window, cx)?;
             }
             14 => {
+                let replay = self
+                    .capture_replay
+                    .take()
+                    .ok_or_else(|| anyhow!("capture replay missing"))?;
+                expect_captured_releases(&replay.expected_releases, &replay.observed_releases)?;
                 let left = self
                     .panes
                     .first()
@@ -700,7 +840,11 @@ impl Probe {
         );
         Ok(())
     }
-    fn dispatch_capture_regression(&self, window: &Window, cx: &mut Context<Self>) -> Result<()> {
+    fn dispatch_capture_regression(
+        &mut self,
+        _window: &Window,
+        _cx: &mut Context<Self>,
+    ) -> Result<()> {
         let left = self
             .panes
             .first()
@@ -718,43 +862,61 @@ impl Probe {
             right.bounds.origin + point(px(50.), px(180.)),
             left.bounds.origin - point(px(30.), px(30.)),
         ];
-        let mut inputs = Vec::new();
+        let mut queued = VecDeque::new();
+        let mut expected_releases = Vec::new();
         for position in destinations {
-            inputs.push(gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
-                position: start,
-                pressed_button: None,
-                modifiers: Default::default(),
-            }));
-            inputs.push(Self::pointer_down(start));
-            inputs.push(gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
-                position,
-                pressed_button: Some(gpui::MouseButton::Left),
-                modifiers: Default::default(),
-            }));
-            inputs.push(gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
-                position,
-                button: gpui::MouseButton::Left,
-                modifiers: Default::default(),
-                click_count: 1,
-            }));
+            let local_position = offscreen_adapter::pointer_point(
+                (position.x.into(), position.y.into()),
+                (left.bounds.origin.x.into(), left.bounds.origin.y.into()),
+                (
+                    left.bounds.size.width.into(),
+                    left.bounds.size.height.into(),
+                ),
+                1.,
+                true,
+            )?;
+            expected_releases.push(local_position);
+            queued.push_back(CaptureStep {
+                inputs: vec![
+                    gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+                        position: start,
+                        pressed_button: None,
+                        modifiers: Default::default(),
+                    }),
+                    Self::pointer_down(start),
+                ],
+                event: EventKind::Pointer,
+                position: (50, 180),
+            });
+            queued.push_back(CaptureStep {
+                inputs: vec![gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+                    position,
+                    pressed_button: Some(gpui::MouseButton::Left),
+                    modifiers: Default::default(),
+                })],
+                event: EventKind::Drag,
+                position: local_position,
+            });
+            queued.push_back(CaptureStep {
+                inputs: vec![gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                    position,
+                    button: gpui::MouseButton::Left,
+                    modifiers: Default::default(),
+                    click_count: 1,
+                })],
+                event: EventKind::PointerUp,
+                position: local_position,
+            });
         }
-        let outcome = self.outcome.clone();
-        // Chromium applies DOM pointer capture asynchronously; allow each native event to be processed.
-        cx.spawn_in(window, async move |_, cx| {
-            for input in inputs {
-                cx.background_executor()
-                    .timer(Duration::from_millis(40))
-                    .await;
-                if let Err(error) = cx.update(|window, cx| {
-                    window.dispatch_event(input, cx);
-                }) {
-                    outcome.borrow_mut().error =
-                        Some(format!("captured pointer dispatch failed: {error:#}"));
-                    break;
-                }
-            }
-        })
-        .detach();
+        // DOM pointer capture applies asynchronously. Advance only after the real browser reports
+        // the preceding input, so a missing release cannot be hidden by a later gesture.
+        self.capture_replay = Some(CaptureReplay {
+            queued,
+            waiting: None,
+            dispatched: Instant::now(),
+            expected_releases,
+            observed_releases: Vec::new(),
+        });
         Ok(())
     }
     fn dispatch_hidden_regression(&self, window: &Window, cx: &mut Context<Self>) -> Result<()> {
@@ -1627,7 +1789,7 @@ fn run() -> Result<i32> {
                 let result = if require_wayland && !backend.as_ref().is_ok_and(|value| value.starts_with("Wayland")) { Err(anyhow!("required Wayland backend was not selected")) } else { Probe::new(window, cx, outcome_for_window.clone(), output.clone(), smoke) };
                 match result {
                     Ok(probe) => probe,
-                    Err(error) => { outcome_for_window.borrow_mut().error = Some(format!("{error:#}")); cx.quit(); Probe { panes: Vec::new(), focused: Some(0), pressed_button: None, pressed_pane: None, pointer_position: point(px(0.), px(0.)), focus: cx.focus_handle(), marked: None, outcome: outcome_for_window.clone(), output: output.clone(), smoke, phase: 0, hidden_event_count: 0, started: Instant::now(), phase_started: Instant::now(), _pump: Task::ready(()) } }
+                    Err(error) => { outcome_for_window.borrow_mut().error = Some(format!("{error:#}")); cx.quit(); Probe { panes: Vec::new(), focused: Some(0), pressed_button: None, pressed_pane: None, pointer_position: point(px(0.), px(0.)), focus: cx.focus_handle(), marked: None, outcome: outcome_for_window.clone(), output: output.clone(), smoke, phase: 0, hidden_event_count: 0, capture_replay: None, started: Instant::now(), phase_started: Instant::now(), _pump: Task::ready(()) } }
                 }
             })
         });
@@ -1692,6 +1854,104 @@ fn main() -> std::process::ExitCode {
 #[cfg(test)]
 mod input_tests {
     use super::*;
+
+    #[test]
+    fn captured_releases_require_the_middle_release_even_if_the_last_arrives() {
+        let expected = [(484, 180), (542, 180), (-30, -30)];
+        assert!(expect_captured_releases(&expected, &expected).is_ok());
+        assert!(expect_captured_releases(&expected, &[(484, 180), (-30, -30)]).is_err());
+        assert!(expect_captured_releases(&expected, &[(-30, -30)]).is_err());
+        assert!(expect_captured_releases(&expected, &[(484, 180), (542, 180), (-31, -31)]).is_ok());
+        assert!(
+            expect_captured_releases(&expected, &[(484, 180), (542, 180), (-29, -29)]).is_err()
+        );
+        assert!(
+            expect_captured_releases(&expected, &[(484, 180), (543, 180), (-30, -30)]).is_err()
+        );
+        assert!(
+            expect_captured_releases(&expected, &[(484, 180), (542, 180), (-30, -30), (-30, -30)])
+                .is_err()
+        );
+    }
+
+    fn release_replay() -> CaptureReplay {
+        let expected_releases = vec![(484, 180), (542, 180), (-30, -30)];
+        CaptureReplay {
+            queued: expected_releases
+                .iter()
+                .map(|position| CaptureStep {
+                    inputs: vec![Probe::pointer_down(point(px(50.), px(180.)))],
+                    event: EventKind::PointerUp,
+                    position: *position,
+                })
+                .collect(),
+            waiting: None,
+            dispatched: Instant::now(),
+            expected_releases,
+            observed_releases: Vec::new(),
+        }
+    }
+
+    fn release_details(position: (i32, i32)) -> EventDetails {
+        EventDetails::Pointer {
+            name: "pointerup".into(),
+            shift_key: false,
+            control_key: false,
+            alt_key: false,
+            meta_key: false,
+            buttons: 0,
+            detail: 0,
+            client_x: position.0,
+            client_y: position.1,
+        }
+    }
+
+    #[test]
+    fn replay_waits_for_each_dom_release_and_fails_on_a_missing_acknowledgment() -> Result<()> {
+        let mut replay = release_replay();
+        let now = Instant::now();
+        assert!(replay.next_inputs(now)?.is_some());
+        assert!(replay.next_inputs(now + Duration::from_secs(1))?.is_none());
+        assert!(!replay.complete());
+        replay.observe("left", &EventKind::PointerUp, &release_details((484, 180)))?;
+        assert!(replay.next_inputs(now + Duration::from_secs(1))?.is_some());
+        assert!(!replay.complete());
+        let error = replay
+            .next_inputs(now + Duration::from_secs(4))
+            .err()
+            .ok_or_else(|| anyhow!("missing middle acknowledgment did not time out"))?;
+        assert!(error.to_string().contains("DOM acknowledgment timed out"));
+        assert!(
+            replay
+                .observe("left", &EventKind::PointerUp, &release_details((-30, -30)))
+                .is_err()
+        );
+        assert!(!replay.complete());
+        Ok(())
+    }
+
+    #[test]
+    fn replay_accepts_only_ordered_releases_from_the_originating_browser() -> Result<()> {
+        let mut replay = release_replay();
+        for position in [(484, 180), (542, 180), (-30, -30)] {
+            assert!(replay.next_inputs(Instant::now())?.is_some());
+            assert!(
+                replay
+                    .observe("right", &EventKind::PointerUp, &release_details(position))
+                    .is_err()
+            );
+            assert!(!replay.complete());
+            replay.observe("left", &EventKind::PointerUp, &release_details(position))?;
+        }
+        assert!(replay.complete());
+        assert!(replay.next_inputs(Instant::now())?.is_none());
+        assert!(
+            replay
+                .observe("left", &EventKind::PointerUp, &release_details((-30, -30)))
+                .is_err()
+        );
+        Ok(())
+    }
 
     #[test]
     fn named_keys_use_browser_navigation_codes() -> Result<()> {

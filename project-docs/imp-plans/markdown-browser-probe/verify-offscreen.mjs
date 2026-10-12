@@ -73,6 +73,9 @@ for (const path of files) {
   assert(domReleases.every((entry) => entry.message.session === "left" && entry.message.details.buttons === 0));
   assert(domReleases[0].message.details.client_x > leftBounds.width && domReleases[1].message.details.client_x > domReleases[0].message.details.client_x);
   assert(domReleases[2].message.details.client_x <= -30 && domReleases[2].message.details.client_y <= -30);
+  const captureAcks = captured.filter((entry) => entry.event === "capture_dom_ack");
+  assert.deepEqual(captureAcks.map((entry) => entry.kind), Array.from({length: 3}, () => ["pointer", "drag", "pointer_up"]).flat());
+  assert.deepEqual(captureAcks.filter((entry) => entry.kind === "pointer_up").map(({x, y}) => [x, y]), domReleases.map((entry) => [entry.message.details.client_x, entry.message.details.client_y]));
   assert(!captured.some((entry) => entry.event === "ipc" && entry.message.session === "right" && entry.message.kind === "Event"));
   assert.equal(matching("pointer_capture").length, matching("pointer_release").length);
   const hidden = betweenPhases(16, 20);
