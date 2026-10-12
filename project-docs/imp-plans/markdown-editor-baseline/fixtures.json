@@ -1,0 +1,306 @@
+{
+  "roundTrips": [
+    {
+      "id": "references",
+      "markdown": "[label][id]\n\n[id]: https://example.com \"Title\"\n"
+    },
+    {
+      "id": "front-matter",
+      "markdown": "---\ntitle: \"Quoted\"\ncustom: [one, two]\n---\n\n# Heading\n"
+    },
+    {
+      "id": "raw-html",
+      "markdown": "<div class=\"custom\">\n  <span data-value=\"x\">Raw &amp; HTML</span>\n</div>\n"
+    },
+    {
+      "id": "math",
+      "markdown": "Inline $2x+1$ and escaped \\$5.\n\n$$\na^2+b^2=c^2\n$$\n"
+    },
+    {
+      "id": "unknown-fence",
+      "markdown": "```unknown-engine extra\n  untouched < & >\n```\n"
+    },
+    {
+      "id": "unicode",
+      "markdown": "Café é 中文 😀 👩‍💻\n"
+    },
+    {
+      "id": "crlf",
+      "markdown": "# Windows\r\n\r\nBody\r\n"
+    },
+    {
+      "id": "no-final-newline",
+      "markdown": "# No newline\n\nLast line"
+    },
+    {
+      "id": "commonmark",
+      "markdown": "# Heading\n\n**Bold** *italic* ~~strike~~ `code` \\*escaped\\*.\n\n> Quote\n\n- outer\n  - nested\n- [x] done\n- [ ] todo\n\n1. ordered\n\n<https://example.com>\n\n| left | right |\n| :--- | ---: |\n| A | B |\n"
+    },
+    {
+      "id": "extensions",
+      "markdown": "[toc]\n\n# Heading {#explicit-id}\n\nFootnote[^note].\n\n[^note]: Footnote text.\n"
+    }
+  ],
+  "htmlPaste": "<p>Pasted <strong>bold</strong> <a href=\"https://example.com\">link</a></p>",
+  "fences": [
+    {
+      "language": "mermaid",
+      "valid": "```mermaid\ngraph TD\n A-->B\n```\n",
+      "invalid": "```mermaid\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "graphviz",
+      "valid": "```graphviz\ndigraph { A -> B }\n```\n",
+      "invalid": "```graphviz\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "echarts",
+      "valid": "```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n",
+      "invalid": "```echarts\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "abc",
+      "valid": "```abc\nX:1\nT:Scale\nM:4/4\nL:1/4\nK:C\nCDEF|GABc|\n```\n",
+      "invalid": "```abc\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "flowchart",
+      "valid": "```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n",
+      "invalid": "```flowchart\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "plantuml",
+      "valid": "```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n",
+      "invalid": "```plantuml\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "markmap",
+      "valid": "```markmap\n# Root\n## Child\n```\n",
+      "invalid": "```markmap\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "smiles",
+      "valid": "```smiles\nCCO\n```\n",
+      "invalid": "```smiles\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "math",
+      "valid": "```math\na^2+b^2=c^2\n```\n",
+      "invalid": "```math\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "mindmap",
+      "valid": "```mindmap\n- Root\n  - Child\n```\n",
+      "invalid": "```mindmap\n{ INVALID -> ???\n```\n",
+      "enabled": true
+    },
+    {
+      "language": "wavedrom",
+      "valid": "```wavedrom\n{\"signal\":[{\"name\":\"clock\",\"wave\":\"p...\"}]}\n```\n",
+      "invalid": "```wavedrom\n{ INVALID -> ???\n```\n",
+      "enabled": false
+    },
+    {
+      "language": "sequence",
+      "valid": "```sequence\nAlice->Bob: Hello\n```\n",
+      "invalid": "```sequence\n{ INVALID -> ???\n```\n",
+      "enabled": false
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "P01",
+      "fixture": "commonmark",
+      "procedure": "IR active syntax, caret between blocks, enter/backspace, compose Chinese text; unchanged blocks survive.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "main.ts defaults mode=ir; evidence roundTrips in ir. Caret/composition acceptance remains manual."
+    },
+    {
+      "id": "P02",
+      "fixture": "commonmark",
+      "procedure": "WYSIWYG modify lists, tasks, links, image, code and table; observe shared source.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "Toolbar edit-mode; evidence roundTrips in wysiwyg and serialized HTML."
+    },
+    {
+      "id": "P03",
+      "fixture": "references",
+      "procedure": "Switch IR/WYSIWYG/split, preserve caret and source; type in split and inspect preview.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence interactions.modeSwitches exercises actual mode buttons."
+    },
+    {
+      "id": "P04",
+      "fixture": "commonmark",
+      "procedure": "Preview-only selection/copy/find/outline/link; attempt toolbar, paste and forged bridge write against read-only buffer.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "Toolbar preview; host has no read-only permission validation. Lathe host rejection is an explicit stronger requirement."
+    },
+    {
+      "id": "P05",
+      "fixture": "unicode",
+      "procedure": "Two source and two visual panes: native edits, external reload/collaboration and delayed stale messages retain latest source and pending draft.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "extension.ts onDidChangeTextDocument/applyEdit; source echo/reload behavior inspected, multi-view/collaboration integration pending."
+    },
+    {
+      "id": "P06",
+      "fixture": "no-final-newline",
+      "procedure": "Visual typing then immediate Save/Save As/autosave/close; undo/redo native and visual edits across views.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "Toolbar save posts serialized content; extension.ts document.save/applyEdit. Host-owned flush/history barrier is a Lathe requirement."
+    },
+    {
+      "id": "P07",
+      "fixture": "commonmark",
+      "procedure": "Exercise every toolbar control in recorded toolbar list; verify generated syntax and unchanged surrounding blocks.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence toolbar and options.toolbar list actual controls."
+    },
+    {
+      "id": "P08",
+      "fixture": "raw-html",
+      "procedure": "Copy Markdown and HTML are full-document clipboard text; selected copy remains selected.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "toolbar.ts copy-markdown/copy-html use navigator.clipboard.writeText(getValue/getHTML); HTML paste measured."
+    },
+    {
+      "id": "P09",
+      "fixture": "commonmark",
+      "procedure": "Picker, PNG clipboard, multiple file drop; assets written before escaped relative insertion; error/disconnect inserts no broken reference.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "main.ts upload handler sends base64 file requests; extension.ts writes assets via workspace.fs. Actual OS clipboard/picker/drop pending."
+    },
+    {
+      "id": "P10",
+      "fixture": "unicode",
+      "procedure": "assets and ${projectRoot}/assets with two worktrees, Windows spaces/UNC, collisions and remote files.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "extension.ts imageSaveFolder/workspaceFolders path expansion; owning-worktree/remote safety are explicit Lathe requirements."
+    },
+    {
+      "id": "P11",
+      "fixture": "commonmark",
+      "procedure": "Every recorded content/code theme, app light/dark change; preserve history, source, selection and scroll.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence preview theme list and runtime.json codeThemes; main.ts theme init destroys/recreates Vditor. Lathe must retain history/selection."
+    },
+    {
+      "id": "P12",
+      "fixture": "raw-html",
+      "procedure": "Apply .vditor-reset CSS; native UI unaffected, forbidden remote CSS fetch rejected.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "extension.ts injects customCss; fixture settings default empty. Scoped resource policy is a Lathe requirement."
+    },
+    {
+      "id": "P13",
+      "fixture": "commonmark",
+      "procedure": "Palette, shortcut, clicked project/tab contexts, Open With/default precedence; .md/.markdown and non-Markdown.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence manifest contributes commands, menus, customEditors and keybindings."
+    },
+    {
+      "id": "P14",
+      "fixture": "commonmark",
+      "procedure": "Render CommonMark/GFM; nested/malformed lists, tables, escapes and links remain editable.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence commonmark roundTrips and rendered HTML."
+    },
+    {
+      "id": "P15",
+      "fixture": "extensions",
+      "procedure": "Footnotes, TOC, heading identifier and front matter; compare rendered HTML, retain unsupported source.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence extensions/front-matter roundTrips and rendered HTML; toc=false by default."
+    },
+    {
+      "id": "P16",
+      "fixture": "math",
+      "procedure": "KaTeX inlineDigit=true, block/fenced math, escaped dollars and malformed TeX; MathJax only if reachable by exposed settings.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence math roundTrips and math fence renders; preview.math KaTeX inlineDigit=true. No MathJax selector exposed."
+    },
+    {
+      "id": "P17",
+      "fixture": "fences",
+      "procedure": "Every handler valid/invalid; WaveDrom/sequence are negative controls; PlantUML service explicit; chart content cannot execute JS.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence renderers/requests and runtime.json hashes; all 10 adapter languages plus negative controls."
+    },
+    {
+      "id": "P18",
+      "fixture": "extensions",
+      "procedure": "Outline jump, internal heading fragment, external and document-relative Markdown/images, remote owning worktree.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "utils.ts fixLinkClick/scrollToHeadingAnchor and extension.ts openMarkdownLink; outline toolbar recorded."
+    },
+    {
+      "id": "P19",
+      "fixture": "commonmark",
+      "procedure": "Change all five recorded manifest settings independently; check defaults, gutter and outline mode behavior.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence manifest.configuration and fixtures settings; lineNumberScript is host-injected (not browser probe)."
+    },
+    {
+      "id": "P20",
+      "fixture": "commonmark",
+      "procedure": "Retain mode/themes/outline/scroll across tab/reopen/restart; reset preferences leaves source unchanged.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "utils.ts saveVditorOptions saves theme/mode/preview in globalState; host keeps scroll positions in an in-memory map. Outline/table-wrap not persisted by that serializer."
+    },
+    {
+      "id": "P21",
+      "fixture": "unicode",
+      "procedure": "Find count, next/previous, match case, Escape; no source or undo change.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence actual Find keyboard open/count; search.ts CSS Highlight API previous/next/case/Escape."
+    },
+    {
+      "id": "P22",
+      "fixture": "commonmark",
+      "procedure": "Toggle table-wrap and horizontal scroll with long cells; source and history remain unchanged.",
+      "latheStatus": "pending implementation",
+      "baselineEvidence": "evidence tableTogglePreservedSource; toolbar.ts body class controls wrap, no persisted wrap preference."
+    }
+  ],
+  "paths": [
+    "assets/image with spaces.png",
+    "assets/中文 😀.png",
+    "${projectRoot}/assets",
+    "\\\\server\\share\\assets\\image.png"
+  ],
+  "settings": {
+    "imageSaveFolder": "assets",
+    "useVscodeThemeColor": true,
+    "showLineNumbers": true,
+    "defaultOpenOutline": false,
+    "customCss": ""
+  },
+  "keys": {
+    "open": "ctrl+shift+alt+m",
+    "openMac": "cmd+shift+alt+m",
+    "save": "ctrl+s / cmd+s",
+    "find": "ctrl+f / cmd+f",
+    "findNext": "Enter",
+    "findPrevious": "Shift+Enter",
+    "closeFind": "Escape",
+    "undo": "ctrl+z / cmd+z",
+    "redo": "ctrl+y / cmd+y",
+    "wysiwyg": "ctrl+alt+7 / cmd+alt+7",
+    "instantRendering": "ctrl+alt+8 / cmd+alt+8",
+    "split": "ctrl+alt+9 / cmd+alt+9",
+    "bold": "ctrl+b / cmd+b",
+    "italic": "ctrl+i / cmd+i"
+  },
+  "editingFixture": "# Edit controls\n\n[external](https://example.com) [relative](other.markdown#heading) [anchor](#edit-controls)\n\n![image](assets/image%20with%20spaces.png)\n\n- [ ] Task\n\n| long cell with many repeated words repeated words repeated words | B |\n| --- | --- |\n| content | value |\n\nMalformed **bold and [broken](\n\n> - nested quote/list\n",
+  "htmlPasteHostile": "<p>Text</p><script>window.__documentScriptRan=true</script><img src=\"x\" onerror=\"window.__documentScriptRan=true\">"
+}

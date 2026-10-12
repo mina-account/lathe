@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Proposed implementation plan; no application code implemented.
+Status: Phase 0 baseline frozen; no application code implemented. Phases 1–6 remain pending.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 
@@ -52,8 +52,8 @@ Every row is required unless explicitly identified as a source-baseline addition
 | P18 | Outline and navigation | Heading outline, heading jumps, internal anchors, external links, and relative Markdown/image links work in local and remote worktrees. |
 | P19 | Reference settings | Map image folder, host theme colors, line-number visibility, initial outline visibility, and custom CSS to Lathe settings with equivalent defaults. |
 | P20 | View preferences | Retain selected mode, themes, outline state, and document scroll across tab changes/reopen; reset editor preferences without changing document content. |
-| P21 | Find (source-baseline addition) | Find bar with match count, previous/next, match-case, and Escape close. DOM highlighting must not edit the document or pollute undo history. |
-| P22 | Table wrapping (source-baseline addition) | Expose wrapping versus horizontal scrolling, preserving table contents and layout preference. |
+| P21 | Find (published parity, verified in Phase 0) | Find bar with match count, previous/next, match-case, and Escape close. DOM highlighting must not edit the document or pollute undo history. |
+| P22 | Table wrapping (published parity, verified in Phase 0) | Expose wrapping versus horizontal scrolling, preserving table contents and layout preference. |
 
 The reference toolbar supports full-document HTML copying through its [toolbar implementation](https://github.com/zaaack/vscode-markdown-editor/blob/033c6242cf96615fd0c88bed73d5428b76e3a44b/media-src/src/toolbar.ts). Rich HTML clipboard MIME data is not required for parity; investigate browser HTML paste separately and verify it against the baseline.
 
@@ -185,10 +185,12 @@ Add settings schema/defaults and settings UI integration, serialize item identit
 
 ### Phase 0: Freeze observable parity
 
-- [ ] Install/reference the published extension and compare with the pinned source; record the package version and runtime dependencies actually used.
-- [ ] Build a fixture corpus for P01-P22, including enabled fence handlers, HTML paste, settings, and keyboard controls. Record which optional Vditor features the extension actually enables.
-- [ ] Record source round-trip behavior for references, front matter, raw HTML, math, unknown fences, Unicode, CRLF, and missing final newlines.
-- [ ] Identify project APIs for remote asset writes and resource reads, save delegation, preference storage, and open routing.
+- [x] Install/reference the published extension and compare with the pinned source; record the package version and runtime dependencies actually used.
+- [x] Build a fixture corpus for P01-P22, including enabled fence handlers, HTML paste, settings, and keyboard controls. Record which optional Vditor features the extension actually enables.
+- [x] Record source round-trip behavior for references, front matter, raw HTML, math, unknown fences, Unicode, CRLF, and missing final newlines.
+- [x] Identify project APIs for remote asset writes and resource reads, save delegation, preference storage, and open routing.
+
+Evidence: [frozen baseline, fixtures, reproduction, preservation risks, and API findings](markdown-editor-baseline/README.md). Published 0.1.21 and the pinned source match, including Find/table-wrap; real-browser results cover all three modes and the finite renderer inventory. This milestone freezes requirements; every Lathe parity row and the native hosting gate remain pending.
 
 Exit: observable requirements are frozen, renderer scope is finite, and source-preservation risks are documented. Later phases must not infer parity from current Vditor documentation alone.
 
