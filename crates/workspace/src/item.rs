@@ -312,6 +312,13 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
     fn is_dirty(&self, _: &App) -> bool {
         false
     }
+    fn prepare_to_save(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        Task::ready(Ok(()))
+    }
     fn close_confirmation(&self, _: &App) -> Option<CloseConfirmation> {
         None
     }
@@ -451,6 +458,11 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
 pub trait SerializableItem: Item {
     fn serialized_item_kind() -> &'static str;
 
+    /// Kinds sharing persistence storage need one cleanup group to retain their combined item IDs.
+    fn cleanup_group() -> &'static str {
+        Self::serialized_item_kind()
+    }
+
     fn cleanup(
         workspace_id: WorkspaceId,
         alive_items: Vec<ItemId>,
@@ -576,6 +588,7 @@ pub trait ItemHandle: 'static + Send {
     fn item_id(&self) -> EntityId;
     fn to_any_view(&self) -> AnyView;
     fn is_dirty(&self, cx: &App) -> bool;
+    fn prepare_to_save(&self, window: &mut Window, cx: &mut App) -> Task<Result<()>>;
     fn close_confirmation(&self, cx: &App) -> Option<CloseConfirmation>;
     fn is_awaiting_input(&self, cx: &App) -> bool;
     fn awaiting_input_tooltip(&self, cx: &App) -> &'static str;
@@ -1114,6 +1127,10 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn is_dirty(&self, cx: &App) -> bool {
         self.read(cx).is_dirty(cx)
+    }
+
+    fn prepare_to_save(&self, window: &mut Window, cx: &mut App) -> Task<Result<()>> {
+        self.update(cx, |item, cx| item.prepare_to_save(window, cx))
     }
 
     fn close_confirmation(&self, cx: &App) -> Option<CloseConfirmation> {

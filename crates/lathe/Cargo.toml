@@ -13,6 +13,7 @@ path = "src/lathe.rs"
 doctest = false
 
 [dependencies]
+markdown_editor.workspace = true
 gpui.workspace = true
 lathe_hooks.workspace = true
 pr_ui.workspace = true
@@ -24,3 +25,6 @@ terminal.workspace = true
 theme.workspace = true
 git_graph.workspace = true
 mobile_dev.workspace = true
+
+[features]
+markdown-browser = ["markdown_editor/browser"]

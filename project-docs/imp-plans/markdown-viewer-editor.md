@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Phases 0 and 1 complete under the revised scope: the baseline is frozen and automated CPU offscreen CEF viability is demonstrated on Windows, Linux X11, and Linux Wayland. Phases 2–6 remain pending; no application editor code implemented.
+Status: Phases 0 through 2 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the application has a confined plaintext shared-buffer synchronization foundation. Phases 3 through 6 remain pending; Vditor 3.11.2 editing modes belong to Phase 3.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 
@@ -213,13 +213,15 @@ Exit: scoped automated hosting viability and contributor-runtime gates are suppo
 
 Depends on Phase 1.
 
-- [ ] Add the feature crate, Lathe initialization, `Item`/`SerializableItem` integration, controller, and fake browser surface.
-- [ ] Integrate the selected pinned CPU offscreen CEF host; implement and verify production sandboxing/confinement before enabling user documents.
-- [ ] Open the visual item against the same buffer as a native source editor. Implement edit acknowledgments, stale-revision handling, Unicode offsets, subscriptions, and cancellation.
-- [ ] Implement save/close flush barriers, dirty state, Save As, rename, external reload, read-only behavior, and native undo/redo routing.
-- [ ] Prove pending visual edits survive concurrent source/collaboration edits and browser failure. Implement source preservation before accepting rich editing.
+- [x] Add the feature crate, Lathe initialization, `Item`/`SerializableItem` integration, controller, and fake browser surface.
+- [x] Integrate the selected pinned CPU offscreen CEF host; implement and verify production sandboxing/confinement before enabling user documents.
+- [x] Open the visual item against the same buffer as a native source editor. Implement edit acknowledgments, stale-revision handling, Unicode offsets, subscriptions, and cancellation.
+- [x] Implement save/close flush barriers, dirty state, Save As, rename, external reload, read-only behavior, and native undo/redo routing.
+- [x] Prove pending visual edits survive concurrent source/collaboration edits and browser failure. Implement source preservation before accepting rich editing.
 
 Exit: real edits work in both directions, global history is correct, and every failure/reload path preserves unsaved content.
+
+Phase 2 evidence: [shared Item implementation, confinement rationale, reproduction, checks, and actual Windows/X11/Wayland observations](markdown-editor-phase-2/README.md). The packaged plaintext application proves real bidirectional CEF/Buffer edits, native history, flush, renderer failure/recreation, and retired browser release. Final Rust/GPUI tests pass 25/25 on both platforms; frontend tests pass 5/5; affected preview/workspace checks and default/browser-enabled application checks pass. Valid scoped repository lint groups and scoped formatting pass; the evidence records the existing root-format and combined-package remote feature exceptions. This establishes the limited plaintext production confinement boundary with sandbox disabled; rich HTML/renderers require revisiting that boundary in Phase 3. Vditor modes, packaging, and final native/manual UI acceptance remain their later phases.
 
 ### Phase 3: Editing modes and viewer
 

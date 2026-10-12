@@ -1251,6 +1251,7 @@ impl FollowableViewRegistry {
 
 #[derive(Copy, Clone)]
 struct SerializableItemDescriptor {
+    cleanup_group: &'static str,
     deserialize: fn(
         Entity<Project>,
         WeakEntity<Workspace>,
@@ -1291,23 +1292,6 @@ impl SerializableItemRegistry {
         (descriptor.deserialize)(project, workspace, workspace_id, item_item, window, cx)
     }
 
-    fn cleanup(
-        item_kind: &str,
-        workspace_id: WorkspaceId,
-        loaded_items: Vec<ItemId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Task<Result<()>> {
-        let Some(descriptor) = Self::descriptor(item_kind, cx) else {
-            return Task::ready(Err(anyhow!(
-                "cannot cleanup {}, descriptor not found",
-                item_kind
-            )));
-        };
-
-        (descriptor.cleanup)(workspace_id, loaded_items, window, cx)
-    }
-
     fn view_to_serializable_item_handle(
         view: AnyView,
         cx: &App,
@@ -1328,6 +1312,7 @@ pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
 
     let registry = cx.default_global::<SerializableItemRegistry>();
     let descriptor = SerializableItemDescriptor {
+        cleanup_group: I::cleanup_group(),
         deserialize: |project, workspace, workspace_id, item_id, window, cx| {
             let task = I::deserialize(project, workspace, workspace_id, item_id, window, cx);
             cx.foreground_executor()
@@ -1344,6 +1329,35 @@ pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
     registry
         .descriptors_by_type
         .insert(TypeId::of::<I>(), descriptor);
+}
+
+pub fn cleanup_serialized_items(
+    items_by_kind: impl IntoIterator<Item = (&'static str, Vec<ItemId>)>,
+    workspace_id: WorkspaceId,
+    window: &mut Window,
+    cx: &mut App,
+) -> Vec<Task<Result<()>>> {
+    let mut groups = HashMap::<&str, (SerializableItemDescriptor, Vec<ItemId>)>::default();
+    let mut tasks = Vec::new();
+    for (kind, items) in items_by_kind {
+        if let Some(descriptor) = SerializableItemRegistry::descriptor(kind, cx) {
+            groups
+                .entry(descriptor.cleanup_group)
+                .or_insert_with(|| (descriptor, Vec::new()))
+                .1
+                .extend(items);
+        } else {
+            tasks.push(Task::ready(Err(anyhow!(
+                "cannot clean up {kind}: descriptor not found"
+            ))));
+        }
+    }
+    for (_, (descriptor, mut items)) in groups {
+        items.sort_unstable();
+        items.dedup();
+        tasks.push((descriptor.cleanup)(workspace_id, items, window, cx));
+    }
+    tasks
 }
 
 pub struct AppState {
@@ -4307,26 +4321,31 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<bool>> {
-        if self.project.read(cx).is_disconnected(cx) {
-            return Task::ready(Ok(true));
-        }
-        let dirty_items = self
+        let candidates = self
             .panes
             .iter()
             .flat_map(|pane| {
-                pane.read(cx).items().filter_map(|item| {
-                    if item.is_dirty(cx) {
-                        item.tab_content_text(0, cx);
-                        Some((pane.clone(), item.boxed_clone()))
-                    } else {
-                        None
-                    }
-                })
+                pane.read(cx)
+                    .items()
+                    .map(|item| (pane.clone(), item.boxed_clone()))
             })
             .collect::<Vec<_>>();
 
         let project = self.project.clone();
         cx.spawn_in(window, async move |workspace, cx| {
+            for (_, item) in &candidates {
+                cx.update(|window, cx| item.prepare_to_save(window, cx))?
+                    .await?;
+            }
+            if project.read_with(cx, |project, cx| project.is_disconnected(cx)) {
+                return Ok(true);
+            }
+            let dirty_items = cx.update(|_, cx| {
+                candidates
+                    .into_iter()
+                    .filter(|(_, item)| item.is_dirty(cx))
+                    .collect::<Vec<_>>()
+            })?;
             let dirty_items = if save_intent == SaveIntent::Close && !dirty_items.is_empty() {
                 let mut serialize_tasks = Vec::new();
                 let mut remaining_dirty_items = Vec::new();
@@ -8440,18 +8459,9 @@ impl Workspace {
             //
             // The items that have been loaded, have been saved after they've been added to the workspace.
             let clean_up_tasks = workspace.update_in(cx, |_, window, cx| {
-                item_ids_by_kind
+                cleanup_serialized_items(item_ids_by_kind, serialized_workspace.id, window, cx)
                     .into_iter()
-                    .map(|(item_kind, loaded_items)| {
-                        SerializableItemRegistry::cleanup(
-                            item_kind,
-                            serialized_workspace.id,
-                            loaded_items,
-                            window,
-                            cx,
-                        )
-                        .log_err()
-                    })
+                    .map(|task| task.log_err())
                     .collect::<Vec<_>>()
             })?;
 

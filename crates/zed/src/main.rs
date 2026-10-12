@@ -197,6 +197,7 @@ fn fail_to_open_window(e: anyhow::Error, _cx: &mut App) {
 static STARTUP_TIME: OnceLock<Instant> = OnceLock::new();
 
 fn main() {
+    lathe::run_browser_subprocess_if_invoked();
     STARTUP_TIME.get_or_init(|| Instant::now());
 
     // If this process was re-executed as a Linux sandbox helper, run that mode
@@ -1056,6 +1057,7 @@ fn main() {
         })
         .detach();
     });
+    lathe::shutdown_browser_runtime();
 }
 
 // Every open window periodically re-tags its workspaces with the current
