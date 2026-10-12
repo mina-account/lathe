@@ -1,0 +1,30 @@
+{"event":"runtime","wry":"0.57.0","webview":"154.0.4258.62"}
+{"event":"navigation","url":"http://lathe-probe.localhost/index.html","allowed":true}
+{"event":"resource","path":"/index.html","status":200}
+{"event":"resource","path":"/probe.css","status":200}
+{"event":"resource","path":"/probe.js","status":200}
+{"event":"bounds","scale":1.75,"x":16.0,"y":141.14285278320312,"width":425.71429443359375,"height":442.8571472167969}
+{"event":"bounds","scale":1.75,"x":457.71429443359375,"y":141.14285278320312,"width":426.28570556640625,"height":442.8571472167969}
+{"event":"navigation","url":"http://lathe-probe.localhost/index.html","allowed":true}
+{"event":"resource","path":"/index.html","status":200}
+{"event":"resource","path":"/missing.bin","status":404}
+{"event":"resource","path":"/probe.css","status":200}
+{"event":"resource","path":"/probe.js","status":200}
+{"event":"resource","path":"/missing.bin","status":404}
+{"event":"ipc","session":"left","message":"Hello { session: \"left\", request: 1 }"}
+{"event":"ipc","session":"right","message":"Hello { session: \"right\", request: 1 }"}
+{"event":"ipc","session":"left","message":"Acknowledged { session: \"left\", request: 1 }"}
+{"event":"ipc","session":"right","message":"Acknowledged { session: \"right\", request: 1 }"}
+{"event":"new_window_denied","url":"https://example.invalid/blocked"}
+{"event":"new_window_denied","url":"https://example.invalid/blocked"}
+{"event":"navigation","url":"https://example.invalid/blocked","allowed":false}
+{"event":"navigation","url":"https://example.invalid/blocked","allowed":false}
+{"event":"lifecycle_api","tick":20,"success":true}
+{"event":"lifecycle_api","tick":20,"success":true}
+{"event":"lifecycle_api","tick":30,"success":true}
+{"event":"lifecycle_api","tick":30,"success":true}
+{"event":"lifecycle_api","tick":40,"success":true}
+{"event":"lifecycle_api","tick":40,"success":true}
+{"event":"lifecycle_api","tick":50,"success":true}
+{"event":"lifecycle_api","tick":50,"success":true}
+{"event":"teardown"}
