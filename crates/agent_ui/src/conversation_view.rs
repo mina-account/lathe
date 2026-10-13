@@ -5213,6 +5213,384 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_response_model_reconstructed_local_delayed_echo(cx: &mut TestAppContext) {
+        use super::response_model::{
+            ProviderIdentity, ResponseModel, SourceIdentity, TurnIdentity, TurnLifecycle,
+            TurnOutcome,
+        };
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        let view = active_thread(&conversation_view, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        for index in 0..2 {
+            if index > 0 {
+                thread.update(cx, |thread, cx| {
+                    thread
+                        .upsert_assistant_message(
+                            acp_v2::AgentMessage::new("historical-tail")
+                                .content(vec!["Historical output".into()]),
+                            cx,
+                        )
+                        .expect("historical row");
+                });
+                cx.run_until_parked();
+            }
+            let finish = connection.defer_next_receipt_response();
+            let submission = thread.update(cx, |thread, cx| thread.send(vec!["Prompt".into()], cx));
+            let identity = TurnIdentity::Submission(submission.id.as_u64());
+            let prompt_id = format!("delayed-{index}");
+            let answer_id = format!("delayed-answer-{index}");
+            finish
+                .send(Ok(acp_v2::PromptResponse::new(prompt_id.clone())))
+                .expect("receipt");
+            submission.await.expect("accepted");
+            // Output may arrive before the first foreground report and share a historical row.
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new(answer_id.clone()).content(vec!["Answer".into()]),
+                        cx,
+                    )
+                    .expect("answer before activity");
+            });
+            cx.run_until_parked();
+            view.update(cx, |view, cx| {
+                view.response_model = ResponseModel::default();
+                view.sync_response_model(None, cx);
+                let turn = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == identity)
+                    .expect("submitting turn");
+                assert_eq!(turn.lifecycle, TurnLifecycle::Submitting);
+                assert!(turn.activity.iter().any(|source| source.identity
+                    == SourceIdentity::Message(ProviderIdentity::Keyed(answer_id.clone().into()))));
+            });
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                        cx,
+                    )
+                    .expect("running");
+                thread
+                    .upsert_user_message(acp_v2::UserMessage::new(prompt_id), cx)
+                    .expect("delayed echo");
+            });
+            cx.run_until_parked();
+            for terminal in [false, true] {
+                if terminal {
+                    thread.update(cx, |thread, cx| {
+                        thread
+                            .update_session_state(
+                                acp_v2::StateUpdate::Idle(
+                                    acp_v2::IdleStateUpdate::new()
+                                        .stop_reason(acp_v2::StopReason::EndTurn),
+                                ),
+                                cx,
+                            )
+                            .expect("stop");
+                    });
+                    cx.run_until_parked();
+                }
+                view.update(cx, |view, cx| {
+                    view.response_model = ResponseModel::default();
+                    view.sync_response_model(None, cx);
+                    assert_eq!(view.response_model.turns.len(), index + 1);
+                    let turn = view
+                        .response_model
+                        .turns
+                        .iter()
+                        .find(|turn| turn.identity == identity)
+                        .expect("reconciled turn");
+                    assert_eq!(
+                        turn.lifecycle,
+                        if terminal {
+                            TurnLifecycle::Settled(TurnOutcome::Success)
+                        } else {
+                            TurnLifecycle::Running
+                        }
+                    );
+                    let sources = if terminal {
+                        &turn.response
+                    } else {
+                        &turn.activity
+                    };
+                    assert_eq!(sources.len(), 1);
+                    assert_eq!(
+                        sources.first().expect("owned answer").identity,
+                        SourceIdentity::Message(ProviderIdentity::Keyed(answer_id.clone().into()))
+                    );
+                });
+            }
+        }
+    }
+
+    #[gpui::test]
+    async fn test_response_model_permission_stays_with_requesting_turn(cx: &mut TestAppContext) {
+        use super::response_model::{ResponseModel, TurnIdentity, TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        let view = active_thread(&conversation_view, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let finish = connection.defer_next_receipt_response();
+        let first = thread.update(cx, |thread, cx| thread.send(vec!["First".into()], cx));
+        let first_identity = TurnIdentity::Submission(first.id.as_u64());
+        finish
+            .send(Ok(acp_v2::PromptResponse::new("first")))
+            .expect("receipt");
+        first.await.expect("accepted");
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(acp_v2::UserMessage::new("first"), cx)
+                .expect("echo");
+        });
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer").content(vec!["Answer".into()]),
+                    cx,
+                )
+                .expect("answer");
+        });
+        let request = generic_permission_prompt(&thread, None, cx);
+        let (permission_id, response) = request_test_generic_permission(&thread, request, cx);
+        let finish = connection.defer_next_receipt_response();
+        let second = thread.update(cx, |thread, cx| thread.send(vec!["Second".into()], cx));
+        let second_identity = TurnIdentity::Submission(second.id.as_u64());
+        cx.run_until_parked();
+        let request = generic_permission_prompt(&thread, None, cx);
+        let (second_permission_id, second_response) =
+            request_test_generic_permission(&thread, request, cx);
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("idle with unresolved permission");
+        });
+        cx.run_until_parked();
+        for reconstruct in [false, true] {
+            view.update(cx, |view, cx| {
+                if reconstruct {
+                    view.response_model = ResponseModel::default();
+                }
+                view.sync_response_model(None, cx);
+                assert_eq!(
+                    view.response_model
+                        .turns
+                        .iter()
+                        .find(|turn| turn.identity == first_identity)
+                        .expect("requesting turn")
+                        .lifecycle,
+                    TurnLifecycle::RequiresAction
+                );
+                assert_eq!(
+                    view.response_model
+                        .turns
+                        .iter()
+                        .find(|turn| turn.identity == second_identity)
+                        .expect("queued turn")
+                        .lifecycle,
+                    TurnLifecycle::Submitting
+                );
+            });
+        }
+        thread.update(cx, |thread, cx| {
+            thread.cancel_permission_request(permission_id, cx)
+        });
+        assert_eq!(response.await, acp_v2::RequestPermissionOutcome::Cancelled);
+        cx.run_until_parked();
+        let request = generic_permission_prompt(&thread, None, cx);
+        let (early_permission_id, early_response) =
+            request_test_generic_permission(&thread, request, cx);
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.response_model = ResponseModel::default();
+            view.sync_response_model(None, cx);
+            for identity in [&first_identity, &second_identity] {
+                assert_eq!(
+                    view.response_model
+                        .turns
+                        .iter()
+                        .find(|turn| &turn.identity == identity)
+                        .expect("request owner")
+                        .lifecycle,
+                    TurnLifecycle::RequiresAction
+                );
+            }
+        });
+        thread.update(cx, |thread, cx| {
+            thread.cancel_permission_request(second_permission_id, cx)
+        });
+        assert_eq!(
+            second_response.await,
+            acp_v2::RequestPermissionOutcome::Cancelled
+        );
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.response_model = ResponseModel::default();
+            view.sync_response_model(None, cx);
+            assert_eq!(
+                view.response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == first_identity)
+                    .expect("resolved owner")
+                    .lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(
+                view.response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == second_identity)
+                    .expect("early request owner")
+                    .lifecycle,
+                TurnLifecycle::RequiresAction
+            );
+        });
+        thread.update(cx, |thread, cx| {
+            thread.cancel_permission_request(early_permission_id, cx)
+        });
+        assert_eq!(
+            early_response.await,
+            acp_v2::RequestPermissionOutcome::Cancelled
+        );
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.response_model = ResponseModel::default();
+            view.sync_response_model(None, cx);
+            assert_eq!(
+                view.response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == first_identity)
+                    .expect("completed first")
+                    .lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(
+                view.response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == second_identity)
+                    .expect("queued second")
+                    .lifecycle,
+                TurnLifecycle::Submitting
+            );
+        });
+        finish
+            .send(Ok(acp_v2::PromptResponse::new("second")))
+            .expect("second receipt");
+        second.await.expect("second accepted");
+    }
+
+    #[gpui::test]
+    async fn test_response_model_native_permission_survives_rejected_follow_up(
+        cx: &mut TestAppContext,
+    ) {
+        use super::response_model::{ResponseModel, TurnIdentity, TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        let view = active_thread(&conversation_view, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let mut finish = Some(connection.defer_next_prompt_response());
+        let first = thread.update(cx, |thread, cx| thread.send(vec!["First".into()], cx));
+        let first_identity = TurnIdentity::Submission(first.id.as_u64());
+        cx.run_until_parked();
+        let request = generic_permission_prompt(&thread, None, cx);
+        let (permission_id, response) = request_test_generic_permission(&thread, request, cx);
+        let second = thread.update(cx, |thread, cx| {
+            thread.send(
+                vec![acp_v2::ContentBlock::Other(acp_v2::OtherContentBlock::new(
+                    "_future",
+                    Default::default(),
+                ))],
+                cx,
+            )
+        });
+        let second_identity = TurnIdentity::Submission(second.id.as_u64());
+        assert!(second.await.is_err());
+        cx.run_until_parked();
+        for completed in [false, true] {
+            if completed {
+                finish
+                    .take()
+                    .expect("pending first")
+                    .send(Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)))
+                    .expect("first completed");
+            }
+            cx.run_until_parked();
+            for reconstruct in [false, true] {
+                view.update(cx, |view, cx| {
+                    if reconstruct {
+                        view.response_model = ResponseModel::default();
+                    }
+                    view.sync_response_model(None, cx);
+                    assert_eq!(
+                        view.response_model
+                            .turns
+                            .iter()
+                            .find(|turn| turn.identity == first_identity)
+                            .expect("native request owner")
+                            .lifecycle,
+                        TurnLifecycle::RequiresAction
+                    );
+                    assert_eq!(
+                        view.response_model
+                            .turns
+                            .iter()
+                            .find(|turn| turn.identity == second_identity)
+                            .expect("rejected follow up")
+                            .lifecycle,
+                        TurnLifecycle::Unaccepted
+                    );
+                });
+            }
+        }
+        first.await.expect("completed first");
+        thread.update(cx, |thread, cx| {
+            thread.cancel_permission_request(permission_id, cx)
+        });
+        assert_eq!(response.await, acp_v2::RequestPermissionOutcome::Cancelled);
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.response_model = ResponseModel::default();
+            view.sync_response_model(None, cx);
+            assert_eq!(
+                view.response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == first_identity)
+                    .expect("resolved native turn")
+                    .lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+        });
+    }
+
+    #[gpui::test]
     async fn test_response_model_native_command_preserves_prior_response(cx: &mut TestAppContext) {
         use super::response_model::{TurnLifecycle, TurnOutcome};
 
@@ -6051,22 +6429,28 @@ pub(crate) mod tests {
                 .expect("first running");
         });
         cx.run_until_parked();
-        thread_view.read_with(cx, |view, _| {
-            let first = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == first_id)
-                .expect("first running association");
-            let second = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == second_id)
-                .expect("second pending association");
-            assert_eq!(first.lifecycle, TurnLifecycle::Running);
-            assert_eq!(second.lifecycle, TurnLifecycle::Submitting);
-        });
+        for reconstruct in [false, true] {
+            thread_view.update(cx, |view, cx| {
+                if reconstruct {
+                    view.response_model = super::response_model::ResponseModel::default();
+                    view.sync_response_model(None, cx);
+                }
+                let first = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == first_id)
+                    .expect("first running association");
+                let second = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == second_id)
+                    .expect("second pending association");
+                assert_eq!(first.lifecycle, TurnLifecycle::Running);
+                assert_eq!(second.lifecycle, TurnLifecycle::Submitting);
+            });
+        }
         if interleaved_echo {
             finish_second
                 .take()
@@ -6135,38 +6519,44 @@ pub(crate) mod tests {
         let first_source = SourceIdentity::Message(ProviderIdentity::Keyed("first-answer".into()));
         let second_source =
             SourceIdentity::Message(ProviderIdentity::Keyed("second-answer".into()));
-        thread_view.read_with(cx, |view, _| {
-            assert_eq!(view.response_model.turns.len(), 2);
-            let first = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == first_id)
-                .expect("first settled association");
-            let second = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == second_id)
-                .expect("second awaiting activity association");
-            assert_eq!(
-                first.lifecycle,
-                TurnLifecycle::Settled(TurnOutcome::Success)
-            );
-            assert_eq!(first.response.len(), 1);
-            assert_eq!(
-                first.response.first().expect("first response").identity,
-                first_source
-            );
-            assert_eq!(second.lifecycle, TurnLifecycle::Submitting);
-            assert!(second.response.is_empty());
-            assert!(
-                !second
-                    .activity
+        for reconstruct in [false, true] {
+            thread_view.update(cx, |view, cx| {
+                if reconstruct {
+                    view.response_model = super::response_model::ResponseModel::default();
+                    view.sync_response_model(None, cx);
+                }
+                assert_eq!(view.response_model.turns.len(), 2);
+                let first = view
+                    .response_model
+                    .turns
                     .iter()
-                    .any(|source| source.identity == first_source)
-            );
-        });
+                    .find(|turn| turn.identity == first_id)
+                    .expect("first settled association");
+                let second = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == second_id)
+                    .expect("second awaiting activity association");
+                assert_eq!(
+                    first.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Success)
+                );
+                assert_eq!(first.response.len(), 1);
+                assert_eq!(
+                    first.response.first().expect("first response").identity,
+                    first_source
+                );
+                assert_eq!(second.lifecycle, TurnLifecycle::Submitting);
+                assert!(second.response.is_empty());
+                assert!(
+                    !second
+                        .activity
+                        .iter()
+                        .any(|source| source.identity == first_source)
+                );
+            });
+        }
         let first_generation = thread.read_with(cx, |thread, _| thread.activity_generation());
         thread.update(cx, |thread, cx| {
             thread
@@ -6196,31 +6586,37 @@ pub(crate) mod tests {
                 .expect("second answer");
         });
         cx.run_until_parked();
-        thread_view.read_with(cx, |view, _| {
-            let first = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == first_id)
-                .expect("first independent response");
-            let second = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == second_id)
-                .expect("second running");
-            assert_eq!(
-                first.lifecycle,
-                TurnLifecycle::Settled(TurnOutcome::Success)
-            );
-            assert_eq!(second.lifecycle, TurnLifecycle::Running);
-            assert!(second.response.is_empty());
-            assert_eq!(second.activity.len(), 1);
-            assert_eq!(
-                second.activity.first().expect("second activity").identity,
-                second_source
-            );
-        });
+        for reconstruct in [false, true] {
+            thread_view.update(cx, |view, cx| {
+                if reconstruct {
+                    view.response_model = super::response_model::ResponseModel::default();
+                    view.sync_response_model(None, cx);
+                }
+                let first = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == first_id)
+                    .expect("first independent response");
+                let second = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == second_id)
+                    .expect("second running");
+                assert_eq!(
+                    first.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Success)
+                );
+                assert_eq!(second.lifecycle, TurnLifecycle::Running);
+                assert!(second.response.is_empty());
+                assert_eq!(second.activity.len(), 1);
+                assert_eq!(
+                    second.activity.first().expect("second activity").identity,
+                    second_source
+                );
+            });
+        }
         thread.update(cx, |thread, cx| {
             thread
                 .update_session_state(
@@ -6232,40 +6628,46 @@ pub(crate) mod tests {
                 .expect("second interrupted");
         });
         cx.run_until_parked();
-        thread_view.read_with(cx, |view, _| {
-            assert_eq!(view.response_model.turns.len(), 2);
-            let first = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == first_id)
-                .expect("first remains successful");
-            let second = view
-                .response_model
-                .turns
-                .iter()
-                .find(|turn| turn.identity == second_id)
-                .expect("second partial response");
-            assert_eq!(
-                first.lifecycle,
-                TurnLifecycle::Settled(TurnOutcome::Success)
-            );
-            assert_eq!(first.response.len(), 1);
-            assert_eq!(
-                first.response.first().expect("first response").identity,
-                first_source
-            );
-            assert_eq!(
-                second.lifecycle,
-                TurnLifecycle::Settled(TurnOutcome::Interrupted)
-            );
-            assert_eq!(second.response.len(), 1);
-            assert_eq!(
-                second.response.first().expect("second response").identity,
-                second_source
-            );
-            assert_eq!(second.predecessor, Some(first_id));
-        });
+        for reconstruct in [false, true] {
+            thread_view.update(cx, |view, cx| {
+                if reconstruct {
+                    view.response_model = super::response_model::ResponseModel::default();
+                    view.sync_response_model(None, cx);
+                }
+                assert_eq!(view.response_model.turns.len(), 2);
+                let first = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == first_id)
+                    .expect("first remains successful");
+                let second = view
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| turn.identity == second_id)
+                    .expect("second partial response");
+                assert_eq!(
+                    first.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Success)
+                );
+                assert_eq!(first.response.len(), 1);
+                assert_eq!(
+                    first.response.first().expect("first response").identity,
+                    first_source
+                );
+                assert_eq!(
+                    second.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Interrupted)
+                );
+                assert_eq!(second.response.len(), 1);
+                assert_eq!(
+                    second.response.first().expect("second response").identity,
+                    second_source
+                );
+                assert_eq!(second.predecessor, Some(first_id.clone()));
+            });
+        }
     }
 
     #[gpui::test]

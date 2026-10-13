@@ -80,6 +80,13 @@ pub enum LegacySubmissionCompletion {
 pub struct SubmissionActivity {
     pub generation: u64,
     pub completion: Option<Option<acp_v2::StopReason>>,
+    pub boundary: (usize, usize),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PresentationOwner {
+    Submission(SubmissionId),
+    Activity(u64),
 }
 
 pub struct SubmissionRecord {
@@ -128,6 +135,9 @@ pub(crate) struct SessionSubmissions {
     unmatched_activity_prompts: Vec<acp_v2::MessageId>,
     external_activity_prompt: Option<acp_v2::MessageId>,
     activity_boundary: (usize, usize),
+    content_owners: BTreeMap<(usize, Option<usize>), PresentationOwner>,
+    generation_owners: BTreeMap<u64, SubmissionId>,
+    submission_boundaries: BTreeMap<SubmissionId, (usize, usize)>,
     next_id: u64,
     latest_id: Option<SubmissionId>,
 }
@@ -146,6 +156,9 @@ impl SessionSubmissions {
             unmatched_activity_prompts: Vec::default(),
             external_activity_prompt: None,
             activity_boundary: (0, 0),
+            content_owners: BTreeMap::default(),
+            generation_owners: BTreeMap::default(),
+            submission_boundaries: BTreeMap::default(),
             next_id: 0,
             latest_id: None,
         }
@@ -183,10 +196,32 @@ impl SessionSubmissions {
         if self.activity_boundary.0 >= index {
             self.activity_boundary = (index, 0);
         }
+        self.content_owners.retain(|(entry, _), _| *entry < index);
+        for activity in self.activities.values_mut() {
+            if activity.boundary.0 >= index {
+                activity.boundary = (index, 0);
+            }
+        }
+        for boundary in self.submission_boundaries.values_mut() {
+            if boundary.0 >= index {
+                *boundary = (index, 0);
+            }
+        }
     }
 
     pub(crate) fn activity(&self, id: SubmissionId) -> Option<&SubmissionActivity> {
         self.activities.get(&id)
+    }
+
+    pub(crate) fn associate_boundary(&mut self, id: SubmissionId, boundary: (usize, usize)) {
+        self.submission_boundaries.insert(id, boundary);
+    }
+
+    pub(crate) fn submission_boundary(&self, id: SubmissionId) -> Option<(usize, usize)> {
+        self.activities
+            .get(&id)
+            .map(|activity| activity.boundary)
+            .or_else(|| self.submission_boundaries.get(&id).copied())
     }
 
     pub(crate) fn external_activity_prompt(&self) -> Option<&acp_v2::MessageId> {
@@ -195,6 +230,77 @@ impl SessionSubmissions {
 
     pub(crate) fn activity_boundary(&self) -> (usize, usize) {
         self.activity_boundary
+    }
+
+    fn awaiting_activity(&self) -> Option<SubmissionId> {
+        self.records
+            .iter()
+            .filter_map(|(id, record)| {
+                (matches!(
+                    record.state,
+                    SubmissionState::Pending | SubmissionState::Accepted { .. }
+                ) && !self.activities.contains_key(id))
+                .then_some(*id)
+            })
+            .chain(self.receipts.keys().copied().filter(|id| {
+                !self.activities.contains_key(id)
+                    && self.records.get(id).is_none_or(|record| {
+                        matches!(
+                            record.state,
+                            SubmissionState::Pending | SubmissionState::Accepted { .. }
+                        )
+                    })
+            }))
+            .min()
+    }
+
+    pub(crate) fn presentation_owner(
+        &self,
+        generation: u64,
+        active: bool,
+    ) -> Option<PresentationOwner> {
+        if active {
+            // A delayed external echo can disprove the tentative submission resumption.
+            Some(PresentationOwner::Activity(generation))
+        } else {
+            self.awaiting_activity().map(PresentationOwner::Submission)
+        }
+    }
+
+    pub(crate) fn resolve_owner(&self, owner: PresentationOwner) -> PresentationOwner {
+        match owner {
+            PresentationOwner::Activity(generation) => self
+                .generation_owners
+                .get(&generation)
+                .copied()
+                .map_or(owner, PresentationOwner::Submission),
+            _ => owner,
+        }
+    }
+
+    pub(crate) fn observe_content(
+        &mut self,
+        position: (usize, Option<usize>),
+        generation: u64,
+        active: bool,
+    ) {
+        if self.receipt_transport.is_none() {
+            return;
+        }
+        if let Some(owner) = self.presentation_owner(generation, active) {
+            // In-place updates retain the source's original turn.
+            self.content_owners.entry(position).or_insert(owner);
+        }
+    }
+
+    pub(crate) fn content_owner(
+        &self,
+        position: (usize, Option<usize>),
+    ) -> Option<PresentationOwner> {
+        self.content_owners
+            .get(&position)
+            .copied()
+            .map(|owner| self.resolve_owner(owner))
     }
 
     pub(crate) fn retain_activity_prompts(
@@ -238,24 +344,7 @@ impl SessionSubmissions {
             )
         };
         // An echoed receipt can lose its record before its first activity report.
-        let awaiting_activity = self
-            .records
-            .iter()
-            .find_map(|(id, record)| {
-                (matches!(
-                    record.state,
-                    SubmissionState::Pending | SubmissionState::Accepted { .. }
-                ) && !self.activities.contains_key(id))
-                .then_some(*id)
-            })
-            .into_iter()
-            .chain(
-                self.receipts
-                    .keys()
-                    .copied()
-                    .filter(|id| !self.activities.contains_key(id) && eligible(*id)),
-            )
-            .min();
+        let awaiting_activity = self.awaiting_activity();
         let resumed_owner = self.activity_owner.filter(|id| {
             eligible(*id)
                 && latest_prompt.is_none_or(|prompt| self.receipts.get(id) == Some(prompt))
@@ -284,11 +373,17 @@ impl SessionSubmissions {
             })
             .flatten();
         if let Some(id) = self.activity_owner {
+            self.generation_owners.insert(generation, id);
+            let boundary = self
+                .activities
+                .get(&id)
+                .map_or(boundary, |activity| activity.boundary.min(boundary));
             self.activities.insert(
                 id,
                 SubmissionActivity {
                     generation,
                     completion: None,
+                    boundary,
                 },
             );
         }
@@ -316,6 +411,9 @@ impl SessionSubmissions {
         {
             // A delayed new prompt disproves the apparent resumption of the previous receipt.
             if let Some((id, previous)) = self.resumed_activity.take() {
+                if let Some(activity) = self.activities.get(&id) {
+                    self.generation_owners.remove(&activity.generation);
+                }
                 self.activities.insert(id, previous);
                 self.activity_owner = None;
             }
@@ -433,6 +531,10 @@ impl SessionSubmissions {
         self.legacy_completions.remove(&id);
         self.legacy_prompt_entries.remove(&id);
         self.activities.remove(&id);
+        self.submission_boundaries.remove(&id);
+        self.generation_owners.retain(|_, owner| *owner != id);
+        self.content_owners
+            .retain(|_, owner| *owner != PresentationOwner::Submission(id));
         if self.activity_owner == Some(id) {
             self.activity_owner = None;
         }

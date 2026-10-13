@@ -43,6 +43,7 @@ pub struct ContentObservation {
     pub visible: bool,
     pub pending_action: bool,
     pub failed: bool,
+    pub owner: Option<acp_thread::PresentationOwner>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +73,7 @@ pub struct SubmissionObservation {
     pub outcome: Option<TurnOutcome>,
     pub prompt: Option<SourceReference>,
     pub generation: Option<u64>,
+    pub boundary: Option<(usize, usize)>,
 }
 
 #[derive(Clone, Debug)]
@@ -92,6 +94,8 @@ pub struct ThreadObservation {
     pub activity_generation: u64,
     pub external_activity: Option<ExternalActivityObservation>,
     pub pending_permission: bool,
+    pub permission_owners: Vec<Option<acp_thread::PresentationOwner>>,
+    pub legacy_activity_submission: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -338,8 +342,14 @@ impl ResponseModel {
                         || provisional_boundary(thread),
                         |content| (content.source.entry_index, 0),
                     );
+                    let (first_entry, first_chunk) = submission
+                        .boundary
+                        .map_or((first_entry, first_chunk), |boundary| {
+                            boundary.min((first_entry, first_chunk))
+                        });
                     // Receipt caches outlive views; bounded echoes on first observation are history.
                     let historical_receipt = self.previous_activity.is_none()
+                        && submission.boundary.is_none()
                         && submission.generation.is_none()
                         && matches!(submission.phase, SubmissionPhase::Accepted { .. })
                         && prompt.is_some_and(|prompt| {
@@ -635,18 +645,27 @@ impl ResponseModel {
                         .flatten()
                 })
         } else {
-            self.associations.len().checked_sub(1).filter(|index| {
-                self.associations.get(*index).is_some_and(|association| {
-                    association.submission_id.is_none_or(|id| {
-                        thread
-                            .submission
-                            .as_ref()
-                            .is_some_and(|submission| submission.id == id)
-                    }) && (!new_external_prompt
-                        || registered_submission
-                        || matches!(association.identity, TurnIdentity::Activity(_)))
+            thread
+                .legacy_activity_submission
+                .and_then(|id| {
+                    self.associations
+                        .iter()
+                        .position(|association| association.submission_id == Some(id))
                 })
-            })
+                .or_else(|| {
+                    self.associations.len().checked_sub(1).filter(|index| {
+                        self.associations.get(*index).is_some_and(|association| {
+                            association.submission_id.is_none_or(|id| {
+                                thread
+                                    .submission
+                                    .as_ref()
+                                    .is_some_and(|submission| submission.id == id)
+                            }) && (!new_external_prompt
+                                || registered_submission
+                                || matches!(association.identity, TurnIdentity::Activity(_)))
+                        })
+                    })
+                })
         };
         if thread.reported_activity
             && let Some((_, previous_generation)) = self.previous_activity
@@ -762,6 +781,60 @@ impl ResponseModel {
                         .entry(content.source.clone())
                         .or_insert_with(|| owner.identity.clone());
                 }
+            }
+        }
+        let identities_by_submission: HashMap<_, _> = self
+            .associations
+            .iter()
+            .filter_map(|association| {
+                association
+                    .submission_id
+                    .map(|id| (id, association.identity.clone()))
+            })
+            .collect();
+        let identities_by_generation: HashMap<_, _> = self
+            .associations
+            .iter()
+            .filter_map(|association| {
+                association
+                    .generation
+                    .map(|generation| (generation, association.identity.clone()))
+            })
+            .collect();
+        for content in &thread.contents {
+            let owner = match content.owner {
+                Some(acp_thread::PresentationOwner::Submission(id)) => {
+                    identities_by_submission.get(&id.as_u64())
+                }
+                Some(acp_thread::PresentationOwner::Activity(generation)) => {
+                    identities_by_generation.get(&generation)
+                }
+                None => None,
+            };
+            if let Some(owner) = owner {
+                self.source_owners
+                    .insert(content.source.clone(), owner.clone());
+            }
+        }
+        let first_sources: HashMap<_, _> = thread
+            .contents
+            .iter()
+            .filter_map(|content| {
+                self.source_owners
+                    .get(&content.source)
+                    .map(|owner| (owner, source_position(&content.source)))
+            })
+            .fold(HashMap::new(), |mut positions, (owner, position)| {
+                positions
+                    .entry(owner)
+                    .and_modify(|first: &mut (usize, usize)| *first = (*first).min(position))
+                    .or_insert(position);
+                positions
+            });
+        for association in &mut self.associations {
+            if let Some(first) = first_sources.get(&association.identity) {
+                (association.first_entry, association.first_chunk) =
+                    (*first).min((association.first_entry, association.first_chunk));
             }
         }
         self.previous_activity = Some((thread.activity, thread.activity_generation));
@@ -958,6 +1031,42 @@ impl ResponseModel {
                     })
                     .map(|association| &association.identity)
             });
+        let associations_by_submission: HashMap<_, _> = self
+            .associations
+            .iter()
+            .filter_map(|association| {
+                association
+                    .submission_id
+                    .map(|id| (id, &association.identity))
+            })
+            .collect();
+        let associations_by_generation: HashMap<_, _> = self
+            .associations
+            .iter()
+            .filter_map(|association| {
+                association
+                    .generation
+                    .map(|generation| (generation, &association.identity))
+            })
+            .collect();
+        let permission_owners: HashSet<_> = thread
+            .permission_owners
+            .iter()
+            .filter_map(|owner| match owner {
+                Some(acp_thread::PresentationOwner::Submission(id)) => {
+                    associations_by_submission.get(&id.as_u64()).copied()
+                }
+                Some(acp_thread::PresentationOwner::Activity(generation)) => {
+                    associations_by_generation.get(generation).copied()
+                }
+                None => None,
+            })
+            .collect();
+        let unowned_permission = if thread.permission_owners.is_empty() {
+            thread.pending_permission
+        } else {
+            thread.permission_owners.iter().any(Option::is_none)
+        };
         let mut predecessor = None;
         let last_identity = groups.last().map(|(identity, _, _)| identity.clone());
         groups
@@ -967,11 +1076,14 @@ impl ResponseModel {
                 let current = Some(&identity) == last_identity.as_ref();
                 let active = if thread.reported_activity {
                     self.activity_owner.as_ref() == Some(&identity)
+                } else if let Some(id) = thread.legacy_activity_submission {
+                    association.is_some_and(|association| association.submission_id == Some(id))
                 } else {
                     current
                 };
                 let pending = contents.iter().any(|content| content.pending_action)
-                    || (thread.pending_permission
+                    || permission_owners.contains(&identity)
+                    || (unowned_permission
                         && (permission_owner == Some(&identity)
                             || (permission_owner.is_none() && current)));
                 let failed = contents.iter().any(|content| content.failed);
@@ -1134,6 +1246,7 @@ mod tests {
             visible: true,
             pending_action: false,
             failed: false,
+            owner: None,
         }
     }
 
@@ -1152,6 +1265,8 @@ mod tests {
             activity_generation: 0,
             external_activity: None,
             pending_permission: false,
+            permission_owners: Vec::new(),
+            legacy_activity_submission: None,
         }
     }
 
@@ -1299,6 +1414,7 @@ mod tests {
             outcome: None,
             prompt: None,
             generation: None,
+            boundary: None,
             phase: SubmissionPhase::Pending,
         });
         thread
@@ -1344,6 +1460,7 @@ mod tests {
                 outcome: None,
                 prompt: None,
                 generation: None,
+                boundary: None,
             });
             thread.contents = vec![
                 content(0, None, Prompt, "prompt"),
@@ -1457,6 +1574,7 @@ mod tests {
                 outcome: Some(TurnOutcome::Interrupted),
                 prompt: Some(first_prompt.clone()),
                 generation: None,
+                boundary: None,
             },
             SubmissionObservation {
                 id: 2,
@@ -1465,6 +1583,7 @@ mod tests {
                 outcome: Some(TurnOutcome::Success),
                 prompt: Some(first_prompt.clone()),
                 generation: None,
+                boundary: None,
             },
         ];
         thread.submission = Some(SubmissionObservation {
@@ -1474,6 +1593,7 @@ mod tests {
             outcome: Some(TurnOutcome::Failed),
             prompt: Some(later_prompt.clone()),
             generation: None,
+            boundary: None,
         });
         let mut model = ResponseModel::default();
         model.observe(&thread, ObservationEvent::Refresh);
@@ -1526,6 +1646,7 @@ mod tests {
                 outcome: Some(TurnOutcome::Interrupted),
                 prompt: retained_prompt,
                 generation: None,
+                boundary: None,
             });
             thread.submission = Some(SubmissionObservation {
                 id: 2,
@@ -1541,6 +1662,7 @@ mod tests {
                         .clone(),
                 ),
                 generation: None,
+                boundary: None,
             });
             let turns = classified(&thread);
             assert_eq!(turns.len(), 1);
@@ -1759,6 +1881,7 @@ mod tests {
             outcome: None,
             prompt: None,
             generation: None,
+            boundary: None,
             phase: SubmissionPhase::Pending,
         });
         model.observe(&thread, ObservationEvent::Refresh);
@@ -1919,6 +2042,7 @@ mod tests {
             outcome: None,
             prompt: None,
             generation: None,
+            boundary: None,
             phase: SubmissionPhase::Pending,
         });
         let mut model = ResponseModel::default();
@@ -2234,6 +2358,7 @@ mod tests {
             outcome: None,
             prompt: None,
             generation: None,
+            boundary: None,
         });
         model.observe(&thread, ObservationEvent::Refresh);
         thread.activity = ActivityPhase::Running;

@@ -1593,6 +1593,8 @@ impl ThreadView {
                             visible: block.visible_content(cx),
                             pending_action: false,
                             failed: false,
+                            owner: thread
+                                .content_presentation_owner(entry_index, Some(chunk_index)),
                         });
                     }
                     continue;
@@ -1630,6 +1632,7 @@ impl ThreadView {
                 visible: true,
                 pending_action,
                 failed,
+                owner: thread.content_presentation_owner(entry_index, None),
             });
         }
         let reported_outcome = |reason: &Option<acp_v2::StopReason>| match reason {
@@ -1677,6 +1680,7 @@ impl ThreadView {
                     generation: thread
                         .submission_activity(id)
                         .map(|activity| activity.generation),
+                    boundary: thread.submission_content_boundary(id),
                 }
             };
         let latest_submission = thread.latest_submission_id();
@@ -1689,6 +1693,16 @@ impl ThreadView {
             .recoverable_submissions()
             .filter(|(id, _)| Some(*id) != latest_submission)
             .map(|(id, record)| submission_observation(id, record))
+            .chain(
+                thread
+                    .legacy_activity_submission()
+                    .filter(|id| Some(*id) != latest_submission)
+                    .and_then(|id| {
+                        thread
+                            .submission(id)
+                            .map(|record| submission_observation(id, record))
+                    }),
+            )
             .chain(thread.submission_receipts().filter_map(|(id, message_id)| {
                 (thread.submission(id).is_none()).then(|| SubmissionObservation {
                     id: id.as_u64(),
@@ -1705,6 +1719,7 @@ impl ThreadView {
                     generation: thread
                         .submission_activity(id)
                         .map(|activity| activity.generation),
+                    boundary: thread.submission_content_boundary(id),
                 })
             }))
             .chain(
@@ -1737,6 +1752,7 @@ impl ThreadView {
                             outcome: Some(outcome),
                             prompt: legacy_prompt(id),
                             generation: None,
+                            boundary: thread.submission_content_boundary(id),
                         }
                     }),
             )
@@ -1767,6 +1783,13 @@ impl ThreadView {
                     }
                 }),
                 pending_permission: thread.pending_permission_requests().next().is_some(),
+                permission_owners: thread
+                    .pending_permission_requests()
+                    .map(|request| thread.permission_presentation_owner(request))
+                    .collect(),
+                legacy_activity_submission: thread
+                    .legacy_activity_submission()
+                    .map(|id| id.as_u64()),
             },
             event,
         );

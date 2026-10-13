@@ -1050,6 +1050,7 @@ pub struct PermissionRequestId(Uuid);
 #[derive(Debug)]
 pub struct PermissionRequest {
     pub id: PermissionRequestId,
+    presentation_owner: Option<PresentationOwner>,
     data: PermissionRequestData,
 }
 
@@ -3372,6 +3373,7 @@ pub fn refusal_fallback_model_from_meta(meta: &Option<acp_v1::Meta>) -> Option<S
 
 struct RunningTurn {
     id: u32,
+    submission_id: SubmissionId,
     first_entry_index: usize,
     send_task: Task<()>,
 }
@@ -4048,12 +4050,57 @@ impl AcpThread {
         self.submissions.activity(id)
     }
 
+    pub fn submission_content_boundary(&self, id: SubmissionId) -> Option<(usize, usize)> {
+        self.submissions.submission_boundary(id)
+    }
+
     pub fn external_activity_prompt(&self) -> Option<&acp_v2::MessageId> {
         self.submissions.external_activity_prompt()
     }
 
     pub fn activity_content_boundary(&self) -> (usize, usize) {
         self.submissions.activity_boundary()
+    }
+
+    pub fn content_presentation_owner(
+        &self,
+        entry_index: usize,
+        chunk_index: Option<usize>,
+    ) -> Option<PresentationOwner> {
+        self.submissions.content_owner((entry_index, chunk_index))
+    }
+
+    pub fn permission_presentation_owner(
+        &self,
+        request: &PermissionRequest,
+    ) -> Option<PresentationOwner> {
+        request
+            .presentation_owner
+            .map(|owner| self.submissions.resolve_owner(owner))
+    }
+
+    fn presentation_owner(&self) -> Option<PresentationOwner> {
+        if self.uses_reported_activity() {
+            self.submissions.presentation_owner(
+                self.activity_generation(),
+                self.foreground_activity() != ForegroundActivity::Idle,
+            )
+        } else if self.foreground_activity() != ForegroundActivity::Idle {
+            self.running_turn
+                .as_ref()
+                .map(|turn| PresentationOwner::Submission(turn.submission_id))
+        } else {
+            let id = self.submissions.latest_id()?;
+            self.submissions
+                .get(id)
+                .filter(|record| {
+                    matches!(
+                        record.state,
+                        SubmissionState::Pending | SubmissionState::Accepted { .. }
+                    )
+                })
+                .map(|_| PresentationOwner::Submission(id))
+        }
     }
 
     pub fn legacy_submission_prompt_entry(&self, id: SubmissionId) -> Option<usize> {
@@ -4068,6 +4115,12 @@ impl AcpThread {
 
     pub fn latest_submission_id(&self) -> Option<SubmissionId> {
         self.submissions.latest_id()
+    }
+
+    pub fn legacy_activity_submission(&self) -> Option<SubmissionId> {
+        (!self.uses_reported_activity() && self.foreground_activity() != ForegroundActivity::Idle)
+            .then(|| self.running_turn.as_ref().map(|turn| turn.submission_id))
+            .flatten()
     }
 
     pub fn has_unsettled_submissions(&self) -> bool {
@@ -4111,6 +4164,13 @@ impl AcpThread {
         cx: &mut Context<Self>,
     ) -> SubmissionId {
         let id = self.submissions.register(content, kind);
+        let boundary =
+            if let Some(AgentThreadEntry::AssistantMessage(message)) = self.entries.last() {
+                (self.entries.len().saturating_sub(1), message.chunks.len())
+            } else {
+                (self.entries.len(), 0)
+            };
+        self.submissions.associate_boundary(id, boundary);
         cx.emit(AcpThreadEvent::SubmissionUpdated(id));
         cx.notify();
         id
@@ -4714,6 +4774,11 @@ impl AcpThread {
                 {
                     let chunk_index = message.chunks.len();
                     message.chunks.push(chunk);
+                    self.submissions.observe_content(
+                        (entry_index - 1, Some(chunk_index)),
+                        self.activity.generation(),
+                        self.activity.phase() != ForegroundActivity::Idle,
+                    );
                     Ok(MessageLocation::Assistant {
                         entry_index: entry_index - 1,
                         chunk_index,
@@ -4725,6 +4790,11 @@ impl AcpThread {
                             indented: false,
                             is_subagent_output: false,
                         }));
+                    self.submissions.observe_content(
+                        (entry_index, Some(0)),
+                        self.activity.generation(),
+                        self.activity.phase() != ForegroundActivity::Idle,
+                    );
                     Ok(MessageLocation::Assistant {
                         entry_index,
                         chunk_index: 0,
@@ -4912,6 +4982,7 @@ impl AcpThread {
         {
             let idx = entries_len - 1;
             cx.emit(AcpThreadEvent::EntryUpdated(idx));
+            let previous_chunk_count = chunks.len();
             match (chunks.last_mut(), is_thought) {
                 (
                     Some(AssistantMessageChunk::Message {
@@ -4950,6 +5021,13 @@ impl AcpThread {
                         })
                     }
                 }
+            }
+            if chunks.len() > previous_chunk_count {
+                self.submissions.observe_content(
+                    (idx, Some(previous_chunk_count)),
+                    self.activity.generation(),
+                    self.activity.phase() != ForegroundActivity::Idle,
+                );
             }
         } else {
             let block = MessageContent::new(chunk, &language_registry, path_style, cx);
@@ -5122,6 +5200,22 @@ impl AcpThread {
 
     fn push_entry(&mut self, entry: AgentThreadEntry, cx: &mut Context<Self>) {
         self.flush_streaming_text(cx);
+        if self.uses_reported_activity() && !matches!(entry, AgentThreadEntry::UserMessage(_)) {
+            let generation = self.activity_generation();
+            let active = self.foreground_activity() != ForegroundActivity::Idle;
+            if let AgentThreadEntry::AssistantMessage(message) = &entry {
+                for chunk_index in 0..message.chunks.len() {
+                    self.submissions.observe_content(
+                        (self.entries.len(), Some(chunk_index)),
+                        generation,
+                        active,
+                    );
+                }
+            } else {
+                self.submissions
+                    .observe_content((self.entries.len(), None), generation, active);
+            }
+        }
         self.entries.push(entry);
         cx.emit(AcpThreadEvent::NewEntry);
     }
@@ -5754,6 +5848,7 @@ impl AcpThread {
             id,
             PermissionRequest {
                 id,
+                presentation_owner: self.presentation_owner(),
                 data: PermissionRequestData::Generic {
                     request,
                     respond_tx,
@@ -5855,6 +5950,7 @@ impl AcpThread {
             id,
             PermissionRequest {
                 id,
+                presentation_owner: self.presentation_owner(),
                 data: PermissionRequestData::LegacyTool {
                     tool_call_id,
                     options,
@@ -6395,6 +6491,7 @@ impl AcpThread {
         let first_entry_index = self.entries.len().saturating_sub(1);
         self.running_turn = Some(RunningTurn {
             id: turn_id,
+            submission_id: id,
             first_entry_index,
             send_task: cx.spawn(async move |this, cx| {
                 cancel_task.await;
