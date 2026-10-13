@@ -1632,6 +1632,27 @@ impl ThreadView {
                 failed,
             });
         }
+        let reported_outcome = |reason: &Option<acp_v2::StopReason>| match reason {
+            Some(acp_v2::StopReason::EndTurn) => TurnOutcome::Success,
+            Some(acp_v2::StopReason::Cancelled) => TurnOutcome::Interrupted,
+            Some(
+                acp_v2::StopReason::MaxTokens
+                | acp_v2::StopReason::MaxTurnRequests
+                | acp_v2::StopReason::Refusal,
+            ) => TurnOutcome::Failed,
+            _ => TurnOutcome::Unknown,
+        };
+        let prompt_sources: std::collections::HashMap<_, _> = contents
+            .iter()
+            .filter(|content| content.kind == ContentKind::Prompt)
+            .map(|content| (content.source.entry_index, &content.source))
+            .collect();
+        let legacy_prompt = |id| {
+            let entry_index = thread.legacy_submission_prompt_entry(id)?;
+            prompt_sources
+                .get(&entry_index)
+                .map(|source| (*source).clone())
+        };
         let submission_observation =
             |id: acp_thread::SubmissionId, record: &acp_thread::SubmissionRecord| {
                 let phase = match &record.state {
@@ -1648,7 +1669,14 @@ impl ThreadView {
                     id: id.as_u64(),
                     kind: record.kind,
                     phase,
-                    outcome: None,
+                    outcome: thread
+                        .submission_activity(id)
+                        .and_then(|activity| activity.completion.as_ref())
+                        .map(reported_outcome),
+                    prompt: legacy_prompt(id),
+                    generation: thread
+                        .submission_activity(id)
+                        .map(|activity| activity.generation),
                 }
             };
         let latest_submission = thread.latest_submission_id();
@@ -1669,7 +1697,14 @@ impl ThreadView {
                         prompt: ProviderIdentity::Keyed(message_id.0.clone()),
                         echoed: false,
                     },
-                    outcome: None,
+                    outcome: thread
+                        .submission_activity(id)
+                        .and_then(|activity| activity.completion.as_ref())
+                        .map(reported_outcome),
+                    prompt: None,
+                    generation: thread
+                        .submission_activity(id)
+                        .map(|activity| activity.generation),
                 })
             }))
             .chain(
@@ -1700,6 +1735,8 @@ impl ThreadView {
                             kind,
                             phase,
                             outcome: Some(outcome),
+                            prompt: legacy_prompt(id),
+                            generation: None,
                         }
                     }),
             )

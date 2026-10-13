@@ -70,6 +70,8 @@ pub struct SubmissionObservation {
     pub kind: acp_thread::SubmissionKind,
     pub phase: SubmissionPhase,
     pub outcome: Option<TurnOutcome>,
+    pub prompt: Option<SourceReference>,
+    pub generation: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -266,6 +268,12 @@ impl ResponseModel {
                 }
             })
             .collect();
+        let prompt_sources: HashMap<_, _> = thread
+            .contents
+            .iter()
+            .filter(|content| content.kind == ContentKind::Prompt)
+            .map(|content| (&content.source, content))
+            .collect();
         let submission_updates: BTreeMap<_, _> = thread
             .submission
             .iter()
@@ -297,16 +305,23 @@ impl ResponseModel {
                     association.resumption = None;
                     self.associations.push(association);
                 } else {
-                    let prompt = match &submission.phase {
-                        SubmissionPhase::Accepted { prompt, .. } => prompts.get(prompt).copied(),
-                        _ => retry_prompt,
-                    };
+                    let prompt = submission
+                        .prompt
+                        .as_ref()
+                        .and_then(|source| prompt_sources.get(source).copied())
+                        .or_else(|| match &submission.phase {
+                            SubmissionPhase::Accepted { prompt, .. } => {
+                                prompts.get(prompt).copied()
+                            }
+                            _ => retry_prompt,
+                        });
                     let (first_entry, first_chunk) = prompt.map_or_else(
                         || provisional_boundary(thread),
                         |content| (content.source.entry_index, 0),
                     );
                     // Receipt caches outlive views; bounded echoes on first observation are history.
                     let historical_receipt = self.previous_activity.is_none()
+                        && submission.generation.is_none()
                         && matches!(submission.phase, SubmissionPhase::Accepted { .. })
                         && prompt.is_some_and(|prompt| {
                             last_prompt.is_some_and(|last| {
@@ -321,7 +336,7 @@ impl ResponseModel {
                         first_entry,
                         first_chunk,
                         prompt: prompt.map(|content| content.source.clone()),
-                        generation: None,
+                        generation: submission.generation,
                         baseline_generation: thread.activity_generation,
                         submission: Some(submission.phase.clone()),
                         accepted: matches!(
@@ -340,7 +355,9 @@ impl ResponseModel {
             if let Some(id) = association.submission_id
                 && let Some(submission) = submission_updates.get(&id)
             {
-                if matches!(association.submission, Some(SubmissionPhase::Pending))
+                if (association.generation.is_none()
+                    || association.generation == submission.generation
+                    || !thread.reported_activity)
                     && let Some(outcome) = submission.outcome
                 {
                     association.terminal = Some(outcome);
@@ -860,6 +877,22 @@ impl ResponseModel {
             .rev()
             .map(|association| (&association.identity, association))
             .collect();
+        let permission_owner = self
+            .activity_owner
+            .as_ref()
+            .filter(|_| thread.activity != ActivityPhase::Idle)
+            .or_else(|| {
+                self.associations
+                    .iter()
+                    .find(|association| {
+                        association.terminal.is_none()
+                            && matches!(
+                                association.submission,
+                                Some(SubmissionPhase::Pending | SubmissionPhase::Accepted { .. })
+                            )
+                    })
+                    .map(|association| &association.identity)
+            });
         let mut predecessor = None;
         let last_identity = groups.last().map(|(identity, _, _)| identity.clone());
         groups
@@ -873,7 +906,9 @@ impl ResponseModel {
                     current
                 };
                 let pending = contents.iter().any(|content| content.pending_action)
-                    || (active && thread.pending_permission);
+                    || (thread.pending_permission
+                        && (permission_owner == Some(&identity)
+                            || (permission_owner.is_none() && current)));
                 let failed = contents.iter().any(|content| content.failed);
                 let lifecycle =
                     if pending || (active && thread.activity == ActivityPhase::RequiresAction) {
@@ -1196,6 +1231,8 @@ mod tests {
             id: 1,
             kind: acp_thread::SubmissionKind::Prompt,
             outcome: None,
+            prompt: None,
+            generation: None,
             phase: SubmissionPhase::Pending,
         });
         thread
@@ -1239,6 +1276,8 @@ mod tests {
                     echoed: true,
                 },
                 outcome: None,
+                prompt: None,
+                generation: None,
             });
             thread.contents = vec![
                 content(0, None, Prompt, "prompt"),
@@ -1531,6 +1570,8 @@ mod tests {
             id: 2,
             kind: acp_thread::SubmissionKind::Prompt,
             outcome: None,
+            prompt: None,
+            generation: None,
             phase: SubmissionPhase::Pending,
         });
         model.observe(&thread, ObservationEvent::Refresh);
@@ -1689,6 +1730,8 @@ mod tests {
             id: 1,
             kind: acp_thread::SubmissionKind::Prompt,
             outcome: None,
+            prompt: None,
+            generation: None,
             phase: SubmissionPhase::Pending,
         });
         let mut model = ResponseModel::default();
@@ -2002,6 +2045,8 @@ mod tests {
             kind: acp_thread::SubmissionKind::Prompt,
             phase: SubmissionPhase::Pending,
             outcome: None,
+            prompt: None,
+            generation: None,
         });
         model.observe(&thread, ObservationEvent::Refresh);
         thread.activity = ActivityPhase::Running;

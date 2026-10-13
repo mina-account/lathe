@@ -4767,6 +4767,169 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_response_model_reconstructed_running_legacy(cx: &mut TestAppContext) {
+        use super::response_model::{ResponseModel, TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        let view = active_thread(&conversation_view, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let finish = connection.defer_next_prompt_response();
+        let submission = thread.update(cx, |thread, cx| thread.send(vec!["Prompt".into()], cx));
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::AgentMessageChunk(acp_v1::ContentChunk::new(
+                        "Partial".into(),
+                    )),
+                    cx,
+                )
+                .expect("streaming output");
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.response_model = ResponseModel::default();
+            view.sync_response_model(None, cx);
+            assert_eq!(view.response_model.turns.len(), 1);
+            let turn = view.response_model.turns.first().expect("running turn");
+            assert_eq!(turn.lifecycle, TurnLifecycle::Running);
+            assert!(turn.prompt.is_some());
+            assert!(turn.response.is_empty());
+            assert_eq!(turn.activity.len(), 1);
+        });
+        finish
+            .send(Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)))
+            .expect("pending completion");
+        submission.await.expect("completion");
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            let turn = view.response_model.turns.first().expect("completed turn");
+            assert_eq!(turn.lifecycle, TurnLifecycle::Settled(TurnOutcome::Success));
+            assert_eq!(turn.response.len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_response_model_reconstructed_completed_receipt(cx: &mut TestAppContext) {
+        check_reconstructed_receipt(cx, false).await;
+    }
+
+    #[gpui::test]
+    async fn test_response_model_reconstructed_early_permission(cx: &mut TestAppContext) {
+        check_reconstructed_receipt(cx, true).await;
+    }
+
+    async fn check_reconstructed_receipt(cx: &mut TestAppContext, permissions: bool) {
+        use super::response_model::{ResponseModel, TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        let view = active_thread(&conversation_view, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        for index in 0..2 {
+            let finish = connection.defer_next_receipt_response();
+            let submission = thread.update(cx, |thread, cx| thread.send(vec!["Prompt".into()], cx));
+            let prompt_id = format!("prompt-{index}");
+            finish
+                .send(Ok(acp_v2::PromptResponse::new(prompt_id.clone())))
+                .expect("receipt pending");
+            submission.await.expect("receipt accepted");
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_user_message(
+                        acp_v2::UserMessage::new(prompt_id).content(vec!["Prompt".into()]),
+                        cx,
+                    )
+                    .expect("echo");
+            });
+            cx.run_until_parked();
+            view.update(cx, |view, cx| {
+                view.response_model = ResponseModel::default();
+                view.sync_response_model(None, cx);
+                assert_eq!(
+                    view.response_model
+                        .turns
+                        .last()
+                        .expect("quiet submission")
+                        .lifecycle,
+                    TurnLifecycle::Submitting
+                );
+            });
+            if permissions {
+                let request = generic_permission_prompt(&thread, None, cx);
+                let (permission_id, response) =
+                    request_test_generic_permission(&thread, request, cx);
+                cx.run_until_parked();
+                view.update(cx, |view, cx| {
+                    view.response_model = ResponseModel::default();
+                    view.sync_response_model(None, cx);
+                    assert_eq!(
+                        view.response_model
+                            .turns
+                            .last()
+                            .expect("permission")
+                            .lifecycle,
+                        TurnLifecycle::RequiresAction
+                    );
+                });
+                thread.update(cx, |thread, cx| {
+                    thread.cancel_permission_request(permission_id, cx)
+                });
+                assert_eq!(response.await, acp_v2::RequestPermissionOutcome::Cancelled);
+                cx.run_until_parked();
+                view.read_with(cx, |view, _| {
+                    assert_eq!(
+                        view.response_model
+                            .turns
+                            .last()
+                            .expect("awaiting work")
+                            .lifecycle,
+                        TurnLifecycle::Submitting
+                    );
+                });
+            }
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                        cx,
+                    )
+                    .expect("start");
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new(format!("answer-{index}"))
+                            .content(vec!["Answer".into()]),
+                        cx,
+                    )
+                    .expect("answer");
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Idle(
+                            acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                        ),
+                        cx,
+                    )
+                    .expect("stop");
+            });
+            cx.run_until_parked();
+            view.update(cx, |view, cx| {
+                view.response_model = ResponseModel::default();
+                view.sync_response_model(None, cx);
+                assert_eq!(view.response_model.turns.len(), index + 1);
+                let turn = view.response_model.turns.last().expect("completed receipt");
+                assert_eq!(turn.lifecycle, TurnLifecycle::Settled(TurnOutcome::Success));
+                assert_eq!(turn.response.len(), 1);
+                assert_eq!(turn.predecessor.is_some(), index > 0);
+            });
+        }
+    }
+
+    #[gpui::test]
     async fn test_response_model_native_command_preserves_prior_response(cx: &mut TestAppContext) {
         use super::response_model::{TurnLifecycle, TurnOutcome};
 
@@ -5419,7 +5582,7 @@ pub(crate) mod tests {
                 .expect("second");
             assert_eq!(
                 first.lifecycle,
-                TurnLifecycle::Settled(TurnOutcome::Unknown)
+                TurnLifecycle::Settled(TurnOutcome::Success)
             );
             assert_eq!(first.response.len(), 1);
             assert_eq!(
@@ -5454,7 +5617,7 @@ pub(crate) mod tests {
             let second = view.response_model.turns.last().expect("second");
             assert_eq!(
                 first.lifecycle,
-                TurnLifecycle::Settled(TurnOutcome::Unknown)
+                TurnLifecycle::Settled(TurnOutcome::Success)
             );
             assert_eq!(first.response.len(), 1);
             assert_eq!(

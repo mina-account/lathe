@@ -4044,6 +4044,14 @@ impl AcpThread {
         self.submissions.receipts()
     }
 
+    pub fn submission_activity(&self, id: SubmissionId) -> Option<&SubmissionActivity> {
+        self.submissions.activity(id)
+    }
+
+    pub fn legacy_submission_prompt_entry(&self, id: SubmissionId) -> Option<usize> {
+        self.submissions.legacy_prompt_entry(id)
+    }
+
     pub fn legacy_submission_completions(
         &self,
     ) -> impl Iterator<Item = (SubmissionId, SubmissionKind, &LegacySubmissionCompletion)> {
@@ -4175,6 +4183,17 @@ impl AcpThread {
         self.activity
             .update(state, self.entries.len().saturating_sub(1));
         let current = self.foreground_activity();
+        if self.uses_reported_activity() {
+            if previous == ForegroundActivity::Idle && current != ForegroundActivity::Idle {
+                self.submissions.start_activity(self.activity.generation());
+            } else if previous != ForegroundActivity::Idle
+                && current == ForegroundActivity::Idle
+                && let acp_v2::StateUpdate::Idle(idle) = self.activity.state()
+            {
+                self.submissions
+                    .finish_activity(self.activity.generation(), idle.stop_reason.clone());
+            }
+        }
         if previous == ForegroundActivity::Idle && current != ForegroundActivity::Idle {
             self.had_error = false;
         }
@@ -5087,6 +5106,7 @@ impl AcpThread {
             })
             .collect::<Vec<_>>();
         self.entries.truncate(index);
+        self.submissions.truncate_prompt_entries(index);
         for id in removed_requests {
             self.resolve_permission_request(id, RequestPermissionOutcome::Cancelled, cx);
         }
@@ -6225,6 +6245,8 @@ impl AcpThread {
         self.run_turn(id, cx, async move |this, cx| {
             if push_user_message {
                 this.update(cx, |this, cx| {
+                    this.submissions
+                        .associate_legacy_prompt(id, this.entries.len());
                     this.push_entry(
                         AgentThreadEntry::UserMessage(UserMessage {
                             identity: MessageIdentity::Legacy(None),
@@ -6294,6 +6316,9 @@ impl AcpThread {
         }
         if let Err(error) = self.validate_prompt_content(&content) {
             return self.track_submission(id, cx, async move |_, _| Err(error));
+        }
+        if let Some((entry_index, _)) = self.last_user_message() {
+            self.submissions.associate_legacy_prompt(id, entry_index);
         }
         self.run_turn(id, cx, async move |this, cx| {
             this.update(cx, |this, cx| {

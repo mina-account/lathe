@@ -76,6 +76,12 @@ pub enum LegacySubmissionCompletion {
     Cancelled,
 }
 
+#[derive(Clone, Debug)]
+pub struct SubmissionActivity {
+    pub generation: u64,
+    pub completion: Option<Option<acp_v2::StopReason>>,
+}
+
 pub struct SubmissionRecord {
     pub content: Arc<[acp_v2::ContentBlock]>,
     pub kind: SubmissionKind,
@@ -115,6 +121,9 @@ pub(crate) struct SessionSubmissions {
     records: BTreeMap<SubmissionId, SubmissionRecord>,
     receipts: BTreeMap<SubmissionId, acp_v2::MessageId>,
     legacy_completions: BTreeMap<SubmissionId, (SubmissionKind, LegacySubmissionCompletion)>,
+    legacy_prompt_entries: BTreeMap<SubmissionId, usize>,
+    activities: BTreeMap<SubmissionId, SubmissionActivity>,
+    activity_owner: Option<SubmissionId>,
     next_id: u64,
     latest_id: Option<SubmissionId>,
 }
@@ -126,6 +135,9 @@ impl SessionSubmissions {
             records: BTreeMap::default(),
             receipts: BTreeMap::default(),
             legacy_completions: BTreeMap::default(),
+            legacy_prompt_entries: BTreeMap::default(),
+            activities: BTreeMap::default(),
+            activity_owner: None,
             next_id: 0,
             latest_id: None,
         }
@@ -147,6 +159,76 @@ impl SessionSubmissions {
 
     pub(crate) fn latest_id(&self) -> Option<SubmissionId> {
         self.latest_id
+    }
+
+    pub(crate) fn legacy_prompt_entry(&self, id: SubmissionId) -> Option<usize> {
+        self.legacy_prompt_entries.get(&id).copied()
+    }
+
+    pub(crate) fn associate_legacy_prompt(&mut self, id: SubmissionId, entry_index: usize) {
+        self.legacy_prompt_entries.insert(id, entry_index);
+    }
+
+    pub(crate) fn truncate_prompt_entries(&mut self, index: usize) {
+        self.legacy_prompt_entries
+            .retain(|_, entry_index| *entry_index < index);
+    }
+
+    pub(crate) fn activity(&self, id: SubmissionId) -> Option<&SubmissionActivity> {
+        self.activities.get(&id)
+    }
+
+    pub(crate) fn start_activity(&mut self, generation: u64) {
+        let eligible = |id| {
+            self.records.get(&id).map_or_else(
+                || self.receipts.contains_key(&id),
+                |record| {
+                    matches!(
+                        record.state,
+                        SubmissionState::Pending | SubmissionState::Accepted { .. }
+                    )
+                },
+            )
+        };
+        // An echoed receipt can lose its record before its first activity report.
+        self.activity_owner = self
+            .records
+            .iter()
+            .find_map(|(id, record)| {
+                (matches!(
+                    record.state,
+                    SubmissionState::Pending | SubmissionState::Accepted { .. }
+                ) && !self.activities.contains_key(id))
+                .then_some(*id)
+            })
+            .into_iter()
+            .chain(
+                self.receipts
+                    .keys()
+                    .copied()
+                    .filter(|id| !self.activities.contains_key(id) && eligible(*id)),
+            )
+            .min()
+            .or(self.activity_owner.filter(|id| eligible(*id)));
+        if let Some(id) = self.activity_owner {
+            self.activities.insert(
+                id,
+                SubmissionActivity {
+                    generation,
+                    completion: None,
+                },
+            );
+        }
+    }
+
+    pub(crate) fn finish_activity(&mut self, generation: u64, reason: Option<acp_v2::StopReason>) {
+        if let Some(activity) = self
+            .activity_owner
+            .and_then(|id| self.activities.get_mut(&id))
+            && activity.generation == generation
+        {
+            activity.completion = Some(reason);
+        }
     }
 
     pub(crate) fn legacy_completions(
@@ -245,6 +327,11 @@ impl SessionSubmissions {
         }
         self.receipts.remove(&id);
         self.legacy_completions.remove(&id);
+        self.legacy_prompt_entries.remove(&id);
+        self.activities.remove(&id);
+        if self.activity_owner == Some(id) {
+            self.activity_owner = None;
+        }
         if self.latest_id == Some(id) {
             self.latest_id = None;
         }
@@ -270,6 +357,104 @@ pub enum ForegroundActivity {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn submission_activity_tracks_queued_generations_and_resumption() {
+        let mut submissions = SessionSubmissions::new(None);
+        let first = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+        submissions.settle(
+            first,
+            SubmissionState::Accepted {
+                receipt: acp_v2::PromptResponse::new("first"),
+                echoed: true,
+            },
+        );
+        let second = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+        assert!(submissions.get(first).is_none());
+        submissions.start_activity(1);
+        submissions.finish_activity(0, Some(acp_v2::StopReason::Cancelled));
+        assert!(
+            submissions
+                .activity(first)
+                .expect("first activity")
+                .completion
+                .is_none()
+        );
+        assert!(submissions.activity(second).is_none());
+        submissions.finish_activity(1, Some(acp_v2::StopReason::EndTurn));
+        submissions.settle(first, SubmissionState::Completed);
+        assert!(submissions.get(first).is_none());
+        assert!(matches!(
+            submissions
+                .activity(first)
+                .expect("retained activity")
+                .completion,
+            Some(Some(acp_v2::StopReason::EndTurn))
+        ));
+        submissions.start_activity(2);
+        assert_eq!(
+            submissions
+                .activity(second)
+                .expect("second activity")
+                .generation,
+            2
+        );
+        submissions.finish_activity(2, Some(acp_v2::StopReason::Cancelled));
+        submissions.start_activity(3);
+        assert_eq!(
+            submissions
+                .activity(second)
+                .expect("resumed activity")
+                .generation,
+            3
+        );
+        assert!(
+            submissions
+                .activity(second)
+                .expect("resumed activity")
+                .completion
+                .is_none()
+        );
+        assert!(matches!(
+            submissions
+                .activity(first)
+                .expect("first stays settled")
+                .completion,
+            Some(Some(acp_v2::StopReason::EndTurn))
+        ));
+        submissions.settle(second, SubmissionState::Failed("rejected".into()));
+        let third = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+        submissions.settle(third, SubmissionState::Cancelled);
+        submissions.start_activity(4);
+        assert_eq!(
+            submissions
+                .activity(second)
+                .expect("prior activity")
+                .generation,
+            3
+        );
+        assert!(submissions.activity(third).is_none());
+    }
+
+    #[test]
+    fn legacy_prompt_locators_are_invalidated_on_rollback() {
+        let mut submissions = SessionSubmissions::new(None);
+        let first = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+        submissions.associate_legacy_prompt(first, 0);
+        submissions.complete_legacy(first, LegacySubmissionCompletion::Cancelled);
+        submissions.settle(first, SubmissionState::Completed);
+        let second = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+        submissions.associate_legacy_prompt(second, 2);
+        assert_eq!(submissions.legacy_prompt_entry(first), Some(0));
+        assert_eq!(submissions.legacy_prompt_entry(second), Some(2));
+        submissions.truncate_prompt_entries(2);
+        assert_eq!(submissions.legacy_prompt_entry(first), Some(0));
+        assert_eq!(submissions.legacy_prompt_entry(second), None);
+        submissions.associate_legacy_prompt(second, 2);
+        submissions.truncate_prompt_entries(0);
+        assert_eq!(submissions.legacy_prompt_entry(first), None);
+        assert_eq!(submissions.legacy_prompt_entry(second), None);
+    }
 
     #[test]
     fn legacy_submission_completions_survive_record_pruning() {
