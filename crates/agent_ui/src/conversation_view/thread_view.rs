@@ -1754,6 +1754,18 @@ impl ThreadView {
                     ForegroundActivity::RequiresAction => ActivityPhase::RequiresAction,
                 },
                 activity_generation: thread.activity_generation(),
+                external_activity: thread.external_activity_prompt().map(|prompt| {
+                    response_model::ExternalActivityObservation {
+                        prompt: ProviderIdentity::Keyed(prompt.0.clone()),
+                        boundary: thread.activity_content_boundary(),
+                        outcome: if let acp_v2::StateUpdate::Idle(idle) = thread.foreground_state()
+                        {
+                            Some(reported_outcome(&idle.stop_reason))
+                        } else {
+                            None
+                        },
+                    }
+                }),
                 pending_permission: thread.pending_permission_requests().next().is_some(),
             },
             event,

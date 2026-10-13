@@ -4048,6 +4048,14 @@ impl AcpThread {
         self.submissions.activity(id)
     }
 
+    pub fn external_activity_prompt(&self) -> Option<&acp_v2::MessageId> {
+        self.submissions.external_activity_prompt()
+    }
+
+    pub fn activity_content_boundary(&self) -> (usize, usize) {
+        self.submissions.activity_boundary()
+    }
+
     pub fn legacy_submission_prompt_entry(&self, id: SubmissionId) -> Option<usize> {
         self.submissions.legacy_prompt_entry(id)
     }
@@ -4185,7 +4193,26 @@ impl AcpThread {
         let current = self.foreground_activity();
         if self.uses_reported_activity() {
             if previous == ForegroundActivity::Idle && current != ForegroundActivity::Idle {
-                self.submissions.start_activity(self.activity.generation());
+                let latest_prompt = self.entries.iter().rev().find_map(|entry| {
+                    if let AgentThreadEntry::UserMessage(message) = entry
+                        && let MessageIdentity::Keyed(id) = &message.identity
+                    {
+                        return Some(id);
+                    }
+                    None
+                });
+                let boundary = if let Some(AgentThreadEntry::AssistantMessage(message)) =
+                    self.entries.last()
+                {
+                    (self.entries.len().saturating_sub(1), message.chunks.len())
+                } else {
+                    (self.entries.len(), 0)
+                };
+                self.submissions.start_activity(
+                    self.activity.generation(),
+                    latest_prompt,
+                    boundary,
+                );
             } else if previous != ForegroundActivity::Idle
                 && current == ForegroundActivity::Idle
                 && let acp_v2::StateUpdate::Idle(idle) = self.activity.state()
@@ -4719,6 +4746,10 @@ impl AcpThread {
             && let MessageIdentity::Keyed(id) = &message.identity
         {
             let id = id.clone();
+            if location.entry_index() >= previous_entry_count {
+                self.submissions
+                    .observe_prompt(&id, self.foreground_activity() != ForegroundActivity::Idle);
+            }
             self.observe_submission_echo(&id, cx);
         }
         if self.entries.len() > previous_entry_count {
@@ -5107,6 +5138,21 @@ impl AcpThread {
             .collect::<Vec<_>>();
         self.entries.truncate(index);
         self.submissions.truncate_prompt_entries(index);
+        let prompt_ids: HashSet<_> = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                if let AgentThreadEntry::UserMessage(message) = entry
+                    && let MessageIdentity::Keyed(id) = &message.identity
+                {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        self.submissions
+            .retain_activity_prompts(|prompt| prompt_ids.contains(prompt));
         for id in removed_requests {
             self.resolve_permission_request(id, RequestPermissionOutcome::Cancelled, cx);
         }

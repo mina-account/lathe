@@ -4767,6 +4767,289 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_response_model_reconstructed_external_turn_preserves_receipt(
+        cx: &mut TestAppContext,
+    ) {
+        use super::response_model::{ResponseModel, TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        for (delayed_echo, external_turn, queued_echo) in [
+            (false, true, None),
+            (true, true, None),
+            (false, false, None),
+            (false, false, Some(false)),
+            (false, false, Some(true)),
+            (false, true, Some(false)),
+            (true, true, Some(true)),
+        ] {
+            let connection = StubAgentConnection::new().with_receipt_submissions(true);
+            let (conversation_view, cx) =
+                setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+            let view = active_thread(&conversation_view, cx);
+            let thread = view.read_with(cx, |view, _| view.thread.clone());
+            let finish = connection.defer_next_receipt_response();
+            let submission = thread.update(cx, |thread, cx| thread.send(vec!["Local".into()], cx));
+            finish
+                .send(Ok(acp_v2::PromptResponse::new("local")))
+                .expect("pending receipt");
+            submission.await.expect("accepted receipt");
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_user_message(
+                        acp_v2::UserMessage::new("local").content(vec!["Local".into()]),
+                        cx,
+                    )
+                    .expect("local echo");
+            });
+            cx.run_until_parked();
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                        cx,
+                    )
+                    .expect("local start");
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new("local-answer").content(vec!["Answer".into()]),
+                        cx,
+                    )
+                    .expect("local answer");
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Idle(
+                            acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                        ),
+                        cx,
+                    )
+                    .expect("local stop");
+            });
+            cx.run_until_parked();
+            thread.update(cx, |thread, cx| {
+                if external_turn && !delayed_echo {
+                    thread
+                        .upsert_user_message(
+                            acp_v2::UserMessage::new("external").content(vec!["External".into()]),
+                            cx,
+                        )
+                        .expect("external echo");
+                }
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                        cx,
+                    )
+                    .expect("external start");
+            });
+            cx.run_until_parked();
+            if external_turn && delayed_echo {
+                thread.update(cx, |thread, cx| {
+                    thread
+                        .upsert_assistant_message(
+                            acp_v2::AgentMessage::new("external-answer")
+                                .content(vec!["Partial".into()]),
+                            cx,
+                        )
+                        .expect("output before external echo");
+                });
+                cx.run_until_parked();
+            }
+            thread.update(cx, |thread, cx| {
+                if external_turn && delayed_echo {
+                    thread
+                        .upsert_user_message(
+                            acp_v2::UserMessage::new("external").content(vec!["External".into()]),
+                            cx,
+                        )
+                        .expect("delayed external echo");
+                }
+            });
+            cx.run_until_parked();
+            if !external_turn || !delayed_echo {
+                thread.update(cx, |thread, cx| {
+                    thread
+                        .upsert_assistant_message(
+                            acp_v2::AgentMessage::new("external-answer")
+                                .content(vec!["Partial".into()]),
+                            cx,
+                        )
+                        .expect("external output");
+                });
+            }
+            cx.run_until_parked();
+            if let Some(echo_before_acceptance) = queued_echo {
+                let finish = connection.defer_next_receipt_response();
+                let queued = thread.update(cx, |thread, cx| thread.send(vec!["Queued".into()], cx));
+                cx.run_until_parked();
+                if !echo_before_acceptance {
+                    finish
+                        .send(Ok(acp_v2::PromptResponse::new("queued")))
+                        .expect("queued receipt");
+                    queued.await.expect("queued acceptance");
+                    thread.update(cx, |thread, cx| {
+                        thread
+                            .upsert_user_message(
+                                acp_v2::UserMessage::new("queued").content(vec!["Queued".into()]),
+                                cx,
+                            )
+                            .expect("queued echo");
+                    });
+                } else {
+                    thread.update(cx, |thread, cx| {
+                        thread
+                            .upsert_user_message(
+                                acp_v2::UserMessage::new("queued").content(vec!["Queued".into()]),
+                                cx,
+                            )
+                            .expect("early queued echo");
+                    });
+                    cx.run_until_parked();
+                    finish
+                        .send(Ok(acp_v2::PromptResponse::new("queued")))
+                        .expect("queued receipt");
+                    queued.await.expect("queued acceptance");
+                }
+                cx.run_until_parked();
+            }
+            view.update(cx, |view, cx| {
+                view.response_model = ResponseModel::default();
+                view.sync_response_model(None, cx);
+                if queued_echo.is_some() {
+                    assert_eq!(
+                        view.response_model.turns.len(),
+                        if external_turn { 3 } else { 2 }
+                    );
+                    if external_turn {
+                        let historical = view
+                            .response_model
+                            .turns
+                            .first()
+                            .expect("historical local turn");
+                        assert_eq!(
+                            historical.lifecycle,
+                            TurnLifecycle::Settled(TurnOutcome::Success)
+                        );
+                        assert_eq!(historical.response.len(), 1);
+                    }
+                    let resumed = view
+                        .response_model
+                        .turns
+                        .get(usize::from(external_turn))
+                        .expect("resumed local turn");
+                    assert_eq!(resumed.lifecycle, TurnLifecycle::Running);
+                    assert!(resumed.response.is_empty());
+                    if external_turn && delayed_echo {
+                        assert!(
+                            resumed
+                                .activity
+                                .iter()
+                                .any(|source| source.entry_index == 1
+                                    && source.chunk_index == Some(1))
+                        );
+                    }
+                    let queued = view.response_model.turns.last().expect("queued turn");
+                    assert_eq!(queued.lifecycle, TurnLifecycle::Submitting);
+                    assert!(queued.response.is_empty());
+                    return;
+                }
+                assert_eq!(
+                    view.response_model.turns.len(),
+                    if external_turn { 2 } else { 1 }
+                );
+                let historical = view.response_model.turns.first().expect("local turn");
+                if external_turn {
+                    assert_eq!(
+                        historical.lifecycle,
+                        TurnLifecycle::Settled(TurnOutcome::Success)
+                    );
+                    assert_eq!(historical.response.len(), 1);
+                }
+                let external = view.response_model.turns.last().expect("external turn");
+                assert_eq!(external.lifecycle, TurnLifecycle::Running);
+                assert!(external.response.is_empty());
+                if external_turn && delayed_echo {
+                    assert!(
+                        external
+                            .activity
+                            .iter()
+                            .any(|source| source.entry_index == 1 && source.chunk_index == Some(1))
+                    );
+                }
+            });
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Idle(
+                            acp_v2::IdleStateUpdate::new()
+                                .stop_reason(acp_v2::StopReason::Cancelled),
+                        ),
+                        cx,
+                    )
+                    .expect("external stop");
+            });
+            cx.run_until_parked();
+            view.update(cx, |view, cx| {
+                view.response_model = ResponseModel::default();
+                view.sync_response_model(None, cx);
+                if queued_echo.is_some() {
+                    assert_eq!(
+                        view.response_model.turns.len(),
+                        if external_turn { 3 } else { 2 }
+                    );
+                    if external_turn {
+                        let historical = view
+                            .response_model
+                            .turns
+                            .first()
+                            .expect("historical local turn");
+                        assert_eq!(
+                            historical.lifecycle,
+                            TurnLifecycle::Settled(TurnOutcome::Success)
+                        );
+                        assert_eq!(historical.response.len(), 1);
+                    }
+                    let resumed = view
+                        .response_model
+                        .turns
+                        .get(usize::from(external_turn))
+                        .expect("completed resumed turn");
+                    assert_eq!(
+                        resumed.lifecycle,
+                        TurnLifecycle::Settled(TurnOutcome::Interrupted)
+                    );
+                    assert_eq!(resumed.response.len(), if external_turn { 1 } else { 2 });
+                    let queued = view.response_model.turns.last().expect("queued turn");
+                    assert_eq!(queued.lifecycle, TurnLifecycle::Submitting);
+                    assert!(queued.response.is_empty());
+                    return;
+                }
+                assert_eq!(
+                    view.response_model.turns.len(),
+                    if external_turn { 2 } else { 1 }
+                );
+                let historical = view.response_model.turns.first().expect("local turn");
+                if external_turn {
+                    assert_eq!(
+                        historical.lifecycle,
+                        TurnLifecycle::Settled(TurnOutcome::Success)
+                    );
+                    assert_eq!(historical.response.len(), 1);
+                }
+                let external = view.response_model.turns.last().expect("external turn");
+                assert_eq!(
+                    external.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Interrupted)
+                );
+                assert_eq!(external.response.len(), if external_turn { 1 } else { 2 });
+                assert_eq!(
+                    external.predecessor.as_ref(),
+                    external_turn.then_some(&historical.identity)
+                );
+            });
+        }
+    }
+
+    #[gpui::test]
     async fn test_response_model_reconstructed_running_legacy(cx: &mut TestAppContext) {
         use super::response_model::{ResponseModel, TurnLifecycle, TurnOutcome};
 

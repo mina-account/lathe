@@ -75,6 +75,13 @@ pub struct SubmissionObservation {
 }
 
 #[derive(Clone, Debug)]
+pub struct ExternalActivityObservation {
+    pub prompt: ProviderIdentity,
+    pub outcome: Option<TurnOutcome>,
+    pub boundary: (usize, usize),
+}
+
+#[derive(Clone, Debug)]
 pub struct ThreadObservation {
     pub contents: Vec<ContentObservation>,
     pub entry_count: usize,
@@ -83,6 +90,7 @@ pub struct ThreadObservation {
     pub reported_activity: bool,
     pub activity: ActivityPhase,
     pub activity_generation: u64,
+    pub external_activity: Option<ExternalActivityObservation>,
     pub pending_permission: bool,
 }
 
@@ -408,19 +416,43 @@ impl ResponseModel {
                 association.prompt = None;
             }
         }
+        if let Some(activity) = &thread.external_activity
+            && let Some(prompt) = prompts.get(&activity.prompt)
+            && let Some(association) = self.associations.iter_mut().find(|association| {
+                matches!(association.identity, TurnIdentity::Activity(_))
+                    && association.generation == Some(thread.activity_generation)
+                    && association.prompt.is_none()
+            })
+        {
+            association.prompt = Some(prompt.source.clone());
+            (association.first_entry, association.first_chunk) = activity
+                .boundary
+                .min((prompt.source.entry_index, 0))
+                .min((association.first_entry, association.first_chunk));
+            if let Some(outcome) = activity.outcome {
+                association.terminal = Some(outcome);
+            }
+        }
         let owned_prompts: HashSet<_> = self
             .associations
             .iter()
             .filter_map(|association| association.prompt.as_ref())
             .collect();
-        let new_external_prompt = self.associations.last().is_some_and(|association| {
-            association.prompt.as_ref().is_some_and(|prompt| {
-                last_prompt.is_some_and(|last| {
-                    last.source.entry_index > prompt.entry_index
-                        && !owned_prompts.contains(&last.source)
+        let reported_external_prompt = thread
+            .external_activity
+            .as_ref()
+            .and_then(|activity| prompts.get(&activity.prompt).copied())
+            .filter(|prompt| !owned_prompts.contains(&prompt.source));
+        let new_external_prompt = reported_external_prompt
+            .is_some_and(|prompt| !owned_prompts.contains(&prompt.source))
+            || self.associations.last().is_some_and(|association| {
+                association.prompt.as_ref().is_some_and(|prompt| {
+                    last_prompt.is_some_and(|last| {
+                        last.source.entry_index > prompt.entry_index
+                            && !owned_prompts.contains(&last.source)
+                    })
                 })
-            })
-        });
+            });
         let matching_stop = matches!(event, ObservationEvent::Stopped { generation, .. }
             if generation == thread.activity_generation && thread.activity == ActivityPhase::Idle);
         let external_activity_started = self
@@ -434,8 +466,9 @@ impl ResponseModel {
         if (thread.activity != ActivityPhase::Idle
             || matching_stop
             || delayed_external_prompt
-            || external_activity_started)
-            && !registered_submission
+            || external_activity_started
+            || reported_external_prompt.is_some())
+            && (!registered_submission || new_external_prompt)
             && (new_external_prompt
                 || (thread.submission.is_none()
                     && submission_updates.values().all(|submission| {
@@ -453,10 +486,12 @@ impl ResponseModel {
                     turn.prompt.as_ref() == Some(&prompt.source) && !turn.response.is_empty()
                 })
             });
-            let prompt = last_prompt.filter(|_| {
-                new_external_prompt
-                    || (matching_stop && !external_activity_started)
-                    || !historical_prompt
+            let prompt = reported_external_prompt.or_else(|| {
+                last_prompt.filter(|_| {
+                    new_external_prompt
+                        || (matching_stop && !external_activity_started)
+                        || !historical_prompt
+                })
             });
             let (mut first_entry, mut first_chunk) = prompt.map_or_else(
                 || {
@@ -465,19 +500,38 @@ impl ResponseModel {
                 },
                 |content| (content.source.entry_index, 0),
             );
-            let mut terminal = (external_activity_started
-                && thread.activity == ActivityPhase::Idle)
-                .then_some(TurnOutcome::Unknown);
+            if let Some(activity) = &thread.external_activity
+                && reported_external_prompt.is_some()
+            {
+                (first_entry, first_chunk) = activity.boundary.min((first_entry, first_chunk));
+            }
+            let mut terminal = reported_external_prompt
+                .and_then(|_| {
+                    thread
+                        .external_activity
+                        .as_ref()
+                        .and_then(|activity| activity.outcome)
+                })
+                .or_else(|| {
+                    (external_activity_started && thread.activity == ActivityPhase::Idle)
+                        .then_some(TurnOutcome::Unknown)
+                });
             if new_external_prompt
-                && let Some(previous) = self.associations.last_mut()
+                && let Some(previous) = self.associations.iter_mut().rev().find(|association| {
+                    association.resumption.is_some()
+                        && association.generation == Some(thread.activity_generation)
+                })
                 && let Some(resumption) = previous.resumption.take()
             {
                 (first_entry, first_chunk) = resumption.boundary.min((first_entry, first_chunk));
-                if thread.activity == ActivityPhase::Idle {
+                if thread.activity == ActivityPhase::Idle && terminal.is_none() {
                     terminal = previous.terminal;
                 }
                 previous.generation = Some(resumption.generation);
                 previous.terminal = resumption.terminal;
+                self.source_owners.retain(|source, owner| {
+                    owner != &previous.identity || source_position(source) < resumption.boundary
+                });
             }
             self.next_activity_id += 1;
             self.associations.push(TurnAssociation {
@@ -1096,6 +1150,7 @@ mod tests {
             reported_activity: true,
             activity: ActivityPhase::Idle,
             activity_generation: 0,
+            external_activity: None,
             pending_permission: false,
         }
     }

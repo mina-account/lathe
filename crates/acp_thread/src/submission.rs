@@ -2,7 +2,7 @@ use crate::ReceiptSessionSubmissions;
 use agent_client_protocol::schema::{v1 as acp_v1, v2 as acp_v2};
 use futures::{channel::oneshot, future::BoxFuture};
 use gpui::{SharedString, Task};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::{
     fmt,
     future::Future,
@@ -124,6 +124,10 @@ pub(crate) struct SessionSubmissions {
     legacy_prompt_entries: BTreeMap<SubmissionId, usize>,
     activities: BTreeMap<SubmissionId, SubmissionActivity>,
     activity_owner: Option<SubmissionId>,
+    resumed_activity: Option<(SubmissionId, SubmissionActivity)>,
+    unmatched_activity_prompts: Vec<acp_v2::MessageId>,
+    external_activity_prompt: Option<acp_v2::MessageId>,
+    activity_boundary: (usize, usize),
     next_id: u64,
     latest_id: Option<SubmissionId>,
 }
@@ -138,6 +142,10 @@ impl SessionSubmissions {
             legacy_prompt_entries: BTreeMap::default(),
             activities: BTreeMap::default(),
             activity_owner: None,
+            resumed_activity: None,
+            unmatched_activity_prompts: Vec::default(),
+            external_activity_prompt: None,
+            activity_boundary: (0, 0),
             next_id: 0,
             latest_id: None,
         }
@@ -172,13 +180,52 @@ impl SessionSubmissions {
     pub(crate) fn truncate_prompt_entries(&mut self, index: usize) {
         self.legacy_prompt_entries
             .retain(|_, entry_index| *entry_index < index);
+        if self.activity_boundary.0 >= index {
+            self.activity_boundary = (index, 0);
+        }
     }
 
     pub(crate) fn activity(&self, id: SubmissionId) -> Option<&SubmissionActivity> {
         self.activities.get(&id)
     }
 
-    pub(crate) fn start_activity(&mut self, generation: u64) {
+    pub(crate) fn external_activity_prompt(&self) -> Option<&acp_v2::MessageId> {
+        self.external_activity_prompt.as_ref()
+    }
+
+    pub(crate) fn activity_boundary(&self) -> (usize, usize) {
+        self.activity_boundary
+    }
+
+    pub(crate) fn retain_activity_prompts(
+        &mut self,
+        contains_prompt: impl Fn(&acp_v2::MessageId) -> bool,
+    ) {
+        if self
+            .external_activity_prompt
+            .as_ref()
+            .is_some_and(|prompt| !contains_prompt(prompt))
+        {
+            self.external_activity_prompt = None;
+        }
+        self.unmatched_activity_prompts
+            .retain(|prompt| contains_prompt(prompt));
+        if self.resumed_activity.as_ref().is_some_and(|(id, _)| {
+            self.receipts
+                .get(id)
+                .is_some_and(|prompt| !contains_prompt(prompt))
+        }) {
+            self.resumed_activity = None;
+        }
+    }
+
+    pub(crate) fn start_activity(
+        &mut self,
+        generation: u64,
+        latest_prompt: Option<&acp_v2::MessageId>,
+        boundary: (usize, usize),
+    ) {
+        self.activity_boundary = boundary;
         let eligible = |id| {
             self.records.get(&id).map_or_else(
                 || self.receipts.contains_key(&id),
@@ -191,7 +238,7 @@ impl SessionSubmissions {
             )
         };
         // An echoed receipt can lose its record before its first activity report.
-        self.activity_owner = self
+        let awaiting_activity = self
             .records
             .iter()
             .find_map(|(id, record)| {
@@ -208,8 +255,34 @@ impl SessionSubmissions {
                     .copied()
                     .filter(|id| !self.activities.contains_key(id) && eligible(*id)),
             )
-            .min()
-            .or(self.activity_owner.filter(|id| eligible(*id)));
+            .min();
+        let resumed_owner = self.activity_owner.filter(|id| {
+            eligible(*id)
+                && latest_prompt.is_none_or(|prompt| self.receipts.get(id) == Some(prompt))
+        });
+        self.resumed_activity = awaiting_activity
+            .is_none()
+            .then(|| {
+                let id = resumed_owner?;
+                Some((id, self.activities.get(&id)?.clone()))
+            })
+            .flatten();
+        self.unmatched_activity_prompts.clear();
+        self.activity_owner = awaiting_activity.or(resumed_owner);
+        let previous_external_prompt = self.external_activity_prompt.take();
+        // Existing assistant output can be restored history while a new external echo is delayed.
+        self.external_activity_prompt = self
+            .activity_owner
+            .is_none()
+            .then(|| {
+                latest_prompt
+                    .filter(|prompt| !self.receipts.values().any(|receipt| receipt == *prompt))
+                    .filter(|prompt| {
+                        boundary.1 == 0 || previous_external_prompt.as_ref() == Some(*prompt)
+                    })
+                    .cloned()
+            })
+            .flatten();
         if let Some(id) = self.activity_owner {
             self.activities.insert(
                 id,
@@ -218,6 +291,36 @@ impl SessionSubmissions {
                     completion: None,
                 },
             );
+        }
+    }
+
+    pub(crate) fn observe_prompt(&mut self, message_id: &acp_v2::MessageId, active: bool) {
+        if self.resumed_activity.is_some() || (self.activity_owner.is_none() && active) {
+            self.unmatched_activity_prompts.push(message_id.clone());
+            self.reconcile_activity_prompt();
+        }
+    }
+
+    fn reconcile_activity_prompt(&mut self) {
+        if self.unmatched_activity_prompts.is_empty() {
+            return;
+        }
+        let receipt_prompts: HashSet<_> = self.receipts.values().collect();
+        self.unmatched_activity_prompts
+            .retain(|prompt| !receipt_prompts.contains(prompt));
+        if !self.unmatched_activity_prompts.is_empty()
+            && !self
+                .records
+                .values()
+                .any(|record| matches!(record.state, SubmissionState::Pending))
+        {
+            // A delayed new prompt disproves the apparent resumption of the previous receipt.
+            if let Some((id, previous)) = self.resumed_activity.take() {
+                self.activities.insert(id, previous);
+                self.activity_owner = None;
+            }
+            self.external_activity_prompt = self.unmatched_activity_prompts.last().cloned();
+            self.unmatched_activity_prompts.clear();
         }
     }
 
@@ -296,6 +399,7 @@ impl SessionSubmissions {
             }
             record.state = state;
         }
+        self.reconcile_activity_prompt();
         self.prune();
     }
 
@@ -331,6 +435,14 @@ impl SessionSubmissions {
         self.activities.remove(&id);
         if self.activity_owner == Some(id) {
             self.activity_owner = None;
+        }
+        if self
+            .resumed_activity
+            .as_ref()
+            .is_some_and(|(owner, _)| *owner == id)
+        {
+            self.resumed_activity = None;
+            self.unmatched_activity_prompts.clear();
         }
         if self.latest_id == Some(id) {
             self.latest_id = None;
@@ -371,7 +483,7 @@ mod tests {
         );
         let second = submissions.register(Arc::from([]), SubmissionKind::Prompt);
         assert!(submissions.get(first).is_none());
-        submissions.start_activity(1);
+        submissions.start_activity(1, None, (0, 0));
         submissions.finish_activity(0, Some(acp_v2::StopReason::Cancelled));
         assert!(
             submissions
@@ -391,7 +503,7 @@ mod tests {
                 .completion,
             Some(Some(acp_v2::StopReason::EndTurn))
         ));
-        submissions.start_activity(2);
+        submissions.start_activity(2, None, (0, 0));
         assert_eq!(
             submissions
                 .activity(second)
@@ -400,7 +512,7 @@ mod tests {
             2
         );
         submissions.finish_activity(2, Some(acp_v2::StopReason::Cancelled));
-        submissions.start_activity(3);
+        submissions.start_activity(3, None, (0, 0));
         assert_eq!(
             submissions
                 .activity(second)
@@ -425,7 +537,7 @@ mod tests {
         submissions.settle(second, SubmissionState::Failed("rejected".into()));
         let third = submissions.register(Arc::from([]), SubmissionKind::Prompt);
         submissions.settle(third, SubmissionState::Cancelled);
-        submissions.start_activity(4);
+        submissions.start_activity(4, None, (0, 0));
         assert_eq!(
             submissions
                 .activity(second)
@@ -434,6 +546,114 @@ mod tests {
             3
         );
         assert!(submissions.activity(third).is_none());
+    }
+
+    #[test]
+    fn distinct_external_prompts_preserve_completed_receipt_activity() {
+        for delayed_prompt in [false, true] {
+            let mut submissions = SessionSubmissions::new(None);
+            let id = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+            let receipt = acp_v2::PromptResponse::new("local");
+            submissions.settle(
+                id,
+                SubmissionState::Accepted {
+                    receipt: receipt.clone(),
+                    echoed: true,
+                },
+            );
+            submissions.start_activity(1, Some(&receipt.message_id), (0, 0));
+            submissions.finish_activity(1, Some(acp_v2::StopReason::EndTurn));
+            let external_prompt = acp_v2::PromptResponse::new("external").message_id;
+            submissions.start_activity(
+                2,
+                Some(if delayed_prompt {
+                    &receipt.message_id
+                } else {
+                    &external_prompt
+                }),
+                (0, 0),
+            );
+            submissions.finish_activity(2, Some(acp_v2::StopReason::Cancelled));
+            if delayed_prompt {
+                submissions.observe_prompt(&external_prompt, false);
+            }
+            let historical = submissions.activity(id).expect("historical receipt");
+            assert_eq!(historical.generation, 1);
+            assert!(matches!(
+                historical.completion,
+                Some(Some(acp_v2::StopReason::EndTurn))
+            ));
+            submissions.start_activity(3, Some(&external_prompt), (0, 0));
+            assert_eq!(
+                submissions
+                    .activity(id)
+                    .expect("historical receipt")
+                    .generation,
+                1
+            );
+            submissions.truncate_prompt_entries(0);
+            submissions.retain_activity_prompts(|_| false);
+            assert!(submissions.external_activity_prompt().is_none());
+            assert_eq!(submissions.activity_boundary(), (0, 0));
+        }
+    }
+
+    #[test]
+    fn deferred_external_prompt_survives_interleaved_queued_receipt_echo() {
+        for echo_before_acceptance in [false, true] {
+            let mut submissions = SessionSubmissions::new(None);
+            let local = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+            let receipt = acp_v2::PromptResponse::new("local");
+            submissions.settle(
+                local,
+                SubmissionState::Accepted {
+                    receipt: receipt.clone(),
+                    echoed: true,
+                },
+            );
+            submissions.start_activity(1, Some(&receipt.message_id), (0, 0));
+            submissions.finish_activity(1, Some(acp_v2::StopReason::EndTurn));
+            submissions.start_activity(2, Some(&receipt.message_id), (0, 0));
+            let queued = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+            let queued_receipt = acp_v2::PromptResponse::new("queued");
+            let external_prompt = acp_v2::PromptResponse::new("external").message_id;
+            submissions.observe_prompt(&external_prompt, true);
+            if echo_before_acceptance {
+                submissions.observe_prompt(&queued_receipt.message_id, true);
+            }
+            assert_eq!(
+                submissions
+                    .activity(local)
+                    .expect("unresolved resumption")
+                    .generation,
+                2
+            );
+            submissions.settle(
+                queued,
+                SubmissionState::Accepted {
+                    receipt: queued_receipt.clone(),
+                    echoed: echo_before_acceptance,
+                },
+            );
+            if !echo_before_acceptance {
+                submissions.observe_prompt(&queued_receipt.message_id, true);
+            }
+            let historical = submissions.activity(local).expect("historical receipt");
+            assert_eq!(historical.generation, 1);
+            assert!(matches!(
+                historical.completion,
+                Some(Some(acp_v2::StopReason::EndTurn))
+            ));
+            assert!(submissions.activity(queued).is_none());
+            submissions.start_activity(3, Some(&queued_receipt.message_id), (0, 0));
+            assert_eq!(
+                submissions
+                    .activity(queued)
+                    .expect("queued activity")
+                    .generation,
+                3
+            );
+        }
     }
 
     #[test]
