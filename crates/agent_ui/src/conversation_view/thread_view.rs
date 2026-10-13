@@ -54,6 +54,11 @@ use workspace::{OpenOptions, SERIALIZATION_THROTTLE_TIME};
 use super::elicitation::{
     ElicitationCard, ElicitationCardHandlers, ElicitationFormState, should_render_elicitation,
 };
+use super::response_model::{
+    ActivityPhase, ContentKind, ContentObservation, ObservationEvent, ProviderIdentity,
+    ResponseModel, SourceIdentity, SourceReference, SubmissionObservation, SubmissionPhase,
+    ThreadObservation, TurnOutcome,
+};
 use super::*;
 
 const DATA_RETENTION_LEARN_MORE_URL: &str = "https://support.claude.com/en/articles/15425996-data-retention-practices-for-mythos-class-models";
@@ -623,6 +628,7 @@ pub struct ThreadView {
     _sandbox_status_refresh_task: Option<Task<()>>,
     pub hovered_edited_file_buttons: Option<usize>,
     pub current_submission: Option<SubmissionId>,
+    pub response_model: ResponseModel,
     pub _subscriptions: Vec<Subscription>,
     pub message_editor: Entity<MessageEditor>,
     pub add_context_menu_handle: PopoverMenuHandle<ContextMenu>,
@@ -1065,6 +1071,7 @@ impl ThreadView {
             _sandbox_status_refresh_task: None,
             hovered_edited_file_buttons: None,
             current_submission,
+            response_model: ResponseModel::default(),
             message_editor,
             add_context_menu_handle: PopoverMenuHandle::default(),
             thinking_effort_menu_handle: PopoverMenuHandle::default(),
@@ -1084,6 +1091,7 @@ impl ThreadView {
             thread_search_visible: false,
         };
 
+        this.sync_response_model(None, cx);
         this.sync_reported_activity(cx);
         this.sync_generating_indicator(cx);
         this.sync_editor_mode(cx);
@@ -1500,6 +1508,291 @@ impl ThreadView {
             self.turn_fields.last_turn_duration = duration;
         }
         cx.notify();
+    }
+
+    pub(crate) fn sync_response_model(&mut self, event: Option<&AcpThreadEvent>, cx: &App) {
+        let event = match event {
+            Some(AcpThreadEvent::EntryUpdated(index)) => ObservationEvent::EntryUpdated(*index),
+            Some(AcpThreadEvent::EntriesRemoved(range)) => ObservationEvent::EntriesRemoved {
+                start: range.start,
+                end: range.end,
+            },
+            Some(AcpThreadEvent::Stopped {
+                activity_generation,
+                stop_reason,
+                ..
+            }) => ObservationEvent::Stopped {
+                generation: *activity_generation,
+                outcome: match stop_reason {
+                    Some(acp_v2::StopReason::EndTurn) => TurnOutcome::Success,
+                    Some(acp_v2::StopReason::Cancelled) => TurnOutcome::Interrupted,
+                    Some(
+                        acp_v2::StopReason::MaxTokens
+                        | acp_v2::StopReason::MaxTurnRequests
+                        | acp_v2::StopReason::Refusal,
+                    ) => TurnOutcome::Failed,
+                    _ => TurnOutcome::Unknown,
+                },
+            },
+            Some(AcpThreadEvent::Error | AcpThreadEvent::Refusal) => ObservationEvent::Failed,
+            Some(
+                AcpThreadEvent::StatusChanged
+                | AcpThreadEvent::SubmissionUpdated(_)
+                | AcpThreadEvent::NewEntry
+                | AcpThreadEvent::ToolAuthorizationRequested(_)
+                | AcpThreadEvent::ToolAuthorizationReceived(_)
+                | AcpThreadEvent::ElicitationRequested(_)
+                | AcpThreadEvent::ElicitationResponded(_),
+            )
+            | None => ObservationEvent::Refresh,
+            _ => return,
+        };
+        let thread = self.thread.read(cx);
+        let provider_identity = |identity: &acp_thread::MessageIdentity| match identity {
+            acp_thread::MessageIdentity::Legacy(identity) => {
+                ProviderIdentity::Legacy(identity.as_ref().map(|identity| identity.0.clone()))
+            }
+            acp_thread::MessageIdentity::Keyed(identity) => {
+                ProviderIdentity::Keyed(identity.0.clone())
+            }
+        };
+        let mut contents = Vec::new();
+        for (entry_index, entry) in thread.entries().iter().enumerate() {
+            let (identity, kind, pending_action, failed) = match entry {
+                AgentThreadEntry::UserMessage(message) => (
+                    SourceIdentity::Prompt(provider_identity(&message.identity)),
+                    ContentKind::Prompt,
+                    false,
+                    false,
+                ),
+                AgentThreadEntry::AssistantMessage(message) => {
+                    for (chunk_index, chunk) in message.chunks.iter().enumerate() {
+                        let (identity, block, kind) = match chunk {
+                            AssistantMessageChunk::Message {
+                                identity, block, ..
+                            } => (
+                                SourceIdentity::Message(provider_identity(identity)),
+                                block,
+                                ContentKind::Message,
+                            ),
+                            AssistantMessageChunk::Thought {
+                                identity, block, ..
+                            } => (
+                                SourceIdentity::Thought(provider_identity(identity)),
+                                block,
+                                ContentKind::Thought,
+                            ),
+                        };
+                        contents.push(ContentObservation {
+                            source: SourceReference {
+                                entry_index,
+                                chunk_index: Some(chunk_index),
+                                identity,
+                            },
+                            kind,
+                            visible: block.visible_content(cx),
+                            pending_action: false,
+                            failed: false,
+                            owner: thread
+                                .content_presentation_owner(entry_index, Some(chunk_index)),
+                        });
+                    }
+                    continue;
+                }
+                AgentThreadEntry::ToolCall(call) => (
+                    SourceIdentity::Tool(call.id.0.clone()),
+                    ContentKind::Tool,
+                    call.authorization_id()
+                        .is_some_and(|id| thread.permission_request(id).is_some()),
+                    false,
+                ),
+                AgentThreadEntry::Elicitation(id) => (
+                    SourceIdentity::Elicitation(id.0.clone()),
+                    ContentKind::Elicitation,
+                    thread.elicitation(id).is_some_and(|(_, elicitation)| {
+                        matches!(elicitation.status, ElicitationStatus::Pending { .. })
+                    }),
+                    false,
+                ),
+                AgentThreadEntry::ContextCompaction(compaction) => (
+                    SourceIdentity::Compaction(compaction.id.0.clone()),
+                    ContentKind::Compaction,
+                    false,
+                    compaction.error.is_some()
+                        || compaction.status == acp_thread::ContextCompactionStatus::Failed,
+                ),
+            };
+            contents.push(ContentObservation {
+                source: SourceReference {
+                    entry_index,
+                    chunk_index: None,
+                    identity,
+                },
+                kind,
+                visible: true,
+                pending_action,
+                failed,
+                owner: thread.content_presentation_owner(entry_index, None),
+            });
+        }
+        let reported_outcome = |reason: &Option<acp_v2::StopReason>| match reason {
+            Some(acp_v2::StopReason::EndTurn) => TurnOutcome::Success,
+            Some(acp_v2::StopReason::Cancelled) => TurnOutcome::Interrupted,
+            Some(
+                acp_v2::StopReason::MaxTokens
+                | acp_v2::StopReason::MaxTurnRequests
+                | acp_v2::StopReason::Refusal,
+            ) => TurnOutcome::Failed,
+            _ => TurnOutcome::Unknown,
+        };
+        let prompt_sources: std::collections::HashMap<_, _> = contents
+            .iter()
+            .filter(|content| content.kind == ContentKind::Prompt)
+            .map(|content| (content.source.entry_index, &content.source))
+            .collect();
+        let legacy_prompt = |id| {
+            let entry_index = thread.legacy_submission_prompt_entry(id)?;
+            prompt_sources
+                .get(&entry_index)
+                .map(|source| (*source).clone())
+        };
+        let submission_observation =
+            |id: acp_thread::SubmissionId, record: &acp_thread::SubmissionRecord| {
+                let phase = match &record.state {
+                    SubmissionState::Pending => SubmissionPhase::Pending,
+                    SubmissionState::Accepted { receipt, echoed } => SubmissionPhase::Accepted {
+                        prompt: ProviderIdentity::Keyed(receipt.message_id.0.clone()),
+                        echoed: *echoed,
+                    },
+                    SubmissionState::Completed => SubmissionPhase::Completed,
+                    SubmissionState::Failed(_) => SubmissionPhase::Failed,
+                    SubmissionState::Cancelled => SubmissionPhase::Cancelled,
+                };
+                SubmissionObservation {
+                    id: id.as_u64(),
+                    kind: record.kind,
+                    phase,
+                    outcome: thread
+                        .submission_activity(id)
+                        .and_then(|activity| activity.completion.as_ref())
+                        .map(reported_outcome),
+                    prompt: legacy_prompt(id),
+                    generation: thread
+                        .submission_activity(id)
+                        .map(|activity| activity.generation),
+                    boundary: thread.submission_content_boundary(id),
+                }
+            };
+        let latest_submission = thread.latest_submission_id();
+        let submission = latest_submission.and_then(|id| {
+            thread
+                .submission(id)
+                .map(|record| submission_observation(id, record))
+        });
+        let submission_updates = thread
+            .recoverable_submissions()
+            .filter(|(id, _)| Some(*id) != latest_submission)
+            .map(|(id, record)| submission_observation(id, record))
+            .chain(
+                thread
+                    .legacy_activity_submission()
+                    .filter(|id| Some(*id) != latest_submission)
+                    .and_then(|id| {
+                        thread
+                            .submission(id)
+                            .map(|record| submission_observation(id, record))
+                    }),
+            )
+            .chain(thread.submission_receipts().filter_map(|(id, message_id)| {
+                (thread.submission(id).is_none()).then(|| SubmissionObservation {
+                    id: id.as_u64(),
+                    kind: acp_thread::SubmissionKind::Prompt,
+                    phase: SubmissionPhase::Accepted {
+                        prompt: ProviderIdentity::Keyed(message_id.0.clone()),
+                        echoed: false,
+                    },
+                    outcome: thread
+                        .submission_activity(id)
+                        .and_then(|activity| activity.completion.as_ref())
+                        .map(reported_outcome),
+                    prompt: None,
+                    generation: thread
+                        .submission_activity(id)
+                        .map(|activity| activity.generation),
+                    boundary: thread.submission_content_boundary(id),
+                })
+            }))
+            .chain(
+                thread
+                    .legacy_submission_completions()
+                    .map(|(id, kind, completion)| {
+                        let (phase, outcome) = match completion {
+                            acp_thread::LegacySubmissionCompletion::Stopped(reason) => (
+                                SubmissionPhase::Completed,
+                                match reason {
+                                    acp_v1::StopReason::EndTurn => TurnOutcome::Success,
+                                    acp_v1::StopReason::Cancelled => TurnOutcome::Interrupted,
+                                    acp_v1::StopReason::MaxTokens
+                                    | acp_v1::StopReason::MaxTurnRequests
+                                    | acp_v1::StopReason::Refusal => TurnOutcome::Failed,
+                                    _ => TurnOutcome::Unknown,
+                                },
+                            ),
+                            acp_thread::LegacySubmissionCompletion::Failed => {
+                                (SubmissionPhase::Failed, TurnOutcome::Failed)
+                            }
+                            acp_thread::LegacySubmissionCompletion::Cancelled => {
+                                (SubmissionPhase::Cancelled, TurnOutcome::Interrupted)
+                            }
+                        };
+                        SubmissionObservation {
+                            id: id.as_u64(),
+                            kind,
+                            phase,
+                            outcome: Some(outcome),
+                            prompt: legacy_prompt(id),
+                            generation: None,
+                            boundary: thread.submission_content_boundary(id),
+                        }
+                    }),
+            )
+            .collect();
+        self.response_model.observe(
+            &ThreadObservation {
+                contents,
+                entry_count: thread.entries().len(),
+                submission,
+                submission_updates,
+                reported_activity: thread.uses_reported_activity(),
+                activity: match thread.foreground_activity() {
+                    ForegroundActivity::Idle => ActivityPhase::Idle,
+                    ForegroundActivity::Running => ActivityPhase::Running,
+                    ForegroundActivity::RequiresAction => ActivityPhase::RequiresAction,
+                },
+                activity_generation: thread.activity_generation(),
+                external_activity: thread.external_activity_prompt().map(|prompt| {
+                    response_model::ExternalActivityObservation {
+                        prompt: ProviderIdentity::Keyed(prompt.0.clone()),
+                        boundary: thread.activity_content_boundary(),
+                        outcome: if let acp_v2::StateUpdate::Idle(idle) = thread.foreground_state()
+                        {
+                            Some(reported_outcome(&idle.stop_reason))
+                        } else {
+                            None
+                        },
+                    }
+                }),
+                pending_permission: thread.pending_permission_requests().next().is_some(),
+                permission_owners: thread
+                    .pending_permission_requests()
+                    .map(|request| thread.permission_presentation_owner(request))
+                    .collect(),
+                legacy_activity_submission: thread
+                    .legacy_activity_submission()
+                    .map(|id| id.as_u64()),
+            },
+            event,
+        );
     }
 
     pub(crate) fn report_activity_completion(

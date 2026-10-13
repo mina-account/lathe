@@ -1050,6 +1050,7 @@ pub struct PermissionRequestId(Uuid);
 #[derive(Debug)]
 pub struct PermissionRequest {
     pub id: PermissionRequestId,
+    presentation_owner: Option<PresentationOwner>,
     data: PermissionRequestData,
 }
 
@@ -3372,6 +3373,7 @@ pub fn refusal_fallback_model_from_meta(meta: &Option<acp_v1::Meta>) -> Option<S
 
 struct RunningTurn {
     id: u32,
+    submission_id: SubmissionId,
     first_entry_index: usize,
     send_task: Task<()>,
 }
@@ -4040,8 +4042,86 @@ impl AcpThread {
         self.submissions.get(id)
     }
 
+    pub fn submission_receipts(&self) -> impl Iterator<Item = (SubmissionId, &acp_v2::MessageId)> {
+        self.submissions.receipts()
+    }
+
+    pub fn submission_activity(&self, id: SubmissionId) -> Option<&SubmissionActivity> {
+        self.submissions.activity(id)
+    }
+
+    pub fn submission_content_boundary(&self, id: SubmissionId) -> Option<(usize, usize)> {
+        self.submissions.submission_boundary(id)
+    }
+
+    pub fn external_activity_prompt(&self) -> Option<&acp_v2::MessageId> {
+        self.submissions.external_activity_prompt()
+    }
+
+    pub fn activity_content_boundary(&self) -> (usize, usize) {
+        self.submissions.activity_boundary()
+    }
+
+    pub fn content_presentation_owner(
+        &self,
+        entry_index: usize,
+        chunk_index: Option<usize>,
+    ) -> Option<PresentationOwner> {
+        self.submissions.content_owner((entry_index, chunk_index))
+    }
+
+    pub fn permission_presentation_owner(
+        &self,
+        request: &PermissionRequest,
+    ) -> Option<PresentationOwner> {
+        request
+            .presentation_owner
+            .clone()
+            .map(|owner| self.submissions.resolve_owner(owner))
+    }
+
+    fn presentation_owner(&self) -> Option<PresentationOwner> {
+        if self.uses_reported_activity() {
+            self.submissions.presentation_owner(
+                self.activity_generation(),
+                self.foreground_activity() != ForegroundActivity::Idle,
+            )
+        } else if self.foreground_activity() != ForegroundActivity::Idle {
+            self.running_turn
+                .as_ref()
+                .map(|turn| PresentationOwner::Submission(turn.submission_id))
+        } else {
+            let id = self.submissions.latest_id()?;
+            self.submissions
+                .get(id)
+                .filter(|record| {
+                    matches!(
+                        record.state,
+                        SubmissionState::Pending | SubmissionState::Accepted { .. }
+                    )
+                })
+                .map(|_| PresentationOwner::Submission(id))
+        }
+    }
+
+    pub fn legacy_submission_prompt_entry(&self, id: SubmissionId) -> Option<usize> {
+        self.submissions.legacy_prompt_entry(id)
+    }
+
+    pub fn legacy_submission_completions(
+        &self,
+    ) -> impl Iterator<Item = (SubmissionId, SubmissionKind, &LegacySubmissionCompletion)> {
+        self.submissions.legacy_completions()
+    }
+
     pub fn latest_submission_id(&self) -> Option<SubmissionId> {
         self.submissions.latest_id()
+    }
+
+    pub fn legacy_activity_submission(&self) -> Option<SubmissionId> {
+        (!self.uses_reported_activity() && self.foreground_activity() != ForegroundActivity::Idle)
+            .then(|| self.running_turn.as_ref().map(|turn| turn.submission_id))
+            .flatten()
     }
 
     pub fn has_unsettled_submissions(&self) -> bool {
@@ -4081,9 +4161,17 @@ impl AcpThread {
     fn register_submission(
         &mut self,
         content: Arc<[acp_v2::ContentBlock]>,
+        kind: SubmissionKind,
         cx: &mut Context<Self>,
     ) -> SubmissionId {
-        let id = self.submissions.register(content);
+        let id = self.submissions.register(content, kind);
+        let boundary =
+            if let Some(AgentThreadEntry::AssistantMessage(message)) = self.entries.last() {
+                (self.entries.len().saturating_sub(1), message.chunks.len())
+            } else {
+                (self.entries.len(), 0)
+            };
+        self.submissions.associate_boundary(id, boundary);
         cx.emit(AcpThreadEvent::SubmissionUpdated(id));
         cx.notify();
         id
@@ -4110,6 +4198,19 @@ impl AcpThread {
         let task = cx.spawn(async move |this, cx| {
             let response = complete(this.clone(), cx).await;
             let update = this.update(cx, |this, cx| {
+                if this.submissions.receipt_transport().is_none() {
+                    let completion = match &response {
+                        Ok(Some(SubmissionResponse::LegacyCompleted(response))) => {
+                            Some(LegacySubmissionCompletion::Stopped(response.stop_reason))
+                        }
+                        Ok(None) => Some(LegacySubmissionCompletion::Cancelled),
+                        Err(_) => Some(LegacySubmissionCompletion::Failed),
+                        _ => None,
+                    };
+                    if let Some(completion) = completion {
+                        this.submissions.complete_legacy(id, completion);
+                    }
+                }
                 let state = match &response {
                     Ok(Some(SubmissionResponse::Accepted(receipt))) => {
                         let echoed = this.entries.iter().any(|entry| {
@@ -4151,6 +4252,36 @@ impl AcpThread {
         self.activity
             .update(state, self.entries.len().saturating_sub(1));
         let current = self.foreground_activity();
+        if self.uses_reported_activity() {
+            if previous == ForegroundActivity::Idle && current != ForegroundActivity::Idle {
+                let latest_prompt = self.entries.iter().rev().find_map(|entry| {
+                    if let AgentThreadEntry::UserMessage(message) = entry
+                        && let MessageIdentity::Keyed(id) = &message.identity
+                    {
+                        return Some(id);
+                    }
+                    None
+                });
+                let boundary = if let Some(AgentThreadEntry::AssistantMessage(message)) =
+                    self.entries.last()
+                {
+                    (self.entries.len().saturating_sub(1), message.chunks.len())
+                } else {
+                    (self.entries.len(), 0)
+                };
+                self.submissions.start_activity(
+                    self.activity.generation(),
+                    latest_prompt,
+                    boundary,
+                );
+            } else if previous != ForegroundActivity::Idle
+                && current == ForegroundActivity::Idle
+                && let acp_v2::StateUpdate::Idle(idle) = self.activity.state()
+            {
+                self.submissions
+                    .finish_activity(self.activity.generation(), idle.stop_reason.clone());
+            }
+        }
         if previous == ForegroundActivity::Idle && current != ForegroundActivity::Idle {
             self.had_error = false;
         }
@@ -4644,6 +4775,11 @@ impl AcpThread {
                 {
                     let chunk_index = message.chunks.len();
                     message.chunks.push(chunk);
+                    self.submissions.observe_content(
+                        (entry_index - 1, Some(chunk_index)),
+                        self.activity.generation(),
+                        self.activity.phase() != ForegroundActivity::Idle,
+                    );
                     Ok(MessageLocation::Assistant {
                         entry_index: entry_index - 1,
                         chunk_index,
@@ -4655,6 +4791,11 @@ impl AcpThread {
                             indented: false,
                             is_subagent_output: false,
                         }));
+                    self.submissions.observe_content(
+                        (entry_index, Some(0)),
+                        self.activity.generation(),
+                        self.activity.phase() != ForegroundActivity::Idle,
+                    );
                     Ok(MessageLocation::Assistant {
                         entry_index,
                         chunk_index: 0,
@@ -4676,6 +4817,13 @@ impl AcpThread {
             && let MessageIdentity::Keyed(id) = &message.identity
         {
             let id = id.clone();
+            if location.entry_index() >= previous_entry_count {
+                self.submissions.observe_prompt(
+                    &id,
+                    self.foreground_activity() != ForegroundActivity::Idle,
+                    (location.entry_index(), 0),
+                );
+            }
             self.observe_submission_echo(&id, cx);
         }
         if self.entries.len() > previous_entry_count {
@@ -4838,6 +4986,7 @@ impl AcpThread {
         {
             let idx = entries_len - 1;
             cx.emit(AcpThreadEvent::EntryUpdated(idx));
+            let previous_chunk_count = chunks.len();
             match (chunks.last_mut(), is_thought) {
                 (
                     Some(AssistantMessageChunk::Message {
@@ -4876,6 +5025,13 @@ impl AcpThread {
                         })
                     }
                 }
+            }
+            if chunks.len() > previous_chunk_count {
+                self.submissions.observe_content(
+                    (idx, Some(previous_chunk_count)),
+                    self.activity.generation(),
+                    self.activity.phase() != ForegroundActivity::Idle,
+                );
             }
         } else {
             let block = MessageContent::new(chunk, &language_registry, path_style, cx);
@@ -5048,6 +5204,22 @@ impl AcpThread {
 
     fn push_entry(&mut self, entry: AgentThreadEntry, cx: &mut Context<Self>) {
         self.flush_streaming_text(cx);
+        if self.uses_reported_activity() && !matches!(entry, AgentThreadEntry::UserMessage(_)) {
+            let generation = self.activity_generation();
+            let active = self.foreground_activity() != ForegroundActivity::Idle;
+            if let AgentThreadEntry::AssistantMessage(message) = &entry {
+                for chunk_index in 0..message.chunks.len() {
+                    self.submissions.observe_content(
+                        (self.entries.len(), Some(chunk_index)),
+                        generation,
+                        active,
+                    );
+                }
+            } else {
+                self.submissions
+                    .observe_content((self.entries.len(), None), generation, active);
+            }
+        }
         self.entries.push(entry);
         cx.emit(AcpThreadEvent::NewEntry);
     }
@@ -5063,6 +5235,22 @@ impl AcpThread {
             })
             .collect::<Vec<_>>();
         self.entries.truncate(index);
+        self.submissions.truncate_prompt_entries(index);
+        let prompt_ids: HashSet<_> = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                if let AgentThreadEntry::UserMessage(message) = entry
+                    && let MessageIdentity::Keyed(id) = &message.identity
+                {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        self.submissions
+            .retain_activity_prompts(|prompt| prompt_ids.contains(prompt));
         for id in removed_requests {
             self.resolve_permission_request(id, RequestPermissionOutcome::Cancelled, cx);
         }
@@ -5664,6 +5852,7 @@ impl AcpThread {
             id,
             PermissionRequest {
                 id,
+                presentation_owner: self.presentation_owner(),
                 data: PermissionRequestData::Generic {
                     request,
                     respond_tx,
@@ -5765,6 +5954,7 @@ impl AcpThread {
             id,
             PermissionRequest {
                 id,
+                presentation_owner: self.presentation_owner(),
                 data: PermissionRequestData::LegacyTool {
                     tool_call_id,
                     options,
@@ -6146,7 +6336,12 @@ impl AcpThread {
         push_user_message: bool,
         cx: &mut Context<Self>,
     ) -> Submission {
-        let id = self.register_submission(message.clone().into(), cx);
+        let kind = if push_user_message {
+            SubmissionKind::Prompt
+        } else {
+            SubmissionKind::Command
+        };
+        let id = self.register_submission(message.clone().into(), kind, cx);
         if let Some(submissions) = self.submissions.receipt_transport() {
             let response = submissions.prompt(message, cx);
             self.track_submission(id, cx, async move |_, _| {
@@ -6196,6 +6391,8 @@ impl AcpThread {
         self.run_turn(id, cx, async move |this, cx| {
             if push_user_message {
                 this.update(cx, |this, cx| {
+                    this.submissions
+                        .associate_legacy_prompt(id, this.entries.len());
                     this.push_entry(
                         AgentThreadEntry::UserMessage(UserMessage {
                             identity: MessageIdentity::Legacy(None),
@@ -6257,7 +6454,7 @@ impl AcpThread {
             .and_then(|id| self.submissions.get(id))
             .map(|submission| submission.content.clone())
             .unwrap_or_default();
-        let id = self.register_submission(content.clone(), cx);
+        let id = self.register_submission(content.clone(), SubmissionKind::Retry, cx);
         if self.uses_reported_activity() {
             return self.track_submission(id, cx, async move |_, _| {
                 Err(anyhow!("Receipt-driven retry is not supported"))
@@ -6265,6 +6462,9 @@ impl AcpThread {
         }
         if let Err(error) = self.validate_prompt_content(&content) {
             return self.track_submission(id, cx, async move |_, _| Err(error));
+        }
+        if let Some((entry_index, _)) = self.last_user_message() {
+            self.submissions.associate_legacy_prompt(id, entry_index);
         }
         self.run_turn(id, cx, async move |this, cx| {
             this.update(cx, |this, cx| {
@@ -6295,6 +6495,7 @@ impl AcpThread {
         let first_entry_index = self.entries.len().saturating_sub(1);
         self.running_turn = Some(RunningTurn {
             id: turn_id,
+            submission_id: id,
             first_entry_index,
             send_task: cx.spawn(async move |this, cx| {
                 cancel_task.await;
@@ -19315,7 +19516,7 @@ mod tests {
             })
         });
         let request = thread.update(cx, |thread, cx| {
-            let id = thread.register_submission(Arc::from([]), cx);
+            let id = thread.register_submission(Arc::from([]), SubmissionKind::Prompt, cx);
             thread.run_turn(id, cx, {
                 let backend_finished = backend_finished.clone();
                 async move |_, _| {
@@ -21789,7 +21990,7 @@ mod tests {
     ) {
         let (complete, completion) = oneshot::channel::<Result<acp_v1::PromptResponse>>();
         let request = thread.update(cx, |thread, cx| {
-            let id = thread.register_submission(Arc::from([]), cx);
+            let id = thread.register_submission(Arc::from([]), SubmissionKind::Prompt, cx);
             thread.run_turn(id, cx, async move |_, _| completion.await?)
         });
         (
