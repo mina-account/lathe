@@ -1,12 +1,12 @@
 {
     "date":  "2026-10-12",
-    "windowsNative":  47,
-    "linuxNative":  47,
+    "windowsNative":  48,
+    "linuxNative":  48,
     "windowsProtocol":  13,
     "linuxProtocol":  13,
     "frontendBridge":  16,
-    "frontendRealBrowser":  16,
-    "chromium":  "153.0.8010.12",
+    "frontendRealBrowser":  24,
+    "chromium":  "155.0.4283.45",
     "playwright":  "1.56.1",
     "preview":  32,
     "workspaceSave":  26,
@@ -38,5 +38,9 @@
                         "Application/data confinement with no_sandbox=1; not an OS sandbox",
                         "Expanded renderers/resources/themes Phase 4; full opening/install/packaging/notices Phase 5"
                     ],
-    "urlEncodingRegressions":  "Red to green: encoded external queries/fragments and local %23 filename; case-insensitive HTTP/HTTPS/mailto retain original URL"
+    "urlEncodingRegressions":  "Red to green: encoded external queries/fragments and local %23 filename; case-insensitive HTTP/HTTPS/mailto retain original URL",
+    "browser": "Microsoft Edge",
+    "reviewPass1Regressions": "Confirmed all seven findings with expected-red browser/native regressions; green delayed flush/mode capture, rapid scopes, CRLF joins, recovery-only failed mapping, refreshed Find, document IDs, rendered heading fragments, and actual Open/close/Open preferences",
+    "delayedInputNativeSmoke": "Fresh rebuilt Win32/X11/Wayland CEF DOM input survives immediate mode rebuild and native flush with adjacent source exact; exit 0 on each",
+    "normalClosePreferenceBarrier": "Expected red with no explicit serialization: clean close reopened at defaults; green normal close awaits document preference persistence before reopening"
 }

@@ -10860,6 +10860,7 @@ dependencies = [
  "language",
  "log",
  "project",
+ "pulldown-cmark 0.13.4",
  "raw-window-handle",
  "serde",
  "serde_json",

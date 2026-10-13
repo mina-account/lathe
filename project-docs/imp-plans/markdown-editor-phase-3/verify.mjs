@@ -13,6 +13,10 @@ for (const file of files) {
     assert.deepEqual(runtimes.map(entry=>entry.mode),["ir","wysiwyg","sv","ir","preview"]);
     for (const runtime of runtimes) {assert.equal(runtime.version,"3.11.2");assert(runtime.source_preserved);}
     assert(one("visual_to_native").source_same_buffer);
+    const modeInput=one("delayed_rich_input_mode"), flushInput=one("delayed_rich_input_flush");
+    assert(modeInput.passed); assert(flushInput.passed);
+    assert.equal(modeInput.text.replace("# debounced","# visual"),one("visual_to_native").text);
+    assert.equal(flushInput.text.replace("# flush-input","# mirrored"),one("disjoint_external_rebase").text);
     assert(one("native_to_visual_to_native").text.startsWith("# mirrored 😀"));
     assert(one("rapid_toolbar_history").passed);
     assert(one("browser_native_undo").text.startsWith("# native 😀"));

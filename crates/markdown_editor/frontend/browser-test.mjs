@@ -62,6 +62,140 @@ async function selectText(page,text) {
         throw new Error(`Text not found: ${text}`);
     },text);
 }
+
+test("delayed rich input is captured before flush and immediate mode changes",async () => {
+    for (const mode of ["ir","wysiwyg"]) for (const operation of ["flush","mode"]) {
+        const {page,context}=await open("Before\n\nTarget\n\nTail",mode);
+        await selectText(page,"Target"); await page.keyboard.insertText("Changed");
+        await page.evaluate(operation => operation === "flush" ? window.latheMarkdown.receive({kind:"flush",request:99}) : window.latheRich.mode("sv"),operation);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),"Before\n\nChanged\n\nTail");
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed")),false);
+        await acknowledge(page); await page.waitForFunction(()=>window.latheRich.ready);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),"Before\n\nChanged\n\nTail");
+        if(operation==="flush") assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed" && message.request===99)));
+        else assert.equal(await page.evaluate(()=>window.latheRich.editor.getCurrentMode()),"sv");
+        await context.close();
+    }
+});
+
+test("rapid rich scopes retain earlier edits across keyboard and mouse interaction",async () => {
+    for (const mode of ["ir","wysiwyg"]) for(const mouse of [false,true]) {
+        const {page,context}=await open("First sentence\n\nSecond sentence\n\nTail",mode);
+        await selectText(page,"First"); await page.keyboard.insertText("Edited first");
+        if(mouse) await page.locator(mode==="ir" ? '.vditor-ir p' : '.vditor-wysiwyg p').filter({hasText:"Second"}).click();
+        await selectText(page,"Second"); await page.keyboard.insertText("Edited second");
+        await page.waitForFunction(()=>window.latheMarkdown.draft.includes("Edited second"));
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:100}));
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),"Edited first sentence\n\nEdited second sentence\n\nTail");
+        await acknowledge(page); await acknowledge(page);
+        assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed" && message.request===100)));
+        await context.close();
+    }
+});
+
+test("rich Backspace and Delete joins preserve affected paragraphs and untouched source",async () => {
+    for (const mode of ["ir","wysiwyg"]) for(const backward of [true,false]) {
+        const source='[id]: <https://example.com> "Keep"\r\n\r\nFirst paragraph\r\n\r\nSecond paragraph\r\n\r\nTail';
+        const {page,context}=await open(source,mode);
+        await selectText(page,backward ? "Second paragraph" : "First paragraph");
+        await page.keyboard.press(backward ? "ArrowLeft" : "ArrowRight");
+        await page.keyboard.press(backward ? "Backspace" : "Delete");
+        await page.waitForFunction(()=>window.latheMarkdown.pending || document.querySelector('#status').textContent.includes("cannot be mapped safely"));
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:101}));
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("First paragraph\r\n\r\nSecond paragraph","First paragraphSecond paragraph"));
+        await acknowledge(page);
+        assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed" && message.request===101)));
+        await page.evaluate(()=>window.latheRich.mode("sv")); await page.waitForFunction(()=>window.latheRich.ready && window.latheRich.editor.getCurrentMode()==="sv");
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("First paragraph\r\n\r\nSecond paragraph","First paragraphSecond paragraph"));
+        await context.close();
+    }
+});
+
+test("unmappable rich edits retain recovery text and block successful barriers and rebuilds",async () => {
+    for (const mode of ["ir","wysiwyg"]) {
+        const {page,context}=await open("Before\n\nTarget\n\nTail",mode);
+        await selectText(page,"Target"); await page.keyboard.insertText("Changed");
+        // An unrelated DOM mutation makes the captured unchanged neighbor unavailable.
+        await page.evaluate(()=>{
+            const editor=window.latheRich.editor,root=editor.vditor[editor.getCurrentMode()].element;
+            root.firstElementChild.remove(); window.latheRich.commit(); window.latheMarkdown.receive({kind:"flush",request:102}); window.latheRich.mode("sv");
+        });
+        assert(await page.evaluate(()=>window.latheMarkdown.blocked));
+        assert((await page.evaluate(()=>window.latheMarkdown.draft)).includes("Changed"));
+        assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="draft" && message.text.includes("Changed"))));
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>["edit","flushed"].includes(message.kind))),false);
+        assert.equal(await page.evaluate(()=>window.latheRich.editor.getCurrentMode()),mode);
+        assert((await page.locator(mode==="ir" ? ".vditor-ir" : ".vditor-wysiwyg").innerText()).includes("Changed"));
+        await context.close();
+    }
+});
+
+test("Find recomputes counts and DOM highlights after host updates and ordinary input",async () => {
+    for(const mode of ["ir","wysiwyg","sv","preview"]) {
+        const {page,context}=await open("Word word",mode);
+        await page.click("#find-open"); await page.fill("#query","word"); assert.equal(await page.locator("#count").innerText(),"2 matches");
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"document",revision:1,text:"No match",writable:true,draft:null}));
+        assert.equal(await page.locator("#count").innerText(),"0 matches"); await page.click("#next");
+        assert.equal(await page.locator("#count").innerText(),"0 matches");
+        assert.equal(await page.evaluate(()=>CSS.highlights.get("find").size),0);
+        if(mode!=="preview") {
+            await selectText(page,"No match"); await page.keyboard.insertText("word");
+            await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:103}));
+            assert.equal(await page.locator("#count").innerText(),"1 matches");
+            assert.equal(await page.evaluate(()=>CSS.highlights.get("find").size),1);
+        }
+        await context.close();
+    }
+});
+
+test("viewer footnotes, backlinks and ordinary HTML IDs resolve inside the document",async () => {
+    const source='First[^one]\n\n[ordinary](#query)\n\n'+"paragraph\n\n".repeat(100)+'<p id="query">Ordinary anchor</p>\n\n[^one]: Last footnote';
+    const {page,context}=await open(source,"preview");
+    await page.locator('#viewer a[href="#footnotes-def-1"]').click();
+    assert(await page.locator('#viewer').evaluate(root=>root.scrollTop>0));
+    await page.locator('#viewer a[href="#footnotes-ref-1"]').click();
+    assert(await page.locator('#viewer').evaluate(root=>root.scrollTop<100));
+    await page.locator('#viewer a[href="#query"]').click();
+    assert(await page.locator('#viewer').evaluate(root=>root.scrollTop>0));
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+    assert.deepEqual(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="open_link")),[]);
+    await context.close();
+});
+
+test("heading outline fragments use rendered inline text in every presentation",async () => {
+    const source='[jump](#target)\n\n'+"paragraph\n\n".repeat(50)+'# [Target](https://example.com)';
+    for(const mode of ["ir","wysiwyg","sv","preview"]) {
+        const {page,context}=await open(source,mode); await page.click("#outline-toggle");
+        assert.equal(await page.locator('#outline button').innerText(),"Target");
+        const root=mode==="preview" ? '#viewer' : mode==="sv" ? '.vditor-preview' : mode==="ir" ? '.vditor-ir' : '.vditor-wysiwyg';
+        if(mode==="ir") await page.locator(`${root} [data-type=a]`).filter({hasText:"jump"}).click();
+        else await page.locator(`${root} a[href="#target"]`).click();
+        assert(await page.locator(`${root} h1`).evaluate(heading=>{
+            const bounds=heading.getBoundingClientRect(); return bounds.top < innerHeight && bounds.bottom > 0;
+        }),mode);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        await context.close();
+    }
+});
+
+test("canceled composition after delayed input retains exact source beside relocated definitions",async () => {
+    const source='# Heading\n<script>inert</script>\n[ref]: /a\n```unknown\nx\n```\nTail';
+    for(const mode of ["ir","wysiwyg"]) {
+        const {page,context}=await open(source,mode);
+        await selectText(page,"Heading"); await page.keyboard.insertText("Edited");
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:104})); await acknowledge(page);
+        await page.evaluate(()=>{
+            window.latheMarkdown.composing=true;
+            window.latheRich.appendText(" canceled"); window.latheRich.replaceText(" canceled","");
+            window.latheMarkdown.compositionEnd(); window.latheMarkdown.receive({kind:"flush",request:105});
+        });
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Heading","Edited"));
+        await acknowledge(page);
+        assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed" && message.request===105)));
+        await context.close();
+    }
+});
 test("real pinned runtime mounts rich content with production CSP", async () => {
     const {page,context,errors,external} = await open("# Heading\n\n**bold** text\n");
     assert.equal(await page.evaluate(() => window.latheRich.editor.version),"3.11.2");

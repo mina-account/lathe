@@ -54,7 +54,9 @@ const bridge = new DocumentBridge(parameters.get("session") ?? "", parameters.ge
 (window as any).latheMarkdown = bridge;
 const receive = bridge.receive.bind(bridge);
 bridge.receive = message => {
+    if (["flush","document","accepted","preferences"].includes(message.kind)) commit();
     if (message.kind === "preferences") {
+        if (bridge.blocked) return;
         preferences = {...defaults(),...message.preferences};
         if (ready && !bridge.composing) build();
         return;
@@ -114,6 +116,7 @@ function restoreSelection(selected: ReturnType<typeof selection>, oldText: strin
     else selectedRange?.setBaseAndExtent(startNode,startOffset,endNode,endOffset);
 }
 function show(text: string) {
+    if (bridge.blocked && ready) { permissions(); return; }
     if (sourceEditor && sourceEditorSpan && !bridge.composing && text !== latest) {
         for (const change of separateChanges(latest,text).reverse()) {
             sourceEditorSpan.start = transformOffset(sourceEditorSpan.start,change);
@@ -134,7 +137,7 @@ function show(text: string) {
     try {
         editor.setValue(display(text), true);
         lastSerialized = editor.getValue(); projection.reset(text,lastSerialized);
-        renderViewer(); renderOutline(); renderSourceBlocks();
+        renderViewer(); renderOutline(); renderSourceBlocks(); updateFind();
         restoreSelection(selected,oldText); scrollElement().scrollTop = scroll;
     } catch (error) { status.textContent = String(error); bridge.blocked = true; }
     finally { projecting = false; permissions(); }
@@ -144,7 +147,7 @@ function commit() {
     try {
         const actual = editor.getValue();
         if (actual === lastSerialized) return;
-        if (!intent) { lastSerialized=actual; return; }
+        if (!intent) throw new Error("The input has no safe source scope.");
         let canonical: string;
         if (intent.sourceView) {
             const changes = separateChanges(projection.canonical,preserveTableLayout(projection.canonical,actual)).filter(change => change.end >= intent!.start && change.start <= intent!.end);
@@ -167,8 +170,16 @@ function commit() {
         // Reparsing moves reference definitions and adjusts table layout. Keep the
         // source mapping in its original block order rather than adopting that output.
         lastSerialized=actual; intent = null;
-        latest = source; bridge.input(source); renderOutline();
-    } catch (error) { status.textContent = String(error); }
+        latest = source; bridge.input(source); renderOutline(); updateFind();
+    } catch (error) { retainUnmappedInput(error); }
+}
+function retainUnmappedInput(error:unknown) {
+    // A recovery draft may contain serializer normalization; it must never be
+    // submitted to the authoritative buffer as an ordinary edit.
+    bridge.blocked = true;
+    bridge.input(editor.getValue());
+    status.textContent = `${String(error)} Visual input retained; use Recover Draft.`;
+    permissions(); updateFind();
 }
 function preserveTableLayout(before:string,after:string):string {
     const row = (line:string) => line.trim().split(/(?<!\\)\|/);
@@ -197,8 +208,13 @@ function serializeBlock(block:Element):string { return serializeBlockHtml(block.
 function editableBlocks():Element[] {
     return [...active().children].filter(block=>!["link-ref-defs-block","footnotes-block"].includes(block.getAttribute("data-type") ?? ""));
 }
-function captureIntent(target?:Node) {
-    if (!ready || projecting || preferences.mode === "preview") return;
+function captureIntent(target?:Node, deletion?:"backward"|"forward") {
+    if (!ready || projecting || preferences.mode === "preview" || bridge.blocked) return;
+    commit();
+    if (bridge.blocked) return;
+    try { captureScope(target,deletion); } catch (error) { retainUnmappedInput(error); }
+}
+function captureScope(target?:Node, deletion?:"backward"|"forward") {
     const root = active(), selected = window.getSelection();
     const range = selected?.rangeCount ? selected.getRangeAt(0) : null;
     if (editor.getCurrentMode() === "sv") {
@@ -208,9 +224,16 @@ function captureIntent(target?:Node) {
     }
     const children = editableBlocks();
     const blockIndex = (node:Node|null):number => children.findIndex(block=>block===node || block.contains(node));
-    const first = blockIndex(target ?? range?.startContainer ?? null);
-    const last = target ? first : blockIndex(range?.endContainer ?? null);
+    let first = blockIndex(target ?? range?.startContainer ?? null);
+    let last = target ? first : blockIndex(range?.endContainer ?? null);
     if (first < 0 || last < first) return;
+    if (deletion && range?.collapsed && first === last) {
+        const prefix = range.cloneRange(), suffix = range.cloneRange();
+        prefix.selectNodeContents(children[first]); prefix.setEnd(range.startContainer,range.startOffset);
+        suffix.selectNodeContents(children[last]); suffix.setStart(range.endContainer,range.endOffset);
+        if (deletion === "backward" && !prefix.toString() && first > 0) first--;
+        if (deletion === "forward" && !suffix.toString() && last+1 < children.length) last++;
+    }
     const blocks = children.map(block=>preserveTableLayout(projection.canonical,serializeBlock(block)));
     const occurrences={previousOccurrence:blocks.slice(0,first).filter(block=>block===blocks[first-1]).length-1,nextOccurrence:blocks.slice(last+1).filter(block=>block===blocks[last+1]).length-1};
     let offset = 0;
@@ -277,7 +300,13 @@ function headingElements() { return [...(preferences.mode === "sv" ? editor.vdit
 function renderOutline() {
     outline.replaceChildren();
     for (const heading of headingElements()) {
-        const label = heading.textContent?.replace(/^#+\s*/,"").replace(/\s*\{#[^}]+\}\s*$/, "") ?? "";
+        let text = heading.textContent ?? "";
+        if (preferences.mode === "ir") {
+            const rendered = document.createElement("div");
+            rendered.innerHTML = sanitize(editor.vditor.lute.Md2HTML(serializeBlock(heading)));
+            text = rendered.textContent ?? "";
+        }
+        const label = text.replace(/^#+\s*/,"").replace(/\s*\{#[^}]+\}\s*$/, "").trim();
         const identifier = label.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, "").trim().replace(/\s+/g,"-");
         heading.dataset.anchor = identifier;
         const raw = latest.split(/\r?\n/).find(line => line.replace(/^#{1,6}\s+/,"").replace(/\s*\{#[^}]+\}\s*$/,"") === label);
@@ -310,7 +339,7 @@ function renderSourceBlocks() {
             const source = latest.slice(0,span.start) + blockSource + latest.slice(span.end);
             if (!withinBudget(source)) { status.textContent = "Source block exceeds the visual document limit."; return; }
             span.end = span.start + blockSource.length; latest = source;
-            bridge.input(source); projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false;
+            bridge.input(source); projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false; updateFind();
         });
         field.addEventListener("blur",() => { sourceEditor = null; sourceEditorSpan = null; renderSourceBlocks(); });
         details.append(label,field); blocks.append(details);
@@ -321,6 +350,7 @@ function persist() { bridge.emit({kind:"preferences",preferences}); }
 function mode(mode: Mode) {
     if (!ready) return;
     if (bridge.composing || sourceEditor) { status.textContent = "Finish the current composition or source block edit before switching modes."; return; }
+    commit(); if (bridge.blocked) return;
     bridge.afterFlush.push(() => {
         const selected = selection(), oldText = active().textContent ?? "";
         preferences.scroll = scrollElement().scrollTop; preferences.mode = mode; persist(); build(selected,oldText);
@@ -335,8 +365,10 @@ function openLink(url: string) {
     if (url.startsWith("#")) {
         let fragment: string;
         try { fragment = decodeURIComponent(url.slice(1)); } catch { return; }
-        const heading = headingElements().find(heading => heading.id === fragment || heading.dataset.anchor === fragment || heading.dataset.explicitAnchor === fragment);
-        heading?.scrollIntoView({block:"start"}); return;
+        const root = preferences.mode === "sv" ? editor.vditor.preview.previewElement : active();
+        const target = [...root.querySelectorAll<HTMLElement>("[id]")].find(element=>element.id===fragment)
+            ?? headingElements().find(heading => heading.dataset.anchor === fragment || heading.dataset.explicitAnchor === fragment);
+        target?.scrollIntoView({block:"start"}); return;
     }
     bridge.emit({kind:"open_link",url});
 }
@@ -387,7 +419,7 @@ document.addEventListener("beforeinput",event => {
     if (input.inputType === "historyUndo" || input.inputType === "historyRedo") {
         event.preventDefault(); event.stopImmediatePropagation(); bridge.history(input.inputType === "historyUndo" ? "undo" : "redo");
     } else if (!bridge.writable || bridge.blocked || preferences.mode === "preview" || input.data && !withinBudget(latest + input.data)) event.preventDefault();
-    else captureIntent();
+    else captureIntent(undefined,input.inputType === "deleteContentBackward" ? "backward" : input.inputType === "deleteContentForward" ? "forward" : undefined);
 },true);
 document.addEventListener("paste",event => {
     if (event.target instanceof HTMLTextAreaElement && get("source-blocks").contains(event.target)) {
@@ -468,7 +500,7 @@ get("next").addEventListener("click",() => moveFind(1)); get("previous").addEven
 get("find-open").addEventListener("click",openFind); get("find-close").addEventListener("click",closeFind);
 document.addEventListener("keydown",event => {
     const key = event.key.toLowerCase(), command = event.ctrlKey || event.metaKey;
-    if (container.contains(event.target as Node)) captureIntent();
+    if (container.contains(event.target as Node)) captureIntent(undefined,key === "backspace" ? "backward" : key === "delete" ? "forward" : undefined);
     if (command && key === "f") { event.preventDefault(); event.stopImmediatePropagation(); openFind(); }
     else if (command && (key === "z" || key === "y")) { event.preventDefault(); event.stopImmediatePropagation(); bridge.history(event.shiftKey || key === "y" ? "redo" : "undo"); }
     else if (!findBar.hidden && key === "escape") { event.preventDefault(); event.stopImmediatePropagation(); closeFind(); }
@@ -484,9 +516,10 @@ get("outline-toggle").addEventListener("click",() => { preferences.outline = !pr
 get("wrap").addEventListener("click",() => { preferences.wrap = !preferences.wrap; document.body.classList.toggle("nowrap",!preferences.wrap); persist(); });
 get("reset").addEventListener("click",() => {
     if (bridge.composing) return;
+    commit(); if (bridge.blocked) return;
     bridge.afterFlush.push(() => { preferences = defaults(); persist(); build(); }); bridge.submit(); bridge.finishFlush();
 });
-get("copy-markdown").addEventListener("click",() => bridge.emit({kind:"copy",text:bridge.draft}));
+get("copy-markdown").addEventListener("click",() => { commit(); bridge.emit({kind:"copy",text:bridge.draft}); });
 get("copy-html").addEventListener("click",() => bridge.emit({kind:"copy",text:sanitize(editor.getHTML())}));
 (window as any).latheRich = {openFind,mode,format,commit,projection,sanitize, get editor() {return editor;}, get ready() {return ready;},
     replaceText(before:string,after:string) {
@@ -498,7 +531,8 @@ get("copy-html").addEventListener("click",() => bridge.emit({kind:"copy",text:sa
         node.data = node.data.replace(before,after); commit();
     },
     appendText(text:string) {
-        const node = textNodes(active()).at(-1);
+        const block = editableBlocks().at(-1) as HTMLElement | undefined;
+        const node = textNodes(block ?? active()).at(-1);
         if (!node) throw new Error("Editable end block is unavailable");
         window.getSelection()?.setBaseAndExtent(node,node.length,node,node.length);
         captureIntent(node); node.data += text; commit();

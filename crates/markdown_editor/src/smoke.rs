@@ -23,6 +23,7 @@ mod supported {
     };
 
     const RUNTIME_IDENTITY: &str = "window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({version:window.latheRich.editor.version,mode:window.latheRich.editor.getCurrentMode(),presentation:document.getElementById('mode').value,source:window.latheRich.projection.source,viewer:!document.getElementById('viewer').hidden})})";
+    const DOM_INPUT: &str = "window.latheSmokeInput=(before,after)=>{const editor=window.latheRich.editor,root=editor.vditor[editor.getCurrentMode()].element,walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);root.focus();while(walker.nextNode()){const node=walker.currentNode,start=node.data.indexOf(before);if(start<0)continue;window.getSelection().setBaseAndExtent(node,start,node,start+before.length);root.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));if(!document.execCommand('insertText',false,after))throw new Error('DOM input failed');return;}throw new Error('DOM input target unavailable');};";
 
     fn assert_runtime(item: &MarkdownEditor, mode: &str, text: &str) -> Result<()> {
         let copied = item
@@ -101,7 +102,13 @@ mod supported {
                                     }
                                     25 if phase_started.elapsed() > Duration::from_millis(200) => {
                                         assert_runtime(item,"wysiwyg",&text)?;
-                                        item.browser_script("if(globalThis.documentExecuted)throw new Error('Document HTML executed'); window.open('https://foreign.invalid'); location.href='https://foreign.invalid'; fetch('https://foreign.invalid').catch(()=>{}); window.latheRich.replaceText('shared','visual'); window.latheRich.appendText(' queued'); window.latheRich.replaceText(' queued','');")?;
+                                        item.browser_script(DOM_INPUT)?;
+                                        item.browser_script("window.latheSmokeInput('shared','debounced'); window.latheRich.mode('wysiwyg');")?;
+                                        phase_started=Instant::now(); stage=32;
+                                    }
+                                    32 if text.starts_with("# debounced") && item.protocol.draft.is_none() && phase_started.elapsed() > Duration::from_millis(300) => {
+                                        println!("{}",serde_json::json!({"event":"delayed_rich_input_mode", "passed":true,"text":text}));
+                                        item.browser_script("if(globalThis.documentExecuted)throw new Error('Document HTML executed'); window.open('https://foreign.invalid'); location.href='https://foreign.invalid'; fetch('https://foreign.invalid').catch(()=>{}); window.latheRich.replaceText('debounced','visual'); window.latheRich.appendText(' queued'); window.latheRich.replaceText(' queued','');")?;
                                         stage = 1;
                                     }
                                     1 if text.starts_with("# visual 😀") && item.protocol.draft.is_none() => {
@@ -197,6 +204,18 @@ mod supported {
                             })??;
                             if finished {
                                 if stage == 6 {
+                                    window.update(cx, |item, _, _| {
+                                        item.browser_script(DOM_INPUT)?;
+                                        item.browser_script("window.latheSmokeInput('mirrored','flush-input')")
+                                    })??;
+                                    let flush = window.update(cx, |item, _, cx| item.flush(cx))?;
+                                    flush.await?;
+                                    window.update(cx, |item, _, cx| -> Result<()> {
+                                        let text=item.buffer.read(cx).snapshot().text();
+                                        if !text.starts_with("# flush-input") || item.protocol.draft.is_some() { bail!("Delayed rich input escaped the native flush barrier"); }
+                                        println!("{}",serde_json::json!({"event":"delayed_rich_input_flush", "passed":true,"text":text}));
+                                        item.browser_script("window.latheRich.replaceText('flush-input','mirrored')")
+                                    })??;
                                     let flush = window.update(cx, |item, _, cx| item.flush(cx))?;
                                     flush.await?;
                                     println!("{}", serde_json::json!({"event":"real_item_flush", "passed":true}));

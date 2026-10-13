@@ -137,91 +137,69 @@ pub struct MarkdownEditor {
 }
 
 fn heading_offset(text: &str, fragment: &str) -> Option<usize> {
-    let mut offset = 0;
-    let mut fence: Option<(char, usize)> = None;
-    let mut previous: Option<(&str, usize)> = None;
-    let matches = |title: &str| {
-        let title = title.trim().trim_end_matches('#').trim_end();
-        let (title, identifier) = title
-            .split_once(" {#")
-            .map_or((title, None), |(title, identifier)| {
-                (title, identifier.strip_suffix('}'))
-            });
-        let slug = title
-            .to_lowercase()
-            .chars()
-            .filter(|character| {
-                character.is_alphanumeric() || character.is_whitespace() || *character == '-'
-            })
-            .collect::<String>()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join("-");
-        identifier == Some(fragment) || slug == fragment
-    };
-    for line in text.split_inclusive('\n') {
-        let content = line.trim_start();
-        let indentation = line.len() - content.len();
-        let marker = content.chars().next();
-        let fence_length = content
-            .chars()
-            .take_while(|character| Some(*character) == marker)
-            .count();
-        if let Some((character, length)) = fence {
-            if indentation <= 3
-                && marker == Some(character)
-                && fence_length >= length
-                && content
-                    .get(fence_length..)
-                    .is_some_and(|suffix| suffix.trim().is_empty())
-            {
-                fence = None;
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+    let options = Options::ENABLE_HEADING_ATTRIBUTES | Options::ENABLE_STRIKETHROUGH;
+    let mut heading: Option<(usize, String)> = None;
+    for (event, range) in Parser::new_ext(text, options).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Heading { id, .. }) => {
+                if id.as_deref() == Some(fragment) {
+                    return Some(range.start);
+                }
+                heading = Some((range.start, String::new()));
             }
-            previous = None;
-            offset += line.len();
-            continue;
-        }
-        if indentation <= 3 && matches!(marker, Some('`' | '~')) && fence_length >= 3 {
-            fence = marker.map(|character| (character, fence_length));
-            previous = None;
-            offset += line.len();
-            continue;
-        }
-        let markers = content
-            .chars()
-            .take_while(|character| *character == '#')
-            .count();
-        if indentation <= 3
-            && (1..=6).contains(&markers)
-            && content
-                .get(markers..)
-                .is_some_and(|title| title.starts_with(char::is_whitespace))
-        {
-            let title = content.get(markers..)?.trim();
-            if matches(title) {
-                return Some(offset);
+            Event::Text(text) | Event::Code(text) if heading.is_some() => {
+                if let Some((_, title)) = &mut heading {
+                    title.push_str(&text);
+                }
             }
-        } else if indentation <= 3
-            && content
-                .trim()
-                .chars()
-                .all(|character| Some(character) == marker)
-            && matches!(marker, Some('=' | '-'))
-        {
-            if let Some((title, heading_start)) = previous
-                && matches(title)
-            {
-                return Some(heading_start);
+            Event::SoftBreak | Event::HardBreak if heading.is_some() => {
+                if let Some((_, title)) = &mut heading {
+                    title.push(' ');
+                }
             }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some((offset, title)) = heading.take() {
+                    let slug = title
+                        .to_lowercase()
+                        .chars()
+                        .filter(|character| {
+                            character.is_alphanumeric()
+                                || character.is_whitespace()
+                                || *character == '-'
+                        })
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join("-");
+                    if slug == fragment {
+                        return Some(offset);
+                    }
+                }
+            }
+            _ => {}
         }
-        previous = if content.trim().is_empty() || indentation > 3 {
-            None
-        } else {
-            Some((content.trim(), offset))
-        };
-        offset += line.len();
     }
     None
+}
+
+fn document_preference_key(source: &Editor, buffer: &Buffer, cx: &App) -> Result<Option<String>> {
+    let Some(file) = buffer.file() else {
+        return Ok(None);
+    };
+    let Some(project) = source.project() else {
+        return Ok(None);
+    };
+    let project = project.read(cx);
+    let Some(path) = project.absolute_path(&ProjectPath::from_file(file.as_ref(), cx), cx) else {
+        return Ok(None);
+    };
+    let identity = serde_json::to_string(&(
+        project.remote_connection_options(cx),
+        project.remote_id().filter(|_| !project.is_local()),
+        path,
+    ))?;
+    Ok(Some(format!("markdown-editor-document-{identity}")))
 }
 
 pub fn init(cx: &mut App) {
@@ -385,6 +363,24 @@ impl MarkdownEditor {
         let document = buffer.entity_id().as_u64();
         let session = format!("{}-{}", std::process::id(), cx.entity_id().as_u64());
         let text = buffer.read(cx).snapshot().text();
+        let preferences = document_preference_key(source.read(cx), buffer.read(cx), cx)
+            .and_then(|key| {
+                key.map(|key| db::kvp::KeyValueStore::global(cx).read_kvp(&key))
+                    .transpose()
+                    .map(Option::flatten)
+            })
+            .and_then(|value| {
+                value
+                    .map(|value| serde_json::from_str(&value).map_err(Into::into))
+                    .transpose()
+            });
+        let preferences = match preferences {
+            Ok(preferences) => preferences.unwrap_or_default(),
+            Err(error) => {
+                log::error!("Markdown document preferences restoration: {error:#}");
+                ViewPreferences::default()
+            }
+        };
         let subscription = cx.subscribe(&buffer, |this, _, event, cx| {
             if matches!(
                 event,
@@ -416,7 +412,7 @@ impl MarkdownEditor {
             buffer,
             protocol: Protocol::new(session, document, text),
             browser_ready: false,
-            preferences: ViewPreferences::default(),
+            preferences,
             #[cfg(feature = "test-support")]
             copied_text: None,
             window: window.window_handle(),
@@ -438,6 +434,18 @@ impl MarkdownEditor {
             _release_subscription: release_subscription,
             _pump: Task::ready(()),
         }
+    }
+
+    fn persist_document_preferences(&self, cx: &mut Context<Self>) -> Task<Result<()>> {
+        let key = document_preference_key(self.source.read(cx), self.buffer.read(cx), cx);
+        let preferences = serde_json::to_string(&self.preferences);
+        let store = db::kvp::KeyValueStore::global(cx);
+        cx.background_spawn(async move {
+            if let Some(key) = key? {
+                store.write_kvp(key, preferences?).await?;
+            }
+            Ok(())
+        })
     }
 
     pub fn attach(
@@ -1026,6 +1034,151 @@ mod tests {
             text.find("## Visible")
         );
         assert_eq!(heading_offset(text, "explicit"), text.find("# Custom"));
+        for (heading, fragment) in [
+            ("# [Target](https://example.com)", "target"),
+            (
+                "## **Bold** and `code` &amp; ![image](x.png)",
+                "bold-and-code-image",
+            ),
+            (
+                "# [Reference][id]\n\n[id]: https://example.com",
+                "reference",
+            ),
+            ("# <span>HTML</span> title", "html-title"),
+            ("Linked [title](other.md)\n===", "linked-title"),
+        ] {
+            let text = format!("intro\n\n{heading}\n");
+            assert_eq!(heading_offset(&text, fragment), Some(7), "{heading}");
+        }
+    }
+
+    #[cfg(feature = "browser")]
+    #[gpui::test]
+    async fn document_preferences_survive_close_and_open_with_a_new_item(cx: &mut TestAppContext) {
+        use util::path;
+        cx.update(|cx| {
+            cx.set_global(db::AppDatabase::test_new());
+            workspace::AppState::test(cx);
+            editor::init(cx);
+            super::init(cx);
+        });
+        let filesystem = project::FakeFs::new(cx.executor());
+        filesystem
+            .insert_tree(
+                path!("/project"),
+                serde_json::json!({"doc.md":"# Document\n", "other.md":"# Other\n"}),
+            )
+            .await;
+        let project = Project::test(filesystem, None, cx).await;
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(path!("/project"), true, cx)
+            })
+            .await
+            .expect("worktree");
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi_workspace.read_with(cx, |multi, _| multi.workspace().clone());
+        workspace.update(cx, |workspace, _| workspace.set_random_database_id());
+        let source = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_abs_path(
+                    path!("/project/doc.md").into(),
+                    workspace::OpenOptions::default(),
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("source")
+            .downcast::<Editor>()
+            .expect("editor");
+        let buffer = source.read_with(cx, |source, cx| {
+            source.buffer().read(cx).as_singleton().expect("buffer")
+        });
+        let tasks = multi_workspace.update_in(cx, |multi, window, cx| {
+            multi.flush_all_serialization(window, cx)
+        });
+        for task in tasks {
+            task.await;
+        }
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&source, true, true, window, cx)
+        });
+        cx.dispatch_action(Open);
+        cx.run_until_parked();
+        let visual = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item_as::<MarkdownEditor>(cx)
+                .expect("visual")
+        });
+        let preferences = ViewPreferences {
+            mode: Mode::Wysiwyg,
+            outline: true,
+            wrap: false,
+            scroll: 321,
+        };
+        visual.update(cx, |item, cx| {
+            item.receive(
+                ClientMessage::Preferences {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    preferences: preferences.clone(),
+                },
+                cx,
+            )
+            .expect("preferences");
+        });
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        pane.update_in(cx, |pane, window, cx| {
+            pane.close_item_by_id(visual.entity_id(), workspace::SaveIntent::Close, window, cx)
+        })
+        .await
+        .expect("close");
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&source, true, true, window, cx)
+        });
+        cx.dispatch_action(Open);
+        cx.run_until_parked();
+        let reopened = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item_as::<MarkdownEditor>(cx)
+                .expect("reopened")
+        });
+        assert_ne!(reopened.entity_id(), visual.entity_id());
+        reopened.read_with(cx, |item, _| {
+            assert_eq!(item.preferences, preferences);
+            assert_eq!(item.buffer, buffer);
+        });
+        let other = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_abs_path(
+                    path!("/project/other.md").into(),
+                    workspace::OpenOptions::default(),
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("other")
+            .downcast::<Editor>()
+            .expect("other editor");
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&other, true, true, window, cx)
+        });
+        cx.dispatch_action(Open);
+        cx.run_until_parked();
+        workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(
+                workspace
+                    .active_item_as::<MarkdownEditor>(cx)
+                    .expect("other visual")
+                    .read(cx)
+                    .preferences,
+                ViewPreferences::default()
+            )
+        });
     }
 
     fn fixture<'a>(
@@ -3277,7 +3430,12 @@ impl Item for MarkdownEditor {
         }
     }
     fn prepare_to_save(&mut self, _: &mut Window, cx: &mut Context<Self>) -> Task<Result<()>> {
-        self.flush(cx)
+        let flush = self.flush(cx);
+        cx.spawn(async move |this, cx| {
+            flush.await?;
+            this.update(cx, |this, cx| this.persist_document_preferences(cx))?
+                .await
+        })
     }
     fn save(
         &mut self,
@@ -3398,6 +3556,7 @@ impl SerializableItem for MarkdownEditor {
             return None;
         }
         let preferences = serde_json::to_string(&self.preferences);
+        let document_key = document_preference_key(self.source.read(cx), self.buffer.read(cx), cx);
         let store = db::kvp::KeyValueStore::global(cx);
         let key = format!(
             "markdown-editor-{}-{}",
@@ -3408,7 +3567,11 @@ impl SerializableItem for MarkdownEditor {
             source.serialize(workspace, item, closing, cx)
         });
         Some(cx.background_spawn(async move {
-            store.write_kvp(key, preferences?).await?;
+            let preferences = preferences?;
+            if let Some(document_key) = document_key? {
+                store.write_kvp(document_key, preferences.clone()).await?;
+            }
+            store.write_kvp(key, preferences).await?;
             if let Some(source) = source {
                 source.await?;
             }
