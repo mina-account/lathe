@@ -63,6 +63,74 @@ async function selectText(page,text) {
     },text);
 }
 
+test("source-field overflow is prevented or retained behind save and mode barriers",async()=>{
+    for (const [character,count,composition] of [["x",8*1024*1024,false],["中",3*1024*1024,true],['"',4*1024*1024,true]]) {
+        const source="---\na: b\n---\n\nTail", {page,context}=await open(source);
+        await page.locator("#source-blocks").evaluate(element=>element.open=true);
+        await page.locator("#blocks details").first().evaluate(element=>element.open=true);
+        const field=page.locator("#blocks textarea").first(); await field.focus();
+        const result=await field.evaluate((field,{character,count,composition})=>{
+            const previous=field.value, insertion=character.repeat(count);
+            field.select();
+            const event=new InputEvent("beforeinput",{bubbles:true,cancelable:true,inputType:"insertText",data:insertion});
+            field.dispatchEvent(event);
+            const prevented=event.defaultPrevented, unchanged=field.value===previous;
+            if (composition) field.dispatchEvent(new CompositionEvent("compositionstart",{bubbles:true}));
+            field.value="---\na: "+insertion+"\n---\n";
+            field.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:composition ? "insertCompositionText":"insertText",data:insertion}));
+            if (composition) field.dispatchEvent(new CompositionEvent("compositionend",{bubbles:true}));
+            return {prevented,unchanged};
+        },{character,count,composition});
+        assert.deepEqual(result,{prevented:true,unchanged:true});
+        await field.blur();
+        await page.evaluate(()=>{
+            window.latheMarkdown.receive({kind:"flush",request:991});
+            window.latheRich.mode("wysiwyg");
+            window.latheMarkdown.receive({kind:"preferences",preferences:{mode:"sv"}});
+        });
+        assert.deepEqual(await page.evaluate(({character,count,source})=>{
+            const bridge=window.latheMarkdown, expected="---\na: "+character.repeat(count)+"\n---\n\nTail";
+            return {exact:bridge.draft===expected,retained:window.testMessages.some(message=>message.kind==="draft"&&message.text===expected),blocked:bridge.blocked,base:bridge.base===source,pending:bridge.pending===null,flushed:window.testMessages.some(message=>message.kind==="flushed"),edited:window.testMessages.some(message=>message.kind==="edit"),mode:window.latheRich.editor.getCurrentMode(),field:document.querySelector("#blocks textarea").value===expected.slice(0,-5)};
+        },{character,count,source}),{exact:true,retained:true,blocked:true,base:true,pending:true,flushed:false,edited:false,mode:"ir",field:true});
+        await context.close();
+    }
+});
+
+test("source-field insertion budget includes replacement selection and surrounding source",async()=>{
+    const {page,context}=await open("---\na: b\n---\n\nTail");
+    const result=await page.locator("#blocks textarea").first().evaluate(field=>{
+        const limit=8*1024*1024;
+        field.select();
+        const replacement=new InputEvent("beforeinput",{bubbles:true,cancelable:true,inputType:"insertText",data:"x".repeat(limit-10)});
+        field.dispatchEvent(replacement);
+        field.setSelectionRange(0,0);
+        const insertion=new InputEvent("beforeinput",{bubbles:true,cancelable:true,inputType:"insertText",data:"x".repeat(limit-10)});
+        field.dispatchEvent(insertion);
+        field.value="x".repeat(limit-8); field.setSelectionRange(field.value.length,field.value.length);
+        const newline=new InputEvent("beforeinput",{bubbles:true,cancelable:true,inputType:"insertLineBreak"});
+        field.dispatchEvent(newline);
+        return {replacement:replacement.defaultPrevented,insertion:insertion.defaultPrevented,newline:newline.defaultPrevented};
+    });
+    assert.deepEqual(result,{replacement:false,insertion:true,newline:true}); await context.close();
+});
+
+test("similar tables retain their own row padding through repeated rich edits",async()=>{
+    for (const mode of ["ir","wysiwyg","sv"]) for (const newline of ["\n","\r\n"]) {
+        const source=["| Name | Value |","| --- | --- |","| Same | First |","","Between","","|  Name  |  Value  |","| :------ | -----: |","|  Same  |  Second  |","| Same | Second |","","Tail"].join(newline);
+        const {page,context}=await open(source,mode);
+        await selectText(page,"Second"); await page.keyboard.insertText("Edited"); await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Second","Edited")); await acknowledge(page);
+        await selectText(page,"Second"); await page.keyboard.insertText("Repeated"); await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Second","Edited").replace("Second","Repeated")); await acknowledge(page);
+        await selectText(page,"First"); await page.keyboard.insertText("Original table edited"); await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Second","Edited").replace("Second","Repeated").replace("First","Original table edited"));
+        await context.close();
+    }
+});
+
 test("delayed rich input is captured before flush and immediate mode changes",async () => {
     for (const mode of ["ir","wysiwyg"]) for (const operation of ["flush","mode"]) {
         const {page,context}=await open("Before\n\nTarget\n\nTail",mode);

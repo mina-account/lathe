@@ -5,7 +5,7 @@
     "windowsProtocol":  13,
     "linuxProtocol":  13,
     "frontendBridge":  16,
-    "frontendRealBrowser":  28,
+    "frontendRealBrowser":  31,
     "chromium":  "155.0.4283.45",
     "playwright":  "1.56.1",
     "preview":  32,
@@ -46,5 +46,7 @@
     "reviewPass2Regressions": "All four findings confirmed red to green in packaged-browser tests: retained source-control spans across ordinary rich/split input, acknowledgments, two controls, consecutive replacements, focused selection, composition and LF/CRLF; native formatting obeys source/Find focus and succeeds on rich focus; actual heading block IDs cover bold/link/code/setext, duplicate labels, fenced pseudo-headings and preceding HTML headings; Unicode lowercase expansions retain exact original UTF-16 Find ranges, contextual final sigma, astral case pairs, next/previous and match-case",
     "reviewPass2CrlfRegression": "Expanded source-control test failed for half of closing-fence CRLF being included in the control span; source line spans now exclude both CR and LF at their boundary and the LF/CRLF suite passes",
     "isolatedGeneratedAssetReproduction": 11,
+    "reviewPass3Regressions": "Both findings confirmed expected red to green: cancelable source-field overflow is prevented; exact noncancelable/composition drafts are retained and blocked across flush, blur and mode changes without authoritative edits; UTF-8, JSON escaping, selected replacement, surrounding source and Enter budgets; corresponding-table/row occurrence mapping preserves exact LF/CRLF source through repeated real keyboard edits in all editing modes",
+    "reviewPass3Verification": "Fresh final 31 browser groups, 16 bridge tests, Windows 48 native/13 protocol, app checks and repository-wrapper lint; 11 isolated locked generated assets match; fresh final-byte Win32/Wayland/X11 smoke builds exit 0; unchanged Rust preview/workspace/routing and Linux native/protocol/application/lint results reused from pass 2; Markdown formatting passes and baseline root/workspace format failures remain unchanged",
     "linuxInvocation": "wsl -d Ubuntu -u an -- bash; distro Ubuntu 24.04.1 LTS"
 }

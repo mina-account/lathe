@@ -144,7 +144,7 @@ function commit() {
             for (const change of changes.reverse()) canonical = canonical.slice(0,change.start)+change.text+canonical.slice(change.end);
         } else {
             const children = editableBlocks();
-            const blocks = children.map(block => preserveTableLayout(projection.canonical,serializeBlock(block)));
+            const blocks = children.map(serializeBlock);
             const matching=(text:string|null) => blocks.flatMap((block,index)=>block===text ? [index] : []);
             const previous = intent.previous === null ? -1 : matching(intent.previous).at(intent.previousOccurrence ?? 0);
             const next = intent.next === null ? blocks.length : matching(intent.next).reverse().at(intent.nextOccurrence ?? 0);
@@ -170,21 +170,30 @@ function retainUnmappedInput(error:unknown) {
     status.textContent = `${String(error)} Visual input retained; use Recover Draft.`;
     permissions(); updateFind();
 }
-function preserveTableLayout(before:string,after:string):string {
+function tableRows(text:string):string[][] {
+    const tables:string[][] = [];
+    let rows:string[] = [];
+    for (const line of [...text.split("\n"),""]) {
+        if (/^\s*\|.*\|\s*$/.test(line)) rows.push(line);
+        else if (rows.length) {
+            if (rows.some(row=>row.trim().split(/(?<!\\)\|/).every(cell=>!cell.trim() || /^\s*:?-+:?\s*$/.test(cell)))) tables.push(rows);
+            rows = [];
+        }
+    }
+    return tables;
+}
+function preserveTableLayout(before:string,after:string,tableOffset=0):string {
     const row = (line:string) => line.trim().split(/(?<!\\)\|/);
-    const normalized = (line:string) => row(line).map(cell=>/^\s*:?-+:?\s*$/.test(cell) ? cell.trim().replace(/-+/g,"---") : cell.trim()).join("|");
-    const oldRows = before.split("\n").filter(line=>/^\s*\|.*\|\s*$/.test(line));
-    if (!oldRows.some(line=>row(line).every(cell=>!cell.trim() || /^\s*:?-+:?\s*$/.test(cell)))) return after;
-    let index=0;
+    const tables = tableRows(before);
+    let tableIndex=tableOffset-1, index=0, inTable=false;
     return after.split("\n").map(line=>{
-        if (!/^\s*\|.*\|\s*$/.test(line)) return line;
-        const identical=oldRows.find(old=>normalized(old)===normalized(line));
-        const old=oldRows[index++];
-        if (identical) return identical;
+        if (!/^\s*\|.*\|\s*$/.test(line)) { inTable=false; return line; }
+        if (!inTable) { tableIndex++; index=0; inTable=true; }
+        const old=tables[tableIndex]?.[index++];
         if (!old || row(old).length!==row(line).length) return line;
         return row(line).map((cell,position)=>{
             const previous=row(old)[position];
-            if (previous.trim()===cell.trim()) return previous;
+            if (previous.trim()===cell.trim() || /^\s*:?-+:?\s*$/.test(previous) && previous.trim().replace(/-+/g,"---")===cell.trim().replace(/-+/g,"---")) return previous;
             return (previous.match(/^\s*/)?.[0]??"")+cell.trim()+(previous.match(/\s*$/)?.[0]??"");
         }).join("|");
     }).join("\n");
@@ -223,26 +232,32 @@ function captureScope(target?:Node, deletion?:"backward"|"forward") {
         if (deletion === "backward" && !prefix.toString() && first > 0) first--;
         if (deletion === "forward" && !suffix.toString() && last+1 < children.length) last++;
     }
-    const blocks = children.map(block=>preserveTableLayout(projection.canonical,serializeBlock(block)));
-    const occurrences={previousOccurrence:blocks.slice(0,first).filter(block=>block===blocks[first-1]).length-1,nextOccurrence:blocks.slice(last+1).filter(block=>block===blocks[last+1]).length-1};
+    const serialized = children.map(serializeBlock);
+    let tableOffset = 0;
+    const blocks = serialized.map(block=>{
+        const preserved=preserveTableLayout(projection.canonical,block,tableOffset);
+        tableOffset += tableRows(block).length;
+        return preserved;
+    });
+    const occurrences={previousOccurrence:serialized.slice(0,first).filter(block=>block===serialized[first-1]).length-1,nextOccurrence:serialized.slice(last+1).filter(block=>block===serialized[last+1]).length-1};
     let offset = 0;
     for (let index=0; index<first; index++) {
         const found = projection.canonical.indexOf(blocks[index].trimEnd(),offset);
         if (found >= 0) offset = found + blocks[index].trimEnd().length;
     }
-    const before = preserveTableLayout(projection.canonical,serializeBlockHtml(children.slice(first,last+1).map(block=>block.outerHTML).join("")));
+    const before = preserveTableLayout(projection.canonical,serializeBlockHtml(children.slice(first,last+1).map(block=>block.outerHTML).join("")),tableRows(serialized.slice(0,first).join("\n")).length);
     if (!before.trim()) {
         const next = blocks[last+1] ?? null;
         const insertion = next ? projection.canonical.indexOf(next.trimEnd(),offset) : projection.canonical.length;
         if (insertion < 0) throw new Error("The inserted block cannot be mapped safely.");
-        intent={start:insertion,end:insertion,previous:blocks[first-1]??null,next,...occurrences,sourceView:false}; return;
+        intent={start:insertion,end:insertion,previous:serialized[first-1]??null,next:serialized[last+1]??null,...occurrences,sourceView:false}; return;
     }
     const start = projection.canonical.indexOf(before,offset);
     if (start < 0) {
         const trimmed = before.trimEnd(), found = projection.canonical.indexOf(trimmed,offset);
         if (found < 0) throw new Error("The selected source block cannot be mapped safely.");
-        intent={start:found,end:found+trimmed.length,previous:blocks[first-1]??null,next:blocks[last+1]??null,...occurrences,sourceView:false};
-    } else intent={start,end:start+before.length,previous:blocks[first-1]??null,next:blocks[last+1]??null,...occurrences,sourceView:false};
+        intent={start:found,end:found+trimmed.length,previous:serialized[first-1]??null,next:serialized[last+1]??null,...occurrences,sourceView:false};
+    } else intent={start,end:start+before.length,previous:serialized[first-1]??null,next:serialized[last+1]??null,...occurrences,sourceView:false};
 }
 function build(selected = selection(), oldText = active().textContent ?? "") {
     if (bridge.composing) return;
@@ -353,19 +368,34 @@ function renderSourceBlocks() {
         label.textContent = span.label; field.value = display(latest.slice(span.start,span.end)); field.readOnly = !bridge.writable || bridge.blocked || preferences.mode === "preview";
         sourceControls.set(field,span);
         field.addEventListener("focus",() => { sourceEditor = field; });
+        field.addEventListener("beforeinput",event => {
+            const input=event as InputEvent;
+            if (!bridge.writable || bridge.blocked || preferences.mode === "preview") { event.preventDefault(); return; }
+            const inserted=input.data ?? (["insertLineBreak","insertParagraph"].includes(input.inputType) ? "\n" : input.dataTransfer?.getData("text/plain"));
+            if (!input.cancelable || inserted === undefined) return;
+            const next=field.value.slice(0,field.selectionStart)+inserted+field.value.slice(field.selectionEnd);
+            const source=sourceFieldValue(field,next);
+            if (!withinBudget(source)) { event.preventDefault(); status.textContent="Source block exceeds the visual document limit."; }
+        });
         field.addEventListener("input",() => {
             if (!bridge.writable || bridge.blocked || preferences.mode === "preview") return;
             const blockSource=fromDisplay(latest.slice(span.start,span.end),field.value);
             const source = latest.slice(0,span.start) + blockSource + latest.slice(span.end);
-            if (!withinBudget(source)) { status.textContent = "Source block exceeds the visual document limit."; return; }
             updateSourceControls(source,{field,start:span.start,end:span.end,text:blockSource});
-            bridge.input(source); projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false; renderOutline(); updateFind();
+            bridge.input(source);
+            if (bridge.blocked) { permissions(); return; }
+            projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false; renderOutline(); updateFind();
         });
         field.addEventListener("blur",() => { sourceEditor = null; renderSourceBlocks(); });
         details.append(label,field); blocks.insertBefore(details,blocks.children[index] ?? null); index++;
     }
     for (const field of retained.keys()) { field.parentElement?.remove(); sourceControls.delete(field); }
     get("source-blocks").hidden = !blocks.childElementCount;
+}
+function sourceFieldValue(field:HTMLTextAreaElement,value:string):string {
+    const span=sourceControls.get(field);
+    if (!span) return latest;
+    return latest.slice(0,span.start)+fromDisplay(latest.slice(span.start,span.end),value)+latest.slice(span.end);
 }
 function persist() { bridge.emit({kind:"preferences",preferences}); }
 function mode(mode: Mode) {
@@ -448,7 +478,8 @@ document.addEventListener("paste",event => {
         event.preventDefault(); event.stopImmediatePropagation();
         if (!bridge.writable || bridge.blocked || preferences.mode === "preview") return;
         const field=event.target, text=event.clipboardData?.getData("text/plain") ?? "";
-        if (!withinBudget(latest+text)) { status.textContent="Paste exceeds the visual document limit."; return; }
+        const next=field.value.slice(0,field.selectionStart)+display(text)+field.value.slice(field.selectionEnd);
+        if (!withinBudget(sourceFieldValue(field,next))) { status.textContent="Paste exceeds the visual document limit."; return; }
         field.setRangeText(display(text),field.selectionStart,field.selectionEnd,"end");
         field.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertFromPaste",data:text})); return;
     }
