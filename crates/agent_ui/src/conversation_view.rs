@@ -7314,6 +7314,18 @@ pub(crate) mod tests {
                 .expect("next external stop before echo");
         });
         cx.run_until_parked();
+        thread_view.update(cx, |view, cx| {
+            let response_model = std::mem::take(&mut view.response_model);
+            view.sync_response_model(None, cx);
+            assert_eq!(view.response_model.turns.len(), 2);
+            let resumed = view.response_model.turns.last().expect("resumed external");
+            assert_eq!(
+                resumed.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Interrupted)
+            );
+            assert_eq!(resumed.response.len(), 2);
+            view.response_model = response_model;
+        });
         thread.update(cx, |thread, cx| {
             thread
                 .upsert_user_message(acp_v2::UserMessage::new("next-external"), cx)
@@ -7336,6 +7348,24 @@ pub(crate) mod tests {
             );
             assert_eq!(current.response.len(), 1);
             assert_ne!(current.identity, previous.identity);
+            assert_eq!(current.predecessor.as_ref(), Some(&previous.identity));
+        });
+        thread_view.update(cx, |view, cx| {
+            view.response_model = super::response_model::ResponseModel::default();
+            view.sync_response_model(None, cx);
+            assert_eq!(view.response_model.turns.len(), 3);
+            let previous = view.response_model.turns.get(1).expect("previous external");
+            let current = view.response_model.turns.last().expect("next external");
+            assert_eq!(
+                previous.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Unknown)
+            );
+            assert_eq!(previous.response.len(), 1);
+            assert_eq!(
+                current.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Interrupted)
+            );
+            assert_eq!(current.response.len(), 1);
             assert_eq!(current.predecessor.as_ref(), Some(&previous.identity));
         });
     }

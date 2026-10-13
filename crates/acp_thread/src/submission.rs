@@ -437,7 +437,10 @@ impl SessionSubmissions {
         active: bool,
         boundary: (usize, usize),
     ) {
-        if self.resumed_activity.is_some() || (self.activity_owner.is_none() && active) {
+        if self.resumed_activity.is_some()
+            || self.resumed_external_prompt.is_some()
+            || (self.activity_owner.is_none() && active)
+        {
             self.unmatched_activity_prompts
                 .push((message_id.clone(), boundary));
             self.reconcile_activity_prompt();
@@ -643,6 +646,35 @@ pub enum ForegroundActivity {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn external_resumption_accepts_disproving_prompt_after_idle() {
+        let mut submissions = SessionSubmissions::new(None);
+        let first_prompt = acp_v2::MessageId::new("first");
+        let delayed_prompt = acp_v2::MessageId::new("delayed");
+        submissions.start_activity(1, Some(&first_prompt), (0, 0));
+        submissions.finish_activity(1, Some(acp_v2::StopReason::EndTurn));
+        submissions.start_activity(2, Some(&first_prompt), (2, 0));
+        let provisional_owner = submissions
+            .presentation_owner(2, true)
+            .expect("resuming source");
+        assert_eq!(provisional_owner, PresentationOwner::Activity(2));
+        submissions.finish_activity(2, Some(acp_v2::StopReason::Cancelled));
+        submissions.observe_prompt(&delayed_prompt, false, (3, 0));
+        assert_eq!(
+            submissions.external_activity_prompt(),
+            Some(&delayed_prompt)
+        );
+        assert_eq!(submissions.activity_boundary(), (2, 0));
+        assert_eq!(
+            submissions.resolve_owner(provisional_owner),
+            PresentationOwner::Prompt(delayed_prompt.0)
+        );
+        assert_eq!(
+            submissions.resolve_owner(PresentationOwner::Activity(1)),
+            PresentationOwner::Prompt(first_prompt.0)
+        );
+    }
 
     #[test]
     fn external_presentation_owners_survive_later_prompts_in_one_generation() {
