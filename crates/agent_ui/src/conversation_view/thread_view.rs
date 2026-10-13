@@ -1646,7 +1646,9 @@ impl ThreadView {
                 };
                 SubmissionObservation {
                     id: id.as_u64(),
+                    kind: record.kind,
                     phase,
+                    outcome: None,
                 }
             };
         let latest_submission = thread.latest_submission_id();
@@ -1662,12 +1664,45 @@ impl ThreadView {
             .chain(thread.submission_receipts().filter_map(|(id, message_id)| {
                 (thread.submission(id).is_none()).then(|| SubmissionObservation {
                     id: id.as_u64(),
+                    kind: acp_thread::SubmissionKind::Prompt,
                     phase: SubmissionPhase::Accepted {
                         prompt: ProviderIdentity::Keyed(message_id.0.clone()),
                         echoed: false,
                     },
+                    outcome: None,
                 })
             }))
+            .chain(
+                thread
+                    .legacy_submission_completions()
+                    .map(|(id, kind, completion)| {
+                        let (phase, outcome) = match completion {
+                            acp_thread::LegacySubmissionCompletion::Stopped(reason) => (
+                                SubmissionPhase::Completed,
+                                match reason {
+                                    acp_v1::StopReason::EndTurn => TurnOutcome::Success,
+                                    acp_v1::StopReason::Cancelled => TurnOutcome::Interrupted,
+                                    acp_v1::StopReason::MaxTokens
+                                    | acp_v1::StopReason::MaxTurnRequests
+                                    | acp_v1::StopReason::Refusal => TurnOutcome::Failed,
+                                    _ => TurnOutcome::Unknown,
+                                },
+                            ),
+                            acp_thread::LegacySubmissionCompletion::Failed => {
+                                (SubmissionPhase::Failed, TurnOutcome::Failed)
+                            }
+                            acp_thread::LegacySubmissionCompletion::Cancelled => {
+                                (SubmissionPhase::Cancelled, TurnOutcome::Interrupted)
+                            }
+                        };
+                        SubmissionObservation {
+                            id: id.as_u64(),
+                            kind,
+                            phase,
+                            outcome: Some(outcome),
+                        }
+                    }),
+            )
             .collect();
         self.response_model.observe(
             &ThreadObservation {

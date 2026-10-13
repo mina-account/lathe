@@ -62,8 +62,23 @@ pub enum SubmissionState {
     Cancelled,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SubmissionKind {
+    Prompt,
+    Command,
+    Retry,
+}
+
+#[derive(Clone, Debug)]
+pub enum LegacySubmissionCompletion {
+    Stopped(acp_v1::StopReason),
+    Failed,
+    Cancelled,
+}
+
 pub struct SubmissionRecord {
     pub content: Arc<[acp_v2::ContentBlock]>,
+    pub kind: SubmissionKind,
     pub state: SubmissionState,
     task: Option<Task<()>>,
 }
@@ -99,6 +114,7 @@ pub(crate) struct SessionSubmissions {
     receipt_transport: Option<Rc<dyn ReceiptSessionSubmissions>>,
     records: BTreeMap<SubmissionId, SubmissionRecord>,
     receipts: BTreeMap<SubmissionId, acp_v2::MessageId>,
+    legacy_completions: BTreeMap<SubmissionId, (SubmissionKind, LegacySubmissionCompletion)>,
     next_id: u64,
     latest_id: Option<SubmissionId>,
 }
@@ -109,6 +125,7 @@ impl SessionSubmissions {
             receipt_transport,
             records: BTreeMap::default(),
             receipts: BTreeMap::default(),
+            legacy_completions: BTreeMap::default(),
             next_id: 0,
             latest_id: None,
         }
@@ -132,6 +149,26 @@ impl SessionSubmissions {
         self.latest_id
     }
 
+    pub(crate) fn legacy_completions(
+        &self,
+    ) -> impl Iterator<Item = (SubmissionId, SubmissionKind, &LegacySubmissionCompletion)> {
+        self.legacy_completions
+            .iter()
+            .map(|(id, (kind, completion))| (*id, *kind, completion))
+    }
+
+    pub(crate) fn complete_legacy(
+        &mut self,
+        id: SubmissionId,
+        completion: LegacySubmissionCompletion,
+    ) {
+        if let Some(record) = self.records.get(&id) {
+            // A superseded prompt emits no stop event, and its record is pruned on settlement.
+            self.legacy_completions
+                .insert(id, (record.kind, completion));
+        }
+    }
+
     pub(crate) fn has_unsettled(&self) -> bool {
         self.records.values().any(SubmissionRecord::is_unsettled)
     }
@@ -142,7 +179,11 @@ impl SessionSubmissions {
         })
     }
 
-    pub(crate) fn register(&mut self, content: Arc<[acp_v2::ContentBlock]>) -> SubmissionId {
+    pub(crate) fn register(
+        &mut self,
+        content: Arc<[acp_v2::ContentBlock]>,
+        kind: SubmissionKind,
+    ) -> SubmissionId {
         self.next_id += 1;
         let id = SubmissionId(self.next_id);
         self.latest_id = Some(id);
@@ -151,6 +192,7 @@ impl SessionSubmissions {
             id,
             SubmissionRecord {
                 content,
+                kind,
                 state: SubmissionState::Pending,
                 task: None,
             },
@@ -202,6 +244,7 @@ impl SessionSubmissions {
             return false;
         }
         self.receipts.remove(&id);
+        self.legacy_completions.remove(&id);
         if self.latest_id == Some(id) {
             self.latest_id = None;
         }
@@ -222,6 +265,45 @@ pub enum ForegroundActivity {
     Idle,
     Running,
     RequiresAction,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_submission_completions_survive_record_pruning() {
+        for kind in [
+            SubmissionKind::Prompt,
+            SubmissionKind::Command,
+            SubmissionKind::Retry,
+        ] {
+            let mut submissions = SessionSubmissions::new(None);
+            let first = submissions.register(Arc::from([]), kind);
+            let second = submissions.register(Arc::from([]), SubmissionKind::Prompt);
+            assert!(submissions.get(first).is_some());
+            submissions.complete_legacy(
+                first,
+                LegacySubmissionCompletion::Stopped(acp_v1::StopReason::Cancelled),
+            );
+            submissions.settle(first, SubmissionState::Completed);
+            assert!(submissions.get(first).is_none());
+            assert!(submissions.get(second).is_some());
+            let completions: Vec<_> = submissions.legacy_completions().collect();
+            assert_eq!(completions.len(), 1);
+            let (id, observed_kind, completion) = completions.first().expect("legacy completion");
+            assert_eq!(*id, first);
+            assert_eq!(*observed_kind, kind);
+            assert!(matches!(
+                completion,
+                LegacySubmissionCompletion::Stopped(acp_v1::StopReason::Cancelled)
+            ));
+            assert!(submissions.recoverable().next().is_none());
+            assert!(submissions.has_unsettled());
+            submissions.settle(second, SubmissionState::Completed);
+            assert!(!submissions.has_unsettled());
+        }
+    }
 }
 
 pub(crate) struct SessionActivity {

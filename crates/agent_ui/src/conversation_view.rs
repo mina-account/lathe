@@ -4767,6 +4767,243 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_response_model_native_command_preserves_prior_response(cx: &mut TestAppContext) {
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        for (command_fails, produces_compaction) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let connection = StubAgentConnection::new();
+            let (conversation_view, cx) =
+                setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+            let view = active_thread(&conversation_view, cx);
+            let thread = view.read_with(cx, |view, _| view.thread.clone());
+            connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+                acp_v1::ContentChunk::new("Answer".into()),
+            )]);
+            thread
+                .update(cx, |thread, cx| thread.send(vec!["Prompt".into()], cx))
+                .await
+                .expect("initial answer");
+            cx.run_until_parked();
+            let (identity, response) = view.read_with(cx, |view, _| {
+                let turn = view.response_model.turns.first().expect("answer");
+                assert_eq!(turn.lifecycle, TurnLifecycle::Settled(TurnOutcome::Success));
+                (turn.identity.clone(), turn.response.clone())
+            });
+            let finish = connection.defer_next_prompt_response();
+            let command = thread.update(cx, |thread, cx| {
+                thread.send_command(vec!["/compact".into()], cx)
+            });
+            cx.run_until_parked();
+            view.read_with(cx, |view, _| {
+                let prior = view.response_model.turns.first().expect("prior answer");
+                assert_eq!(prior.identity, identity);
+                assert_eq!(
+                    prior.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Success)
+                );
+                assert_eq!(prior.response, response);
+            });
+            if produces_compaction {
+                thread.update(cx, |thread, cx| {
+                    thread.push_context_compaction(
+                        acp_thread::ContextCompaction {
+                            id: acp_thread::ContextCompactionId("command-compaction".into()),
+                            status: if command_fails {
+                                acp_thread::ContextCompactionStatus::Failed
+                            } else {
+                                acp_thread::ContextCompactionStatus::Completed
+                            },
+                            error: None,
+                            summary: acp_thread::MessageContent::default(),
+                            meta: None,
+                        },
+                        cx,
+                    );
+                });
+            }
+            finish
+                .send(if command_fails {
+                    Err(anyhow!("compaction failed"))
+                } else {
+                    Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn))
+                })
+                .expect("command pending");
+            if command_fails {
+                assert!(command.await.is_err());
+            } else {
+                command.await.expect("command completed");
+            }
+            cx.run_until_parked();
+            view.read_with(cx, |view, _| {
+                let prior = view.response_model.turns.first().expect("prior answer");
+                assert_eq!(prior.identity, identity);
+                assert_eq!(
+                    prior.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Success)
+                );
+                assert_eq!(prior.response, response);
+                assert!(
+                    view.response_model
+                        .turns
+                        .last()
+                        .expect("command")
+                        .response
+                        .is_empty()
+                );
+                if produces_compaction && command_fails {
+                    assert_eq!(
+                        view.response_model
+                            .turns
+                            .last()
+                            .expect("command")
+                            .statuses
+                            .len(),
+                        1
+                    );
+                }
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn test_response_model_legacy_retry_retracts_response_at_start(cx: &mut TestAppContext) {
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_retry();
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        let view = active_thread(&conversation_view, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+            acp_v1::ContentChunk::new("Answer".into()),
+        )]);
+        thread
+            .update(cx, |thread, cx| thread.send(vec!["Prompt".into()], cx))
+            .await
+            .expect("initial answer");
+        cx.run_until_parked();
+        let identity = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .first()
+                .expect("answer")
+                .identity
+                .clone()
+        });
+        view.update(cx, |view, cx| {
+            view.retry_generation(cx);
+            view.sync_response_model(None, cx);
+            assert_eq!(view.response_model.turns.len(), 1);
+            let turn = view.response_model.turns.first().expect("resumed turn");
+            assert_eq!(turn.identity, identity);
+            assert_eq!(turn.lifecycle, TurnLifecycle::Running);
+            assert!(turn.response.is_empty());
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert_eq!(view.response_model.turns.len(), 1);
+            let turn = view.response_model.turns.first().expect("retried turn");
+            assert_eq!(turn.identity, identity);
+            assert_eq!(turn.lifecycle, TurnLifecycle::Settled(TurnOutcome::Success));
+            assert_eq!(turn.response.len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_response_model_superseded_legacy_submission_settles_by_id(
+        cx: &mut TestAppContext,
+    ) {
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        for outcome in [
+            TurnOutcome::Success,
+            TurnOutcome::Interrupted,
+            TurnOutcome::Failed,
+        ] {
+            let connection = StubAgentConnection::new();
+            let (conversation_view, cx) =
+                setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+            let view = active_thread(&conversation_view, cx);
+            let thread = view.read_with(cx, |view, _| view.thread.clone());
+            let finish_first = connection.defer_next_prompt_response();
+            let first = thread.update(cx, |thread, cx| thread.send(vec!["First".into()], cx));
+            cx.run_until_parked();
+            thread.update(cx, |thread, cx| {
+                thread
+                    .handle_session_update(
+                        acp_v1::SessionUpdate::AgentMessageChunk(acp_v1::ContentChunk::new(
+                            "Partial".into(),
+                        )),
+                        cx,
+                    )
+                    .expect("partial answer");
+            });
+            cx.run_until_parked();
+            let finish_second = connection.defer_next_prompt_response();
+            let second = thread.update(cx, |thread, cx| thread.send(vec!["Second".into()], cx));
+            cx.run_until_parked();
+            finish_first
+                .send(match outcome {
+                    TurnOutcome::Success => {
+                        Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn))
+                    }
+                    TurnOutcome::Interrupted => {
+                        Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::Cancelled))
+                    }
+                    _ => Err(anyhow!("older generation failed")),
+                })
+                .expect("older submission pending");
+            if outcome == TurnOutcome::Failed {
+                assert!(first.await.is_err());
+            } else {
+                first.await.expect("older completion");
+            }
+            cx.run_until_parked();
+            view.read_with(cx, |view, _| {
+                assert_eq!(view.response_model.turns.len(), 2);
+                let prior = view.response_model.turns.first().expect("older turn");
+                assert_eq!(prior.lifecycle, TurnLifecycle::Settled(outcome));
+                assert_eq!(prior.response.len(), 1);
+                let current = view.response_model.turns.last().expect("current turn");
+                assert_eq!(current.lifecycle, TurnLifecycle::Running);
+                assert_eq!(current.predecessor.as_ref(), Some(&prior.identity));
+                assert!(current.response.is_empty());
+            });
+            thread.update(cx, |thread, cx| {
+                thread
+                    .handle_session_update(
+                        acp_v1::SessionUpdate::AgentMessageChunk(acp_v1::ContentChunk::new(
+                            "New answer".into(),
+                        )),
+                        cx,
+                    )
+                    .expect("new answer");
+            });
+            finish_second
+                .send(Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)))
+                .expect("new submission pending");
+            second.await.expect("new completion");
+            cx.run_until_parked();
+            view.read_with(cx, |view, _| {
+                let prior = view.response_model.turns.first().expect("older turn");
+                let current = view.response_model.turns.last().expect("current turn");
+                assert_eq!(prior.lifecycle, TurnLifecycle::Settled(outcome));
+                assert_eq!(
+                    current.lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Success)
+                );
+                assert_eq!(current.response.len(), 1);
+                assert_eq!(current.predecessor.as_ref(), Some(&prior.identity));
+            });
+        }
+    }
+
+    #[gpui::test]
     async fn test_response_model_authoritative_receipt_and_keyed_content(cx: &mut TestAppContext) {
         use super::response_model::{
             SelectionConfidence, TurnIdentity, TurnLifecycle, TurnOutcome,

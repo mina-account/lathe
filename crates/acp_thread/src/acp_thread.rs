@@ -4044,6 +4044,12 @@ impl AcpThread {
         self.submissions.receipts()
     }
 
+    pub fn legacy_submission_completions(
+        &self,
+    ) -> impl Iterator<Item = (SubmissionId, SubmissionKind, &LegacySubmissionCompletion)> {
+        self.submissions.legacy_completions()
+    }
+
     pub fn latest_submission_id(&self) -> Option<SubmissionId> {
         self.submissions.latest_id()
     }
@@ -4085,9 +4091,10 @@ impl AcpThread {
     fn register_submission(
         &mut self,
         content: Arc<[acp_v2::ContentBlock]>,
+        kind: SubmissionKind,
         cx: &mut Context<Self>,
     ) -> SubmissionId {
-        let id = self.submissions.register(content);
+        let id = self.submissions.register(content, kind);
         cx.emit(AcpThreadEvent::SubmissionUpdated(id));
         cx.notify();
         id
@@ -4114,6 +4121,19 @@ impl AcpThread {
         let task = cx.spawn(async move |this, cx| {
             let response = complete(this.clone(), cx).await;
             let update = this.update(cx, |this, cx| {
+                if this.submissions.receipt_transport().is_none() {
+                    let completion = match &response {
+                        Ok(Some(SubmissionResponse::LegacyCompleted(response))) => {
+                            Some(LegacySubmissionCompletion::Stopped(response.stop_reason))
+                        }
+                        Ok(None) => Some(LegacySubmissionCompletion::Cancelled),
+                        Err(_) => Some(LegacySubmissionCompletion::Failed),
+                        _ => None,
+                    };
+                    if let Some(completion) = completion {
+                        this.submissions.complete_legacy(id, completion);
+                    }
+                }
                 let state = match &response {
                     Ok(Some(SubmissionResponse::Accepted(receipt))) => {
                         let echoed = this.entries.iter().any(|entry| {
@@ -6150,7 +6170,12 @@ impl AcpThread {
         push_user_message: bool,
         cx: &mut Context<Self>,
     ) -> Submission {
-        let id = self.register_submission(message.clone().into(), cx);
+        let kind = if push_user_message {
+            SubmissionKind::Prompt
+        } else {
+            SubmissionKind::Command
+        };
+        let id = self.register_submission(message.clone().into(), kind, cx);
         if let Some(submissions) = self.submissions.receipt_transport() {
             let response = submissions.prompt(message, cx);
             self.track_submission(id, cx, async move |_, _| {
@@ -6261,7 +6286,7 @@ impl AcpThread {
             .and_then(|id| self.submissions.get(id))
             .map(|submission| submission.content.clone())
             .unwrap_or_default();
-        let id = self.register_submission(content.clone(), cx);
+        let id = self.register_submission(content.clone(), SubmissionKind::Retry, cx);
         if self.uses_reported_activity() {
             return self.track_submission(id, cx, async move |_, _| {
                 Err(anyhow!("Receipt-driven retry is not supported"))
@@ -19319,7 +19344,7 @@ mod tests {
             })
         });
         let request = thread.update(cx, |thread, cx| {
-            let id = thread.register_submission(Arc::from([]), cx);
+            let id = thread.register_submission(Arc::from([]), SubmissionKind::Prompt, cx);
             thread.run_turn(id, cx, {
                 let backend_finished = backend_finished.clone();
                 async move |_, _| {
@@ -21793,7 +21818,7 @@ mod tests {
     ) {
         let (complete, completion) = oneshot::channel::<Result<acp_v1::PromptResponse>>();
         let request = thread.update(cx, |thread, cx| {
-            let id = thread.register_submission(Arc::from([]), cx);
+            let id = thread.register_submission(Arc::from([]), SubmissionKind::Prompt, cx);
             thread.run_turn(id, cx, async move |_, _| completion.await?)
         });
         (

@@ -67,7 +67,9 @@ pub enum SubmissionPhase {
 #[derive(Clone, Debug)]
 pub struct SubmissionObservation {
     pub id: u64,
+    pub kind: acp_thread::SubmissionKind,
     pub phase: SubmissionPhase,
+    pub outcome: Option<TurnOutcome>,
 }
 
 #[derive(Clone, Debug)]
@@ -154,6 +156,7 @@ pub struct ResponseModel {
 
 struct TurnAssociation {
     identity: TurnIdentity,
+    submission_id: Option<u64>,
     first_entry: usize,
     first_chunk: usize,
     prompt: Option<SourceReference>,
@@ -252,38 +255,66 @@ impl ResponseModel {
             if self
                 .associations
                 .iter()
-                .all(|association| association.identity != identity)
+                .all(|association| association.submission_id != Some(submission.id))
             {
                 registered_submission = true;
-                let prompt = match &submission.phase {
-                    SubmissionPhase::Accepted { prompt, .. } => prompts.get(prompt).copied(),
-                    _ => None,
-                };
-                let (first_entry, first_chunk) = prompt.map_or_else(
-                    || provisional_boundary(thread),
-                    |content| (content.source.entry_index, 0),
-                );
-                self.associations.push(TurnAssociation {
-                    identity,
-                    first_entry,
-                    first_chunk,
-                    prompt: prompt.map(|content| content.source.clone()),
-                    generation: None,
-                    baseline_generation: thread.activity_generation,
-                    submission: Some(submission.phase.clone()),
-                    accepted: matches!(
-                        submission.phase,
-                        SubmissionPhase::Accepted { .. } | SubmissionPhase::Completed
-                    ),
-                    terminal: None,
-                    resumption: None,
+                let retry_prompt = (!thread.reported_activity
+                    && submission.kind == acp_thread::SubmissionKind::Retry)
+                    .then_some(last_prompt)
+                    .flatten();
+                let retry_association = retry_prompt.and_then(|prompt| {
+                    self.associations.iter().rposition(|association| {
+                        association.prompt.as_ref() == Some(&prompt.source)
+                    })
                 });
+                if let Some(index) = retry_association {
+                    let mut association = self.associations.remove(index);
+                    association.submission_id = Some(submission.id);
+                    association.submission = Some(submission.phase.clone());
+                    association.baseline_generation = thread.activity_generation;
+                    association.generation = None;
+                    association.terminal = None;
+                    association.resumption = None;
+                    self.associations.push(association);
+                } else {
+                    let prompt = match &submission.phase {
+                        SubmissionPhase::Accepted { prompt, .. } => prompts.get(prompt).copied(),
+                        _ => retry_prompt,
+                    };
+                    let (first_entry, first_chunk) = prompt.map_or_else(
+                        || provisional_boundary(thread),
+                        |content| (content.source.entry_index, 0),
+                    );
+                    self.associations.push(TurnAssociation {
+                        identity: retry_prompt.map_or(identity, |prompt| {
+                            TurnIdentity::Prompt(prompt.source.clone())
+                        }),
+                        submission_id: Some(submission.id),
+                        first_entry,
+                        first_chunk,
+                        prompt: prompt.map(|content| content.source.clone()),
+                        generation: None,
+                        baseline_generation: thread.activity_generation,
+                        submission: Some(submission.phase.clone()),
+                        accepted: matches!(
+                            submission.phase,
+                            SubmissionPhase::Accepted { .. } | SubmissionPhase::Completed
+                        ),
+                        terminal: None,
+                        resumption: None,
+                    });
+                }
             }
         }
         for association in &mut self.associations {
-            if let TurnIdentity::Submission(id) = association.identity
+            if let Some(id) = association.submission_id
                 && let Some(submission) = submission_updates.get(&id)
             {
+                if matches!(association.submission, Some(SubmissionPhase::Pending))
+                    && let Some(outcome) = submission.outcome
+                {
+                    association.terminal = Some(outcome);
+                }
                 association.submission = Some(submission.phase.clone());
                 association.accepted |= matches!(
                     submission.phase,
@@ -387,6 +418,7 @@ impl ResponseModel {
             self.next_activity_id += 1;
             self.associations.push(TurnAssociation {
                 identity: TurnIdentity::Activity(self.next_activity_id),
+                submission_id: None,
                 first_entry,
                 first_chunk,
                 prompt: prompt.map(|content| content.source.clone()),
@@ -408,12 +440,12 @@ impl ResponseModel {
             .cloned()
             .collect();
         if let Some(association) = self.associations.last_mut()
-            && match association.identity {
-                TurnIdentity::Submission(id) => thread
+            && match association.submission_id {
+                Some(id) => thread
                     .submission
                     .as_ref()
                     .is_some_and(|submission| submission.id == id),
-                _ => true,
+                None => true,
             }
             && (!new_external_prompt
                 || registered_submission
@@ -431,7 +463,7 @@ impl ResponseModel {
                 association.prompt = Some(prompt.source.clone());
             }
             if let Some(submission) = &thread.submission
-                && association.identity == TurnIdentity::Submission(submission.id)
+                && association.submission_id == Some(submission.id)
             {
                 let prompt = match &submission.phase {
                     SubmissionPhase::Accepted { prompt, .. } => prompts.get(prompt).copied(),
@@ -449,21 +481,6 @@ impl ResponseModel {
                 if let Some(prompt) = prompt {
                     association.prompt = Some(prompt.source.clone());
                     if prompt.source.entry_index < association.first_entry {
-                        association.first_entry = prompt.source.entry_index;
-                        association.first_chunk = 0;
-                    }
-                } else if !thread.reported_activity
-                    && association.generation.is_some()
-                    && matches!(
-                        submission.phase,
-                        SubmissionPhase::Completed
-                            | SubmissionPhase::Failed
-                            | SubmissionPhase::Cancelled
-                    )
-                {
-                    // Legacy retry continues an existing prompt instead of echoing a new one.
-                    if let Some(prompt) = last_prompt {
-                        association.prompt = Some(prompt.source.clone());
                         association.first_entry = prompt.source.entry_index;
                         association.first_chunk = 0;
                     }
@@ -644,13 +661,15 @@ impl ResponseModel {
         }
         for (association_index, association) in self.associations.iter().enumerate() {
             if association.prompt.is_none()
-                && (thread.submission.as_ref().is_some_and(|submission| {
-                    association.identity == TurnIdentity::Submission(submission.id)
-                }) || (self
-                    .associations
-                    .last()
-                    .is_some_and(|last| last.identity == association.identity)
-                    && matches!(association.identity, TurnIdentity::Activity(_))))
+                && (thread
+                    .submission
+                    .as_ref()
+                    .is_some_and(|submission| association.submission_id == Some(submission.id))
+                    || (self
+                        .associations
+                        .last()
+                        .is_some_and(|last| last.identity == association.identity)
+                        && matches!(association.identity, TurnIdentity::Activity(_))))
                 && !association_groups.contains_key(&association_index)
             {
                 groups.push((
@@ -996,6 +1015,8 @@ mod tests {
         let mut thread = history(&[]);
         thread.submission = Some(SubmissionObservation {
             id: 1,
+            kind: acp_thread::SubmissionKind::Prompt,
+            outcome: None,
             phase: SubmissionPhase::Pending,
         });
         thread
@@ -1220,6 +1241,8 @@ mod tests {
         stop(&mut model, &thread, 1, TurnOutcome::Success);
         thread.submission = Some(SubmissionObservation {
             id: 2,
+            kind: acp_thread::SubmissionKind::Prompt,
+            outcome: None,
             phase: SubmissionPhase::Pending,
         });
         model.observe(&thread, ObservationEvent::Refresh);
@@ -1376,6 +1399,8 @@ mod tests {
         thread.reported_activity = false;
         thread.submission = Some(SubmissionObservation {
             id: 1,
+            kind: acp_thread::SubmissionKind::Prompt,
+            outcome: None,
             phase: SubmissionPhase::Pending,
         });
         let mut model = ResponseModel::default();
@@ -1681,6 +1706,7 @@ mod tests {
                 let answer = content(index * 2 + 1, Some(0), Message, &format!("answer-{index}"));
                 model.associations.push(TurnAssociation {
                     identity: TurnIdentity::Submission(index as u64),
+                    submission_id: Some(index as u64),
                     first_entry: index * 2,
                     first_chunk: 0,
                     prompt: Some(prompt.source.clone()),
