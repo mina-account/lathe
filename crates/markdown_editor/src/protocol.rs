@@ -39,9 +39,65 @@ pub struct Change {
     pub text: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    #[default]
+    Ir,
+    Wysiwyg,
+    Sv,
+    Preview,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ViewPreferences {
+    pub mode: Mode,
+    pub outline: bool,
+    pub wrap: bool,
+    pub scroll: u32,
+}
+
+impl Default for ViewPreferences {
+    fn default() -> Self {
+        Self {
+            mode: Mode::Ir,
+            outline: false,
+            wrap: true,
+            scroll: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClientMessage {
+    InputState {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        text: String,
+        start: usize,
+        end: usize,
+    },
+    Preferences {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        preferences: ViewPreferences,
+    },
+    Copy {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        text: String,
+    },
+    OpenLink {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        url: String,
+    },
     Ready {
         session: String,
         #[serde(with = "document_identifier")]
@@ -97,6 +153,18 @@ pub enum ClientMessage {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum HostMessage {
+    Notice {
+        text: String,
+    },
+    Preferences {
+        preferences: ViewPreferences,
+    },
+    HistoryAccepted {
+        request: u64,
+        revision: u64,
+        text: String,
+        writable: bool,
+    },
     Document {
         revision: u64,
         text: String,
@@ -158,6 +226,18 @@ pub fn decode(origin: &str, body: &str, session: &str, document: u64) -> Result<
     let message: ClientMessage = serde_json::from_str(body)?;
     let (actual_session, actual_document) = match &message {
         ClientMessage::Ready { session, document }
+        | ClientMessage::Preferences {
+            session, document, ..
+        }
+        | ClientMessage::Copy {
+            session, document, ..
+        }
+        | ClientMessage::OpenLink {
+            session, document, ..
+        }
+        | ClientMessage::InputState {
+            session, document, ..
+        }
         | ClientMessage::Draft {
             session, document, ..
         }
@@ -179,6 +259,38 @@ pub fn decode(origin: &str, body: &str, session: &str, document: u64) -> Result<
     };
     if actual_session != session || *actual_document != document {
         bail!("Foreign Markdown document/session");
+    }
+    match &message {
+        ClientMessage::InputState {
+            text, start, end, ..
+        } => {
+            if !within_document_budget(text) || start > end {
+                bail!("Invalid browser input state");
+            }
+            utf16_to_byte(text, *start)?;
+            utf16_to_byte(text, *end)?;
+        }
+        ClientMessage::Copy { text, .. } if !within_document_budget(text) => {
+            bail!("Clipboard text exceeds its limit")
+        }
+        ClientMessage::OpenLink { url, .. } => {
+            let url = urlencoding::decode(url)?;
+            if url.is_empty() || url.len() > 8192 || url.chars().any(char::is_control) {
+                bail!("Invalid Markdown link");
+            }
+            if let Some((scheme, _)) = url.split_once(':') {
+                if !["https", "http", "mailto"].contains(&scheme.to_ascii_lowercase().as_str()) {
+                    bail!("Forbidden Markdown link scheme");
+                }
+            }
+            if url.starts_with("//") || url.starts_with('\\') {
+                bail!("Forbidden Markdown link");
+            }
+        }
+        ClientMessage::Preferences { preferences, .. } if preferences.scroll > 100_000_000 => {
+            bail!("Invalid reading position")
+        }
+        _ => {}
     }
     Ok(message)
 }
@@ -726,7 +838,7 @@ impl Protocol {
             }
             bail!("History request reused with different content");
         }
-        if request <= self.last_request || base_revision != self.revision {
+        if request <= self.last_request || base_revision > self.revision {
             bail!("Stale or out-of-order history request");
         }
         self.last_request = request;
@@ -741,6 +853,75 @@ impl Protocol {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_and_input_messages_are_typed_bounded_and_decoded_before_scheme_validation() {
+        let origin = application_url("session", 1);
+        for url in [
+            "https://example.com",
+            "mailto:user@example.com",
+            "other%20file.markdown#heading",
+            "assets/%E4%B8%AD%E6%96%87.png",
+            "#heading",
+        ] {
+            let message = ClientMessage::OpenLink {
+                session: "session".into(),
+                document: 1,
+                url: url.into(),
+            };
+            assert!(
+                decode(
+                    &origin,
+                    &serde_json::to_string(&message).expect("message"),
+                    "session",
+                    1
+                )
+                .is_ok(),
+                "{url}"
+            );
+        }
+        for url in [
+            "javascript:evil()",
+            "javascript%3Aevil()",
+            "data:text/html,evil",
+            "file:///secret",
+            "//foreign.invalid/x",
+            "%0Aevil",
+            "\\\\server\\share",
+        ] {
+            let message = ClientMessage::OpenLink {
+                session: "session".into(),
+                document: 1,
+                url: url.into(),
+            };
+            assert!(
+                decode(
+                    &origin,
+                    &serde_json::to_string(&message).expect("message"),
+                    "session",
+                    1
+                )
+                .is_err(),
+                "{url}"
+            );
+        }
+        let message = ClientMessage::InputState {
+            session: "session".into(),
+            document: 1,
+            text: "😀".into(),
+            start: 1,
+            end: 2,
+        };
+        assert!(
+            decode(
+                &origin,
+                &serde_json::to_string(&message).expect("message"),
+                "session",
+                1
+            )
+            .is_err()
+        );
+    }
 
     fn edit(protocol: &Protocol, request: u64, sequence: u64, change: Change) -> ClientMessage {
         ClientMessage::Edit {

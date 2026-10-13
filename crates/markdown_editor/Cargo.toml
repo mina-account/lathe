@@ -14,7 +14,7 @@ doctest = false
 
 [features]
 default = ["application"]
-application = ["dep:editor", "dep:gpui", "dep:language", "dep:project", "dep:workspace", "dep:ui", "dep:util", "dep:futures", "dep:log"]
+application = ["dep:editor", "dep:gpui", "dep:language", "dep:project", "dep:workspace", "dep:ui", "dep:util", "dep:futures", "dep:log", "dep:db"]
 browser = ["application", "dep:cef", "dep:image"]
 test-support = ["application", "gpui/test-support", "editor/test-support", "workspace/test-support", "dep:db", "db/test-support", "dep:fs", "fs/test-support", "dep:gpui_platform", "gpui_platform/test-support", "gpui_platform/wayland", "gpui_platform/x11", "dep:raw-window-handle", "dep:sysinfo", "dep:settings"]
 
@@ -22,6 +22,7 @@ test-support = ["application", "gpui/test-support", "editor/test-support", "work
 anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+urlencoding.workspace = true
 editor = { workspace = true, optional = true }
 gpui = { workspace = true, optional = true }
 language = { workspace = true, optional = true }

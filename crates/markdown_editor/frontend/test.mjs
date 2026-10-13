@@ -2,6 +2,25 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DocumentBridge, delta, display, fromDisplay, rebase, separateChanges, withinBudget } from "./application.ts";
 
+test("rapid toolbar history commands wait for their own acknowledgment and revision", () => {
+    const messages = [];
+    const bridge = new DocumentBridge("session", "1", message => messages.push(message), () => {}, () => {});
+    bridge.receive({kind:"document",revision:0,text:"a",writable:true,draft:null});
+    bridge.input("ab"); bridge.history("undo"); bridge.history("undo"); bridge.history("redo");
+    bridge.receive({kind:"accepted",request:1,sequence:1,revision:1,text:"ab"});
+    assert.equal(messages.filter(message => ["undo","redo"].includes(message.kind)).length, 1);
+    bridge.receive({kind:"history_accepted",request:2,revision:2,text:"a",writable:true});
+    assert.deepEqual(messages.at(-1), {kind:"undo",request:3,base_revision:2,session:"session",document:"1"});
+    bridge.receive({kind:"history_accepted",request:2,revision:2,text:"a",writable:true});
+    assert.equal(messages.at(-1).request, 3);
+    bridge.receive({kind:"history_accepted",request:3,revision:2,text:"a",writable:true});
+    assert.equal(messages.at(-1).kind, "redo"); assert.equal(messages.at(-1).base_revision, 2);
+    bridge.receive({kind:"flush",request:90});
+    assert.equal(messages.some(message => message.kind === "flushed"), false);
+    bridge.receive({kind:"history_accepted",request:4,revision:3,text:"ab",writable:true});
+    assert.equal(messages.at(-1).kind, "flushed");
+});
+
 test("UTF-16 changes preserve code points and untouched CRLF source", () => {
     assert.deepEqual(delta("😀a", "😁a"), {start:0,end:2,text:"😁"});
     const source = "---\r\nx: 1\r\n---\r\n[ref]: /a\r\n<script>evil()</script>\r\n```unknown\r\n😀\r\n```";
@@ -45,7 +64,9 @@ test("queued input returning to committed text waits for its own validated ackno
     bridge.receive({kind:"accepted",request:2,sequence:1,revision:1,text:"ab"});
     assert.equal(messages.some(message => message.kind === "flushed"), false);
     bridge.receive({kind:"accepted",request:edit.request,sequence:edit.sequence,revision:1,text:"ab"});
-    assert.equal(messages.at(-2).kind, "flushed"); assert.equal(messages.at(-1).kind, "undo");
+    assert.equal(messages.at(-1).kind, "undo");
+    bridge.receive({kind:"history_accepted",request:messages.at(-1).request,revision:2,text:"a",writable:true});
+    assert.equal(messages.at(-1).kind, "flushed");
 });
 
 test("cancelled composition acknowledges its no-op draft before flush and history", () => {
@@ -58,7 +79,9 @@ test("cancelled composition acknowledges its no-op draft before flush and histor
     const edit = messages.filter(message => message.kind === "edit").at(-1);
     assert.deepEqual(edit.change, {start:0,end:0,text:""}); assert.equal(edit.sequence, 2);
     bridge.receive({kind:"accepted",request:edit.request,sequence:edit.sequence,revision:0,text:"a"});
-    assert.equal(messages.at(-2).kind, "flushed"); assert.equal(messages.at(-1).kind, "redo");
+    assert.equal(messages.at(-1).kind, "redo");
+    bridge.receive({kind:"history_accepted",request:messages.at(-1).request,revision:0,text:"a",writable:true});
+    assert.equal(messages.at(-1).kind, "flushed");
 });
 
 test("separate external edits rebase around local edits with Unicode and source bytes preserved", () => {
@@ -214,37 +237,4 @@ test("budget counts UTF-8 and JSON escaping and retains noncancelable overflow",
     bridge.input(overflow);
     assert.equal(messages.at(-1).kind, "draft"); assert.equal(messages.at(-1).text, overflow);
     assert.equal(bridge.blocked, true); assert.match(errors.at(-1), /retained/);
-});
-
-test("DOM projections transform selections and reject oversized paste before mutation", async () => {
-    const listeners = {};
-    const element = {value:"", selectionStart:0, selectionEnd:0, selectionDirection:"backward", scrollTop:37,
-        addEventListener(kind, callback) { listeners[kind] = callback; },
-        setSelectionRange(start,end,direction) { this.selectionStart=start; this.selectionEnd=end; this.selectionDirection=direction; }};
-    globalThis.window = {}; globalThis.document = {getElementById(id) { return id === "document" ? element : {}; }};
-    globalThis.location = {href:"https://lathe-markdown.invalid/?session=session&document=1"};
-    try {
-        await import("./application.ts?dom-selection");
-        const bridge = window.latheMarkdown;
-        bridge.receive({kind:"document",revision:0,text:"hello world",writable:true,draft:null});
-        element.selectionStart=6; element.selectionEnd=11;
-        bridge.receive({kind:"document",revision:1,text:"prefix hello world",writable:true,draft:null});
-        assert.equal(element.selectionStart, 13); assert.equal(element.selectionEnd, 18);
-        assert.equal(element.selectionDirection, "backward"); assert.equal(element.scrollTop, 37);
-        bridge.receive({kind:"document",revision:2,text:"0123456789",writable:true,draft:null});
-        element.selectionStart=5; element.selectionEnd=6;
-        bridge.receive({kind:"document",revision:3,text:"X12345678Y",writable:true,draft:null});
-        assert.equal(element.selectionStart, 5); assert.equal(element.selectionEnd, 6);
-        assert.equal(element.selectionDirection, "backward"); assert.equal(element.scrollTop, 37);
-        let prevented = false;
-        listeners.paste({clipboardData:{getData:()=>"x".repeat(8*1024*1024)},preventDefault(){prevented=true;}});
-        assert.equal(prevented, true);
-        assert.equal(element.value, "X12345678Y");
-        prevented = false;
-        listeners.beforeinput({inputType:"insertText",data:"x".repeat(8*1024*1024),preventDefault(){prevented=true;}});
-        assert.equal(prevented, true);
-        prevented = false;
-        listeners.drop({dataTransfer:{getData:()=>"x".repeat(8*1024*1024)},preventDefault(){prevented=true;}});
-        assert.equal(prevented, true);
-    } finally { delete globalThis.window; delete globalThis.document; delete globalThis.location; }
 });

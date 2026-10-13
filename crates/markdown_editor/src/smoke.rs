@@ -22,6 +22,31 @@ mod supported {
         time::{Duration, Instant},
     };
 
+    const RUNTIME_IDENTITY: &str = "window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({version:window.latheRich.editor.version,mode:window.latheRich.editor.getCurrentMode(),presentation:document.getElementById('mode').value,source:window.latheRich.projection.source,viewer:!document.getElementById('viewer').hidden})})";
+
+    fn assert_runtime(item: &MarkdownEditor, mode: &str, text: &str) -> Result<()> {
+        let copied = item
+            .copied_text
+            .as_deref()
+            .ok_or_else(|| anyhow!("Runtime identity copy message missing"))?;
+        let identity: serde_json::Value = serde_json::from_str(copied)?;
+        if identity["version"] != "3.11.2"
+            || identity["presentation"] != mode
+            || identity["source"] != text
+            || mode != "preview" && identity["mode"] != mode
+        {
+            bail!("Unexpected rich runtime identity: {identity}");
+        }
+        if mode == "preview" && identity["viewer"] != true {
+            bail!("Viewer presentation is not mounted");
+        }
+        println!(
+            "{}",
+            serde_json::json!({"event":"rich_runtime", "version":"3.11.2", "mode":mode, "source_preserved":true})
+        );
+        Ok(())
+    }
+
     pub fn main() {
         markdown_editor::browser::run_subprocess_if_invoked();
         if let Err(error) = run() {
@@ -65,7 +90,18 @@ mod supported {
                                 let text = item.buffer.read(cx).snapshot().text();
                                 match stage {
                                     0 if item.browser_ready && phase_started.elapsed() > Duration::from_millis(200) => {
-                                        item.browser_script("if(globalThis.documentExecuted)throw new Error('Document HTML executed'); window.open('https://foreign.invalid'); location.href='https://foreign.invalid'; fetch('https://foreign.invalid').catch(()=>{}); const field=document.getElementById('document'); field.value=field.value.replace('shared','visual'); field.dispatchEvent(new InputEvent('input',{inputType:'insertText'})); const committed=field.value; field.value+=' queued'; field.dispatchEvent(new InputEvent('input',{inputType:'insertText'})); field.value=committed; field.dispatchEvent(new InputEvent('input',{inputType:'deleteContentBackward'}));")?;
+                                        item.browser_script(RUNTIME_IDENTITY)?; phase_started = Instant::now(); stage = 20;
+                                    }
+                                    20 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        assert_runtime(item,"ir",&text)?;
+                                        item.browser_script("window.latheRich.mode('wysiwyg')")?; phase_started = Instant::now(); stage = 24;
+                                    }
+                                    24 if item.preferences.mode == markdown_editor::protocol::Mode::Wysiwyg && phase_started.elapsed() > Duration::from_millis(200) => {
+                                        item.browser_script(RUNTIME_IDENTITY)?; phase_started = Instant::now(); stage = 25;
+                                    }
+                                    25 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        assert_runtime(item,"wysiwyg",&text)?;
+                                        item.browser_script("if(globalThis.documentExecuted)throw new Error('Document HTML executed'); window.open('https://foreign.invalid'); location.href='https://foreign.invalid'; fetch('https://foreign.invalid').catch(()=>{}); window.latheRich.replaceText('shared','visual'); window.latheRich.appendText(' queued'); window.latheRich.replaceText(' queued','');")?;
                                         stage = 1;
                                     }
                                     1 if text.starts_with("# visual 😀") && item.protocol.draft.is_none() => {
@@ -75,22 +111,40 @@ mod supported {
                                         phase_started = Instant::now(); stage = 2;
                                     }
                                     2 if text.starts_with("# native 😀") && phase_started.elapsed() > Duration::from_millis(200) => {
-                                        item.browser_script("const field=document.getElementById('document'); field.value=field.value.replace('native','mirrored'); field.dispatchEvent(new InputEvent('input',{inputType:'insertText'}));")?;
-                                        stage = 3;
+                                        item.browser_script("window.latheRich.mode('sv');")?;
+                                        phase_started = Instant::now(); stage = 21;
+                                    }
+                                    21 if item.preferences.mode == markdown_editor::protocol::Mode::Sv && phase_started.elapsed() > Duration::from_millis(200) => {
+                                        item.browser_script(RUNTIME_IDENTITY)?; phase_started = Instant::now(); stage = 26;
+                                    }
+                                    26 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        assert_runtime(item,"sv",&text)?;
+                                        item.browser_script("window.latheRich.replaceText('native','mirrored')")?; stage = 3;
                                     }
                                     3 if text.starts_with("# mirrored 😀") && item.protocol.draft.is_none() => {
                                         println!("{}", serde_json::json!({"event":"native_to_visual_to_native", "text":text}));
-                                        item.browser_script("window.latheMarkdown.history('undo')")?;
-                                        stage = 4;
+                                        item.browser_script("window.latheRich.replaceText('mirrored','toolbar'); document.querySelector('[data-type=native-undo]').click(); document.querySelector('[data-type=native-undo]').click(); document.querySelector('[data-type=native-redo]').click();")?;
+                                        phase_started = Instant::now(); stage = 30;
+                                    }
+                                    30 if text.starts_with("# mirrored 😀") && item.protocol.draft.is_none() && phase_started.elapsed() > Duration::from_millis(300) => {
+                                        println!("{}", serde_json::json!({"event":"rapid_toolbar_history", "passed":true}));
+                                        item.browser_script("document.querySelector('[data-type=native-undo]').click()")?; stage = 4;
                                     }
                                     4 if text.starts_with("# native 😀") => {
                                         println!("{}", serde_json::json!({"event":"browser_native_undo", "text":text}));
-                                        item.browser_script("window.latheMarkdown.history('redo')")?; stage = 5;
+                                        item.browser_script("document.querySelector('[data-type=native-redo]').click()")?; stage = 5;
                                     }
                                     5 if text.starts_with("# mirrored 😀") => {
                                         println!("{}", serde_json::json!({"event":"browser_native_redo", "text":text}));
-                                        item.browser_script("window.latheMarkdown.composing=true; const field=document.getElementById('document'); field.value=field.value.replace('0123456789','01234L6789'); field.dispatchEvent(new InputEvent('input',{inputType:'insertText'}));")?;
-                                        stage = 11;
+                                        item.browser_script("window.latheRich.mode('ir')")?;
+                                        phase_started = Instant::now(); stage = 22;
+                                    }
+                                    22 if item.preferences.mode == markdown_editor::protocol::Mode::Ir && phase_started.elapsed() > Duration::from_millis(200) => {
+                                        item.browser_script(RUNTIME_IDENTITY)?; phase_started = Instant::now(); stage = 27;
+                                    }
+                                    27 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        assert_runtime(item,"ir",&text)?;
+                                        item.browser_script("window.latheMarkdown.composing=true; window.latheRich.replaceText('0123456789','01234L6789')")?; stage = 11;
                                     }
                                     11 if item.protocol.draft.as_ref().is_some_and(|draft| draft.text.ends_with("01234L6789")) => {
                                         let end = text.len();
@@ -102,6 +156,16 @@ mod supported {
                                     }
                                     13 if text.ends_with("X1234L678Y") && item.protocol.draft.is_none() => {
                                         println!("{}", serde_json::json!({"event":"disjoint_external_rebase", "text":text}));
+                                        item.browser_script("window.latheRich.mode('preview'); window.latheRich.openFind()")?; phase_started = Instant::now(); stage = 28;
+                                    }
+                                    28 if item.preferences.mode == markdown_editor::protocol::Mode::Preview && phase_started.elapsed() > Duration::from_millis(200) => {
+                                        item.browser_script(RUNTIME_IDENTITY)?; phase_started = Instant::now(); stage = 29;
+                                    }
+                                    29 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        assert_runtime(item,"preview",&text)?;
+                                        item.browser_script("document.getElementById('find-close').click(); window.latheRich.mode('ir')")?; phase_started = Instant::now(); stage = 31;
+                                    }
+                                    31 if item.preferences.mode == markdown_editor::protocol::Mode::Ir && phase_started.elapsed() > Duration::from_millis(200) => {
                                         stage = 6;
                                     }
                                     6 => return Ok(true),
@@ -117,10 +181,10 @@ mod supported {
                                         item.start_browser(cx); phase_started = Instant::now(); stage = 9;
                                     }
                                     9 if item.browser_ready && phase_started.elapsed() > Duration::from_millis(200) => {
-                                        item.browser_script("const field=document.getElementById('document'); field.value=field.value.replace(' retained',' recreated'); field.dispatchEvent(new InputEvent('input',{inputType:'insertText'}));")?;
+                                        item.browser_script("if(!window.latheMarkdown.blocked || !window.latheRich.projection.source.endsWith(' retained'))throw new Error('Recovered projection missing'); document.getElementById('copy-markdown').click();")?;
                                         stage = 10;
                                     }
-                                    10 if item.protocol.draft.as_ref().is_some_and(|draft| draft.text.ends_with(" recreated")) => {
+                                    10 if item.copied_text.as_ref().is_some_and(|text| text.ends_with(" retained")) => {
                                         println!("{}", serde_json::json!({"event":"recreated_browser_retained_draft", "native_text":text, "draft":item.protocol.draft.as_ref().map(|draft| &draft.text)}));
                                         let tracked = markdown_editor::browser::tracked_surface_count(cx);
                                         if tracked != 1 { bail!("Retired browser references remain tracked: {tracked}"); }
@@ -136,11 +200,11 @@ mod supported {
                                     let flush = window.update(cx, |item, _, cx| item.flush(cx))?;
                                     flush.await?;
                                     println!("{}", serde_json::json!({"event":"real_item_flush", "passed":true}));
-                                    window.update(cx, |item, _, _| item.browser_script("window.latheMarkdown.composing=true; const field=document.getElementById('document'); const original=field.value; field.value+=' cancelled'; field.dispatchEvent(new InputEvent('input',{inputType:'insertText'})); field.value=original; field.dispatchEvent(new InputEvent('input',{inputType:'deleteContentBackward'})); window.latheMarkdown.compositionEnd();"))??;
+                                    window.update(cx, |item, _, _| item.browser_script("window.latheMarkdown.composing=true; window.latheRich.appendText(' cancelled'); window.latheRich.replaceText(' cancelled',''); window.latheMarkdown.compositionEnd();"))??;
                                     let flush = window.update(cx, |item, _, cx| item.flush(cx))?;
                                     flush.await?;
                                     println!("{}", serde_json::json!({"event":"cancelled_composition_flush", "passed":true}));
-                                    window.update(cx, |item, _, _| item.browser_script("window.latheMarkdown.composing=true; const field=document.getElementById('document'); field.value+=' retained'; field.dispatchEvent(new InputEvent('input',{inputType:'insertText'}));"))??;
+                                    window.update(cx, |item, _, _| item.browser_script("window.latheMarkdown.composing=true; window.latheRich.appendText(' retained');"))??;
                                     stage = 7;
                                     continue;
                                 }

@@ -1,0 +1,41 @@
+{
+    "date":  "2026-10-12",
+    "windowsNative":  46,
+    "linuxNative":  46,
+    "windowsProtocol":  13,
+    "linuxProtocol":  13,
+    "frontendBridge":  16,
+    "frontendRealBrowser":  16,
+    "chromium":  "153.0.8010.12",
+    "playwright":  "1.56.1",
+    "preview":  32,
+    "workspaceSave":  26,
+    "workspaceClose":  49,
+    "remoteWorkspaceRouting":  1,
+    "sharedPathRouting":  15,
+    "windowsDefaultAllTargetsVisualTests":  "passed",
+    "windowsBrowserAllTargetsVisualTests":  "passed",
+    "linuxBrowserApplication":  "passed",
+    "windowsMarkdownWorkspaceReleaseAllTargetAllFeatureLint":  "passed",
+    "windowsZedReleaseAllTargetAllFeatureLint":  "passed",
+    "linuxMarkdownWorkspaceReleaseAllTargetAllFeatureLint":  "passed",
+    "scopedRustFormatting":  "passed",
+    "generatedAssetsAndReferenceHashes":  "passed",
+    "npmAuditVulnerabilities":  0,
+    "nativeSmokeExit":  {
+                            "windows":  0,
+                            "wayland":  0,
+                            "x11":  0
+                        },
+    "previousPhaseVerifiers":  "passed",
+    "exceptions":  [
+                       "Unchanged unrelated root cargo fmt failures",
+                       "Combined-package remote Mock feature mismatch: use scoped lint groups",
+                       "Unchanged Linux Zed all-feature LiveKit mock SourceMetadata.kind failure"
+                   ],
+    "limitations":  [
+                        "Synthetic DOM/native correctness; no hardware or manual Phase 6 acceptance",
+                        "Application/data confinement with no_sandbox=1; not an OS sandbox",
+                        "Expanded renderers/resources/themes Phase 4; full opening/install/packaging/notices Phase 5"
+                    ]
+}
