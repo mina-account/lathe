@@ -1,7 +1,7 @@
 {
     "date":  "2026-10-12",
-    "windowsNative":  46,
-    "linuxNative":  46,
+    "windowsNative":  47,
+    "linuxNative":  47,
     "windowsProtocol":  13,
     "linuxProtocol":  13,
     "frontendBridge":  16,
@@ -37,5 +37,6 @@
                         "Synthetic DOM/native correctness; no hardware or manual Phase 6 acceptance",
                         "Application/data confinement with no_sandbox=1; not an OS sandbox",
                         "Expanded renderers/resources/themes Phase 4; full opening/install/packaging/notices Phase 5"
-                    ]
+                    ],
+    "urlEncodingRegressions":  "Red to green: encoded external queries/fragments and local %23 filename; case-insensitive HTTP/HTTPS/mailto retain original URL"
 }

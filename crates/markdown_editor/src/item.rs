@@ -506,7 +506,7 @@ impl MarkdownEditor {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
             }
             ClientMessage::OpenLink { url, .. } => {
-                let url = urlencoding::decode(url)?.into_owned();
+                let url = url.clone();
                 let source = self.source.clone();
                 let base_directory = self.buffer.read(cx).file().and_then(|file| {
                     let path = ProjectPath::from_file(file.as_ref(), cx);
@@ -520,14 +520,22 @@ impl MarkdownEditor {
                 let window = self.window;
                 cx.spawn(async move |this, cx| {
                     let result = async {
-                        if url.starts_with("https:")
-                            || url.starts_with("http:")
-                            || url.starts_with("mailto:")
-                        {
+                        let decoded_url = urlencoding::decode(&url)?;
+                        if decoded_url.split_once(':').is_some_and(|(scheme, _)| {
+                            matches!(
+                                scheme.to_ascii_lowercase().as_str(),
+                                "https" | "http" | "mailto"
+                            )
+                        }) {
                             cx.update(|cx| cx.open_url(&url));
                             return anyhow::Ok(());
                         }
                         let (path, fragment) = util::markdown::split_local_url_fragment(&url);
+                        let path = urlencoding::decode(path)?.into_owned();
+                        let fragment = fragment
+                            .map(urlencoding::decode)
+                            .transpose()?
+                            .map(|fragment| fragment.into_owned());
                         let workspace = source
                             .read_with(cx, |source, _| source.workspace())
                             .ok_or_else(|| {
@@ -538,7 +546,7 @@ impl MarkdownEditor {
                                 workspace::path_link::resolve_open_target(
                                     &workspace.downgrade(),
                                     workspace::path_link::PathMatching::Exact,
-                                    path,
+                                    &path,
                                     base_directory.as_deref(),
                                     cx,
                                 )
@@ -575,7 +583,7 @@ impl MarkdownEditor {
                                 if let Some(editor) = opened.act_as::<Editor>(cx) {
                                     editor.update(cx, |editor, cx| {
                                         if let Some(offset) =
-                                            heading_offset(&editor.text(cx), fragment)
+                                            heading_offset(&editor.text(cx), &fragment)
                                         {
                                             editor.change_selections(
                                                 editor::SelectionEffects::scroll(
@@ -1229,7 +1237,7 @@ mod tests {
             super::init(cx);
         });
         let filesystem = project::FakeFs::new(cx.executor());
-        filesystem.insert_tree(path!("/project"),serde_json::json!({"docs":{"current.md":"# Current","other file.markdown":"intro\n\n# Target {#explicit}\n\nbody"}})).await;
+        filesystem.insert_tree(path!("/project"),serde_json::json!({"docs":{"current.md":"# Current","other file.markdown":"intro\n\n# Target {#explicit}\n\nbody","other#file.markdown":"intro\n\n# Target {#explicit}\n\nbody"}})).await;
         let project = Project::test(filesystem, [path!("/project").as_ref()], cx).await;
         let buffer = project
             .update(cx, |project, cx| {
@@ -1250,32 +1258,51 @@ mod tests {
             });
             visual
         });
-        visual.update(cx, |item, cx| {
-            item.receive(
-                ClientMessage::OpenLink {
-                    session: item.protocol.session.clone(),
-                    document: item.protocol.document,
-                    url: "other%20file.markdown#explicit".into(),
-                },
-                cx,
-            )
-            .expect("relative link")
-        });
-        cx.run_until_parked();
-        let destination = workspace
-            .read_with(cx, |workspace, cx| workspace.active_item_as::<Editor>(cx))
-            .expect("destination source item");
-        destination.update(cx, |editor, cx| {
-            assert_eq!(editor.text(cx), "intro\n\n# Target {#explicit}\n\nbody");
-            let snapshot = editor.display_snapshot(cx);
-            assert_eq!(
-                editor
-                    .selections
-                    .newest::<editor::MultiBufferOffset>(&snapshot)
-                    .head(),
-                editor::MultiBufferOffset(7)
-            );
-        });
+        for (url, filename) in [
+            ("other%20file.markdown#explicit", "docs/other file.markdown"),
+            ("other%23file.markdown#explicit", "docs/other#file.markdown"),
+        ] {
+            visual.update(cx, |item, cx| {
+                item.receive(
+                    ClientMessage::OpenLink {
+                        session: item.protocol.session.clone(),
+                        document: item.protocol.document,
+                        url: url.into(),
+                    },
+                    cx,
+                )
+                .expect("relative link")
+            });
+            cx.run_until_parked();
+            let destination = workspace
+                .read_with(cx, |workspace, cx| workspace.active_item_as::<Editor>(cx))
+                .expect("destination source item");
+            destination.update(cx, |editor, cx| {
+                let buffer = editor
+                    .buffer()
+                    .read(cx)
+                    .as_singleton()
+                    .expect("singleton destination");
+                assert_eq!(
+                    buffer
+                        .read(cx)
+                        .file()
+                        .expect("destination file")
+                        .path()
+                        .as_ref(),
+                    util::rel_path::rel_path(filename)
+                );
+                assert_eq!(editor.text(cx), "intro\n\n# Target {#explicit}\n\nbody");
+                let snapshot = editor.display_snapshot(cx);
+                assert_eq!(
+                    editor
+                        .selections
+                        .newest::<editor::MultiBufferOffset>(&snapshot)
+                        .head(),
+                    editor::MultiBufferOffset(7)
+                );
+            });
+        }
         visual.update(cx, |item, cx| {
             item.receive(
                 ClientMessage::OpenLink {
@@ -1292,6 +1319,33 @@ mod tests {
             cx.opened_url().as_deref(),
             Some("https://example.com/page#fragment")
         );
+    }
+
+    #[gpui::test]
+    fn external_links_preserve_encoded_query_and_fragment_semantics(cx: &mut TestAppContext) {
+        let (item, cx) = fixture(cx, "# Source");
+        for url in [
+            "https://example.com/search?q=a%26b#part%20one",
+            "http://example.com/?q=%23fragment%3Fvalue",
+            "mailto:hello@example.com?subject=a%26b",
+            "HTTPS://example.com/search?q=a%26b",
+            "HTTP://example.com/search?q=a%26b",
+            "MAILTO:hello@example.com?subject=a%26b",
+        ] {
+            item.update(cx, |item, cx| {
+                item.receive(
+                    ClientMessage::OpenLink {
+                        session: item.protocol.session.clone(),
+                        document: item.protocol.document,
+                        url: url.into(),
+                    },
+                    cx,
+                )
+                .expect("external encoded link")
+            });
+            cx.run_until_parked();
+            assert_eq!(cx.opened_url().as_deref(), Some(url));
+        }
     }
 
     #[gpui::test]
