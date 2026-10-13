@@ -1659,6 +1659,15 @@ impl ThreadView {
             .recoverable_submissions()
             .filter(|(id, _)| Some(*id) != latest_submission)
             .map(|(id, record)| submission_observation(id, record))
+            .chain(thread.submission_receipts().filter_map(|(id, message_id)| {
+                (thread.submission(id).is_none()).then(|| SubmissionObservation {
+                    id: id.as_u64(),
+                    phase: SubmissionPhase::Accepted {
+                        prompt: ProviderIdentity::Keyed(message_id.0.clone()),
+                        echoed: false,
+                    },
+                })
+            }))
             .collect();
         self.response_model.observe(
             &ThreadObservation {

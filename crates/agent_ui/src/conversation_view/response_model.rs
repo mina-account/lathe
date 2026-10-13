@@ -1,12 +1,15 @@
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::Arc,
+};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ProviderIdentity {
     Legacy(Option<Arc<str>>),
     Keyed(Arc<str>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SourceIdentity {
     Prompt(ProviderIdentity),
     Message(ProviderIdentity),
@@ -16,7 +19,7 @@ pub enum SourceIdentity {
     Compaction(Arc<str>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SourceReference {
     pub entry_index: usize,
     pub chunk_index: Option<usize>,
@@ -102,7 +105,7 @@ pub enum SelectionConfidence {
     Uncertain,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TurnIdentity {
     Submission(u64),
     Activity(u64),
@@ -143,8 +146,10 @@ pub enum ObservationEvent {
 pub struct ResponseModel {
     pub turns: Vec<ClassifiedTurn>,
     associations: Vec<TurnAssociation>,
-    uncertain_sources: Vec<SourceReference>,
+    uncertain_sources: HashSet<SourceReference>,
+    next_activity_id: u64,
     previous_activity: Option<(ActivityPhase, u64)>,
+    observed_boundary: Option<(usize, usize)>,
 }
 
 struct TurnAssociation {
@@ -157,6 +162,13 @@ struct TurnAssociation {
     submission: Option<SubmissionPhase>,
     accepted: bool,
     terminal: Option<TurnOutcome>,
+    resumption: Option<ActivityResumption>,
+}
+
+struct ActivityResumption {
+    generation: u64,
+    terminal: Option<TurnOutcome>,
+    boundary: (usize, usize),
 }
 
 impl ResponseModel {
@@ -180,17 +192,36 @@ impl ResponseModel {
                 {
                     prompt.entry_index = prompt.entry_index.saturating_sub(end - start);
                 }
-                true
-            });
-            self.uncertain_sources.retain_mut(|source| {
-                if (start..end).contains(&source.entry_index) {
-                    return false;
-                }
-                if source.entry_index >= end {
-                    source.entry_index = source.entry_index.saturating_sub(end - start);
+                if let Some(resumption) = &mut association.resumption {
+                    if resumption.boundary.0 >= end {
+                        resumption.boundary.0 = resumption.boundary.0.saturating_sub(end - start);
+                    } else if resumption.boundary.0 >= start {
+                        resumption.boundary = (start, 0);
+                    }
                 }
                 true
             });
+            if let Some((entry_index, chunk_index)) = &mut self.observed_boundary {
+                if *entry_index >= end {
+                    *entry_index = entry_index.saturating_sub(end - start);
+                } else if *entry_index >= start {
+                    *entry_index = start;
+                    *chunk_index = 0;
+                }
+            }
+            self.uncertain_sources = self
+                .uncertain_sources
+                .drain()
+                .filter_map(|mut source| {
+                    if (start..end).contains(&source.entry_index) {
+                        return None;
+                    }
+                    if source.entry_index >= end {
+                        source.entry_index = source.entry_index.saturating_sub(end - start);
+                    }
+                    Some(source)
+                })
+                .collect();
         }
 
         let last_prompt = thread
@@ -198,6 +229,23 @@ impl ResponseModel {
             .iter()
             .rev()
             .find(|content| content.kind == ContentKind::Prompt);
+        let prompts: HashMap<_, _> = thread
+            .contents
+            .iter()
+            .filter_map(|content| {
+                if let SourceIdentity::Prompt(identity) = &content.source.identity {
+                    Some((identity, content))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let submission_updates: HashMap<_, _> = thread
+            .submission_updates
+            .iter()
+            .chain(thread.submission.iter())
+            .map(|submission| (submission.id, submission))
+            .collect();
         let mut registered_submission = false;
         if let Some(submission) = &thread.submission {
             let identity = TurnIdentity::Submission(submission.id);
@@ -208,11 +256,7 @@ impl ResponseModel {
             {
                 registered_submission = true;
                 let prompt = match &submission.phase {
-                    SubmissionPhase::Accepted { prompt, .. } => {
-                        thread.contents.iter().find(|content| {
-                            content.source.identity == SourceIdentity::Prompt(prompt.clone())
-                        })
-                    }
+                    SubmissionPhase::Accepted { prompt, .. } => prompts.get(prompt).copied(),
                     _ => None,
                 };
                 let (first_entry, first_chunk) = prompt.map_or_else(
@@ -232,15 +276,13 @@ impl ResponseModel {
                         SubmissionPhase::Accepted { .. } | SubmissionPhase::Completed
                     ),
                     terminal: None,
+                    resumption: None,
                 });
             }
         }
         for association in &mut self.associations {
-            if let Some(submission) = thread
-                .submission_updates
-                .iter()
-                .chain(thread.submission.iter())
-                .find(|submission| association.identity == TurnIdentity::Submission(submission.id))
+            if let TurnIdentity::Submission(id) = association.identity
+                && let Some(submission) = submission_updates.get(&id)
             {
                 association.submission = Some(submission.phase.clone());
                 association.accepted |= matches!(
@@ -250,9 +292,7 @@ impl ResponseModel {
             }
             // Echoed older records can be pruned before their update event reaches the view.
             if let Some(SubmissionPhase::Accepted { prompt, echoed }) = &mut association.submission
-                && let Some(content) = thread.contents.iter().find(|content| {
-                    content.source.identity == SourceIdentity::Prompt(prompt.clone())
-                })
+                && let Some(content) = prompts.get(prompt)
             {
                 *echoed = true;
                 association.prompt = Some(content.source.clone());
@@ -262,20 +302,50 @@ impl ResponseModel {
                 }
             }
         }
+        let accepted_prompts: HashSet<_> = self
+            .associations
+            .iter()
+            .filter(|association| association.accepted)
+            .filter_map(|association| association.prompt.clone())
+            .collect();
+        for association in &mut self.associations {
+            if !association.accepted
+                && matches!(association.submission, Some(SubmissionPhase::Pending))
+                && association
+                    .prompt
+                    .as_ref()
+                    .is_some_and(|prompt| accepted_prompts.contains(prompt))
+            {
+                association.prompt = None;
+            }
+        }
+        let owned_prompts: HashSet<_> = self
+            .associations
+            .iter()
+            .filter_map(|association| association.prompt.as_ref())
+            .collect();
         let new_external_prompt = self.associations.last().is_some_and(|association| {
             association.prompt.as_ref().is_some_and(|prompt| {
                 last_prompt.is_some_and(|last| {
                     last.source.entry_index > prompt.entry_index
-                        && self
-                            .associations
-                            .iter()
-                            .all(|association| association.prompt.as_ref() != Some(&last.source))
+                        && !owned_prompts.contains(&last.source)
                 })
             })
         });
         let matching_stop = matches!(event, ObservationEvent::Stopped { generation, .. }
             if generation == thread.activity_generation && thread.activity == ActivityPhase::Idle);
-        if (thread.activity != ActivityPhase::Idle || matching_stop)
+        let external_activity_started = self
+            .previous_activity
+            .is_some_and(|(_, generation)| thread.activity_generation > generation);
+        let delayed_external_prompt = new_external_prompt
+            && self
+                .associations
+                .last()
+                .is_some_and(|association| association.resumption.is_some());
+        if (thread.activity != ActivityPhase::Idle
+            || matching_stop
+            || delayed_external_prompt
+            || external_activity_started)
             && !registered_submission
             && (new_external_prompt
                 || (thread.submission.is_none()
@@ -283,21 +353,53 @@ impl ResponseModel {
                         matches!(association.identity, TurnIdentity::Submission(_))
                     })))
         {
+            let historical_prompt = last_prompt.is_some_and(|prompt| {
+                self.turns.last().is_some_and(|turn| {
+                    turn.prompt.as_ref() == Some(&prompt.source) && !turn.response.is_empty()
+                })
+            });
+            let prompt = last_prompt.filter(|_| {
+                new_external_prompt
+                    || (matching_stop && !external_activity_started)
+                    || !historical_prompt
+            });
+            let (mut first_entry, mut first_chunk) = prompt.map_or_else(
+                || {
+                    self.observed_boundary
+                        .unwrap_or_else(|| provisional_boundary(thread))
+                },
+                |content| (content.source.entry_index, 0),
+            );
+            let mut terminal = (external_activity_started
+                && thread.activity == ActivityPhase::Idle)
+                .then_some(TurnOutcome::Unknown);
+            if new_external_prompt
+                && let Some(previous) = self.associations.last_mut()
+                && let Some(resumption) = previous.resumption.take()
+            {
+                (first_entry, first_chunk) = resumption.boundary.min((first_entry, first_chunk));
+                if thread.activity == ActivityPhase::Idle {
+                    terminal = previous.terminal;
+                }
+                previous.generation = Some(resumption.generation);
+                previous.terminal = resumption.terminal;
+            }
+            self.next_activity_id += 1;
             self.associations.push(TurnAssociation {
-                identity: TurnIdentity::Activity(thread.activity_generation),
-                first_entry: last_prompt
-                    .map_or(thread.entry_count, |content| content.source.entry_index),
-                first_chunk: 0,
-                prompt: last_prompt.map(|content| content.source.clone()),
+                identity: TurnIdentity::Activity(self.next_activity_id),
+                first_entry,
+                first_chunk,
+                prompt: prompt.map(|content| content.source.clone()),
                 generation: Some(thread.activity_generation),
                 baseline_generation: thread.activity_generation,
                 submission: None,
                 accepted: false,
-                terminal: None,
+                terminal,
+                resumption: None,
             });
         }
 
-        let other_prompts: Vec<_> = self
+        let other_prompts: HashSet<_> = self
             .associations
             .iter()
             .rev()
@@ -321,7 +423,8 @@ impl ResponseModel {
                 && association.prompt.is_none()
                 && let Some(prompt) = thread.contents.iter().find(|content| {
                     content.kind == ContentKind::Prompt
-                        && content.source.entry_index >= association.first_entry
+                        && source_position(&content.source)
+                            >= (association.first_entry, association.first_chunk)
                         && !other_prompts.contains(&content.source)
                 })
             {
@@ -331,11 +434,7 @@ impl ResponseModel {
                 && association.identity == TurnIdentity::Submission(submission.id)
             {
                 let prompt = match &submission.phase {
-                    SubmissionPhase::Accepted { prompt, .. } => {
-                        thread.contents.iter().find(|content| {
-                            content.source.identity == SourceIdentity::Prompt(prompt.clone())
-                        })
-                    }
+                    SubmissionPhase::Accepted { prompt, .. } => prompts.get(prompt).copied(),
                     _ if !thread.reported_activity
                         || matches!(submission.phase, SubmissionPhase::Pending) =>
                     {
@@ -372,6 +471,16 @@ impl ResponseModel {
             }
             if thread.activity != ActivityPhase::Idle {
                 if association.generation != Some(thread.activity_generation) {
+                    if let Some(generation) = association.generation {
+                        // A delayed new prompt can distinguish a new turn from apparent resumption.
+                        association.resumption = Some(ActivityResumption {
+                            generation,
+                            terminal: association.terminal,
+                            boundary: self
+                                .observed_boundary
+                                .unwrap_or_else(|| provisional_boundary(thread)),
+                        });
+                    }
                     association.terminal = None;
                 }
                 association.generation = Some(thread.activity_generation);
@@ -381,6 +490,15 @@ impl ResponseModel {
                     .unwrap_or(association.baseline_generation)
             {
                 // GPUI may deliver a running notification after the same update has already stopped.
+                if let Some(generation) = association.generation {
+                    association.resumption = Some(ActivityResumption {
+                        generation,
+                        terminal: association.terminal,
+                        boundary: self
+                            .observed_boundary
+                            .unwrap_or_else(|| provisional_boundary(thread)),
+                    });
+                }
                 association.generation = Some(thread.activity_generation);
                 association.terminal = Some(TurnOutcome::Unknown);
             }
@@ -411,24 +529,23 @@ impl ResponseModel {
         self.previous_activity = Some((thread.activity, thread.activity_generation));
 
         if let ObservationEvent::EntryUpdated(entry_index) = event {
-            for (position, content) in thread.contents.iter().enumerate().filter(|(_, content)| {
-                content.source.entry_index == entry_index
+            let mut interrupted = false;
+            for content in thread.contents.iter().rev() {
+                if content.kind == ContentKind::Prompt {
+                    interrupted = false;
+                } else if interrupts(content) {
+                    interrupted = true;
+                } else if interrupted
+                    && content.source.entry_index == entry_index
                     && content.kind == ContentKind::Message
                     && content.visible
-            }) {
-                if thread
-                    .contents
-                    .iter()
-                    .skip(position + 1)
-                    .take_while(|next| next.kind != ContentKind::Prompt)
-                    .any(|next| interrupts(next))
-                    && !self.uncertain_sources.contains(&content.source)
                 {
-                    self.uncertain_sources.push(content.source.clone());
+                    self.uncertain_sources.insert(content.source.clone());
                 }
             }
         }
         self.turns = self.classify(thread);
+        self.observed_boundary = Some(provisional_boundary(thread));
     }
 
     fn classify(&self, thread: &ThreadObservation) -> Vec<ClassifiedTurn> {
@@ -437,47 +554,61 @@ impl ResponseModel {
             Option<SourceReference>,
             Vec<&ContentObservation>,
         )> = Vec::new();
-        let mut content_associations = vec![None; thread.contents.len()];
-        for (association_index, association) in self.associations.iter().enumerate() {
-            let first_position = (association.first_entry, association.first_chunk);
-            let next_prompt = thread
-                .contents
-                .iter()
-                .find(|content| {
-                    content.kind == ContentKind::Prompt
-                        && source_position(&content.source) >= first_position
-                        && self
-                            .associations
-                            .iter()
-                            .all(|association| association.prompt.as_ref() != Some(&content.source))
-                })
-                .map_or((thread.entry_count, 0), |content| {
-                    source_position(&content.source)
-                });
-            let next_association = self
-                .associations
-                .iter()
-                .map(|next| (next.first_entry, next.first_chunk))
-                .filter(|position| *position > first_position)
-                .min()
+        let prompt_owners: HashMap<_, _> = self
+            .associations
+            .iter()
+            .enumerate()
+            .rev()
+            .filter_map(|(index, association)| {
+                association.prompt.as_ref().map(|prompt| (prompt, index))
+            })
+            .collect();
+        let association_positions: BTreeMap<_, _> = self
+            .associations
+            .iter()
+            .enumerate()
+            .map(|(index, association)| ((association.first_entry, association.first_chunk), index))
+            .collect();
+        let unowned_prompts: Vec<_> = thread
+            .contents
+            .iter()
+            .filter(|content| {
+                content.kind == ContentKind::Prompt && !prompt_owners.contains_key(&content.source)
+            })
+            .map(|content| source_position(&content.source))
+            .collect();
+        let mut association_ends = vec![(thread.entry_count, 0); self.associations.len()];
+        let mut positions = association_positions.iter().peekable();
+        while let Some((position, index)) = positions.next() {
+            let next_association = positions
+                .peek()
+                .map_or((thread.entry_count, 0), |(position, _)| **position);
+            let prompt_index = unowned_prompts.partition_point(|prompt| prompt < position);
+            let next_prompt = unowned_prompts
+                .get(prompt_index)
+                .copied()
                 .unwrap_or((thread.entry_count, 0));
-            for (content, owner) in thread.contents.iter().zip(&mut content_associations) {
-                let position = source_position(&content.source);
-                if position >= first_position && position < next_prompt.min(next_association) {
-                    *owner = Some(association_index);
-                }
+            if let Some(end) = association_ends.get_mut(*index) {
+                *end = next_association.min(next_prompt);
             }
         }
-        for (content, owner) in thread.contents.iter().zip(content_associations) {
-            let association = self
-                .associations
-                .iter()
-                .find(|association| association.prompt.as_ref() == Some(&content.source))
-                .or_else(|| owner.and_then(|index| self.associations.get(index)));
-            if let Some(association) = association
-                && let Some((_, _, contents)) = groups
-                    .iter_mut()
-                    .find(|(identity, _, _)| identity == &association.identity)
+        let mut association_groups: HashMap<usize, usize> = HashMap::new();
+        for content in &thread.contents {
+            let position = source_position(&content.source);
+            let owner = prompt_owners.get(&content.source).copied().or_else(|| {
+                association_positions
+                    .range(..=position)
+                    .next_back()
+                    .and_then(|(_, index)| {
+                        association_ends
+                            .get(*index)
+                            .filter(|end| position < **end)
+                            .map(|_| *index)
+                    })
+            });
+            let association = owner.and_then(|index| self.associations.get(index));
+            if let Some(group_index) = owner.and_then(|index| association_groups.get(&index))
+                && let Some((_, _, contents)) = groups.get_mut(*group_index)
             {
                 contents.push(content);
                 continue;
@@ -502,13 +633,16 @@ impl ResponseModel {
                     .or_else(|| {
                         (content.kind == ContentKind::Prompt).then(|| content.source.clone())
                     });
+                if let Some(owner) = owner {
+                    association_groups.insert(owner, groups.len());
+                }
                 groups.push((identity, prompt, Vec::new()));
             }
             if let Some((_, _, contents)) = groups.last_mut() {
                 contents.push(content);
             }
         }
-        for association in &self.associations {
+        for (association_index, association) in self.associations.iter().enumerate() {
             if association.prompt.is_none()
                 && (thread.submission.as_ref().is_some_and(|submission| {
                     association.identity == TurnIdentity::Submission(submission.id)
@@ -517,9 +651,7 @@ impl ResponseModel {
                     .last()
                     .is_some_and(|last| last.identity == association.identity)
                     && matches!(association.identity, TurnIdentity::Activity(_))))
-                && groups
-                    .iter()
-                    .all(|(identity, _, _)| identity != &association.identity)
+                && !association_groups.contains_key(&association_index)
             {
                 groups.push((
                     association.identity.clone(),
@@ -529,15 +661,18 @@ impl ResponseModel {
             }
         }
 
+        let associations_by_identity: HashMap<_, _> = self
+            .associations
+            .iter()
+            .rev()
+            .map(|association| (&association.identity, association))
+            .collect();
         let mut predecessor = None;
         let last_identity = groups.last().map(|(identity, _, _)| identity.clone());
         groups
             .into_iter()
             .map(|(identity, prompt, contents)| {
-                let association = self
-                    .associations
-                    .iter()
-                    .find(|association| association.identity == identity);
+                let association = associations_by_identity.get(&identity).copied();
                 let current = Some(&identity) == last_identity.as_ref();
                 let pending = contents.iter().any(|content| content.pending_action)
                     || (current && thread.pending_permission);
@@ -604,13 +739,14 @@ impl ResponseModel {
                         .iter()
                         .any(|content| content.kind == ContentKind::Message && content.visible)
                     && matches!(lifecycle, TurnLifecycle::Settled(_));
+                let selected_sources: HashSet<_> = selected.iter().collect();
                 let activity = contents
                     .iter()
                     .filter(|content| {
                         content.kind != ContentKind::Prompt
                             && !content.pending_action
                             && !content.failed
-                            && !selected.contains(&content.source)
+                            && !selected_sources.contains(&content.source)
                     })
                     .map(|content| content.source.clone())
                     .collect();
@@ -1428,5 +1564,178 @@ mod tests {
         let turn = model.turns.first().expect("provisional turn");
         assert_eq!(turn.lifecycle, TurnLifecycle::Unaccepted);
         assert!(turn.response.is_empty());
+    }
+    #[test]
+    fn batched_external_activity_before_delayed_prompt_keeps_restored_response() {
+        use ContentKind::*;
+        let mut thread = history(&[Prompt, Message]);
+        let mut model = ResponseModel::default();
+        model.observe(&thread, ObservationEvent::Refresh);
+        let historical = model.turns.first().expect("history").identity.clone();
+        thread
+            .contents
+            .push(content(2, Some(0), Message, "external-answer"));
+        thread.entry_count = 3;
+        thread.activity_generation = 1;
+        model.observe(&thread, ObservationEvent::Refresh);
+        stop(&mut model, &thread, 1, TurnOutcome::Success);
+        thread
+            .contents
+            .push(content(3, None, Prompt, "delayed-external"));
+        thread.entry_count = 4;
+        model.observe(&thread, ObservationEvent::Refresh);
+        assert_eq!(model.turns.len(), 2);
+        let history = model.turns.first().expect("history");
+        let external = model.turns.last().expect("external");
+        assert_eq!(history.identity, historical);
+        assert_eq!(
+            history.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Unknown)
+        );
+        assert_eq!(history.response.len(), 1);
+        assert_eq!(
+            external.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Success)
+        );
+        assert_eq!(
+            external.prompt.as_ref().map(|source| source.entry_index),
+            Some(3)
+        );
+        assert_eq!(
+            external.response.first().map(|source| source.entry_index),
+            Some(2)
+        );
+        assert_eq!(external.predecessor.as_ref(), Some(&historical));
+    }
+
+    #[test]
+    fn external_prompts_in_one_generation_have_distinct_identities() {
+        use ContentKind::*;
+        let mut thread = history(&[Prompt]);
+        thread.activity = ActivityPhase::Running;
+        thread.activity_generation = 1;
+        let mut model = ResponseModel::default();
+        model.observe(&thread, ObservationEvent::Refresh);
+        let first_identity = model
+            .turns
+            .first()
+            .expect("first external")
+            .identity
+            .clone();
+        thread.contents.extend([
+            content(1, Some(0), Message, "first-answer"),
+            content(2, None, Prompt, "second-prompt"),
+            content(3, Some(0), Message, "second-answer"),
+        ]);
+        thread.entry_count = 4;
+        model.observe(&thread, ObservationEvent::Refresh);
+        assert_eq!(model.turns.len(), 2);
+        let second_identity = model
+            .turns
+            .last()
+            .expect("second external")
+            .identity
+            .clone();
+        assert_ne!(first_identity, second_identity);
+        thread.activity = ActivityPhase::Idle;
+        stop(&mut model, &thread, 1, TurnOutcome::Success);
+        let first = model.turns.first().expect("first external");
+        let second = model.turns.last().expect("second external");
+        assert_eq!(first.identity, first_identity);
+        assert_eq!(
+            first.prompt.as_ref().map(|source| source.entry_index),
+            Some(0)
+        );
+        assert_eq!(
+            first.response.first().map(|source| source.entry_index),
+            Some(1)
+        );
+        assert_eq!(
+            first.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Unknown)
+        );
+        assert_eq!(second.identity, second_identity);
+        assert_eq!(
+            second.prompt.as_ref().map(|source| source.entry_index),
+            Some(2)
+        );
+        assert_eq!(
+            second.response.first().map(|source| source.entry_index),
+            Some(3)
+        );
+        assert_eq!(
+            second.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Success)
+        );
+        assert_eq!(second.predecessor.as_ref(), Some(&first.identity));
+    }
+
+    #[test]
+    fn streamed_updates_preserve_ownership_across_large_associated_history() {
+        use ContentKind::*;
+        for turn_count in [128, 256, 512, 1024] {
+            let mut thread = history(&[]);
+            let mut model = ResponseModel::default();
+            for index in 0..turn_count {
+                let prompt = content(index * 2, None, Prompt, &format!("prompt-{index}"));
+                let answer = content(index * 2 + 1, Some(0), Message, &format!("answer-{index}"));
+                model.associations.push(TurnAssociation {
+                    identity: TurnIdentity::Submission(index as u64),
+                    first_entry: index * 2,
+                    first_chunk: 0,
+                    prompt: Some(prompt.source.clone()),
+                    generation: Some(index as u64),
+                    baseline_generation: index as u64,
+                    submission: Some(SubmissionPhase::Accepted {
+                        prompt: ProviderIdentity::Keyed(format!("prompt-{index}").into()),
+                        echoed: true,
+                    }),
+                    accepted: true,
+                    terminal: Some(TurnOutcome::Success),
+                    resumption: None,
+                });
+                thread.contents.extend([prompt, answer]);
+            }
+            thread.entry_count = turn_count * 2;
+            let start = std::time::Instant::now();
+            for _ in 0..4 {
+                model.observe(
+                    &thread,
+                    ObservationEvent::EntryUpdated(thread.entry_count - 1),
+                );
+            }
+            eprintln!(
+                "{turn_count} associated turns: {:?} per streamed update",
+                start.elapsed() / 4
+            );
+            assert_eq!(model.turns.len(), turn_count);
+            for (index, turn) in model.turns.iter().enumerate() {
+                assert_eq!(
+                    turn.prompt.as_ref().map(|source| source.entry_index),
+                    Some(index * 2)
+                );
+                assert_eq!(
+                    turn.response.first().map(|source| source.entry_index),
+                    Some(index * 2 + 1)
+                );
+                assert_eq!(turn.response.len(), 1);
+                assert_eq!(
+                    turn.predecessor,
+                    index
+                        .checked_sub(1)
+                        .map(|index| TurnIdentity::Submission(index as u64))
+                );
+            }
+        }
+        let mut thread = history(&[Prompt]);
+        thread.contents.extend(
+            (0..4096).map(|index| content(1, Some(index), Message, &format!("answer-{index}"))),
+        );
+        thread.entry_count = 2;
+        let mut model = ResponseModel::default();
+        model.observe(&thread, ObservationEvent::EntryUpdated(1));
+        let turn = model.turns.first().expect("long response run");
+        assert_eq!(turn.response.len(), 4096);
+        assert!(turn.activity.is_empty());
     }
 }

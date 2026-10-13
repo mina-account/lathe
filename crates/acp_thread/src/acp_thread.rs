@@ -4040,6 +4040,10 @@ impl AcpThread {
         self.submissions.get(id)
     }
 
+    pub fn submission_receipts(&self) -> impl Iterator<Item = (SubmissionId, &acp_v2::MessageId)> {
+        self.submissions.receipts()
+    }
+
     pub fn latest_submission_id(&self) -> Option<SubmissionId> {
         self.submissions.latest_id()
     }

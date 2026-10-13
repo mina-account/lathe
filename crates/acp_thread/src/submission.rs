@@ -98,6 +98,7 @@ impl SubmissionRecord {
 pub(crate) struct SessionSubmissions {
     receipt_transport: Option<Rc<dyn ReceiptSessionSubmissions>>,
     records: BTreeMap<SubmissionId, SubmissionRecord>,
+    receipts: BTreeMap<SubmissionId, acp_v2::MessageId>,
     next_id: u64,
     latest_id: Option<SubmissionId>,
 }
@@ -107,6 +108,7 @@ impl SessionSubmissions {
         Self {
             receipt_transport,
             records: BTreeMap::default(),
+            receipts: BTreeMap::default(),
             next_id: 0,
             latest_id: None,
         }
@@ -118,6 +120,12 @@ impl SessionSubmissions {
 
     pub(crate) fn get(&self, id: SubmissionId) -> Option<&SubmissionRecord> {
         self.records.get(&id)
+    }
+
+    pub(crate) fn receipts(&self) -> impl Iterator<Item = (SubmissionId, &acp_v2::MessageId)> {
+        self.receipts
+            .iter()
+            .map(|(id, message_id)| (*id, message_id))
     }
 
     pub(crate) fn latest_id(&self) -> Option<SubmissionId> {
@@ -158,6 +166,10 @@ impl SessionSubmissions {
 
     pub(crate) fn settle(&mut self, id: SubmissionId, state: SubmissionState) {
         if let Some(record) = self.records.get_mut(&id) {
+            // Observers may run after an echoed older record is pruned; keep its acceptance evidence.
+            if let SubmissionState::Accepted { receipt, .. } = &state {
+                self.receipts.insert(id, receipt.message_id.clone());
+            }
             record.state = state;
         }
         self.prune();
@@ -189,6 +201,7 @@ impl SessionSubmissions {
         if self.records.remove(&id).is_none() {
             return false;
         }
+        self.receipts.remove(&id);
         if self.latest_id == Some(id) {
             self.latest_id = None;
         }
