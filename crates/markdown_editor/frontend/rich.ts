@@ -14,7 +14,7 @@ const parameters = new URL(location.href).searchParams;
 let editor: any = null, generation = 0, projecting = false, ready = false, preferences = defaults();
 let latest = "", sourceEditor: HTMLTextAreaElement | null = null;
 let lastSerialized = "";
-let sourceEditorSpan: {start:number;end:number} | null = null;
+const sourceControls = new Map<HTMLTextAreaElement,{start:number;end:number}>();
 type Intent = {start:number;end:number;previous:string|null;next:string|null;previousOccurrence?:number;nextOccurrence?:number;sourceView:boolean};
 let intent: Intent | null = null;
 const projection = new SourceProjection();
@@ -71,7 +71,7 @@ function permissions() {
     if (!ready) return;
     const writable = bridge.writable && !bridge.blocked && preferences.mode !== "preview";
     if (writable) editor.enable(); else editor.disabled();
-    if (sourceEditor) sourceEditor.readOnly = !writable;
+    for (const field of sourceControls.keys()) field.readOnly = !writable;
     for (const name of ["native-undo","native-redo"]) {
         const button = container.querySelector(`[data-type="${name}"]`) as HTMLButtonElement | null;
         if (button) button.disabled = !writable;
@@ -117,18 +117,7 @@ function restoreSelection(selected: ReturnType<typeof selection>, oldText: strin
 }
 function show(text: string) {
     if (bridge.blocked && ready) { permissions(); return; }
-    if (sourceEditor && sourceEditorSpan && !bridge.composing && text !== latest) {
-        for (const change of separateChanges(latest,text).reverse()) {
-            sourceEditorSpan.start = transformOffset(sourceEditorSpan.start,change);
-            sourceEditorSpan.end = transformOffset(sourceEditorSpan.end,change);
-        }
-        const next = display(text.slice(sourceEditorSpan.start,sourceEditorSpan.end));
-        let start = sourceEditor.selectionStart, end = sourceEditor.selectionEnd;
-        const direction = sourceEditor.selectionDirection;
-        for (const change of separateChanges(sourceEditor.value,next).reverse()) { start = transformOffset(start,change); end = transformOffset(end,change); }
-        sourceEditor.value = next; sourceEditor.setSelectionRange(start,end,direction);
-    }
-    latest = text;
+    updateSourceControls(text);
     if (!ready) { if (!editor) build(); return; }
     if (bridge.composing) return;
     if (text === projection.source) { permissions(); return; }
@@ -170,7 +159,7 @@ function commit() {
         // Reparsing moves reference definitions and adjusts table layout. Keep the
         // source mapping in its original block order rather than adopting that output.
         lastSerialized=actual; intent = null;
-        latest = source; bridge.input(source); renderOutline(); updateFind();
+        updateSourceControls(source); bridge.input(source); renderOutline(); renderSourceBlocks(); updateFind();
     } catch (error) { retainUnmappedInput(error); }
 }
 function retainUnmappedInput(error:unknown) {
@@ -299,7 +288,10 @@ function renderViewer() {
 function headingElements() { return [...(preferences.mode === "sv" ? editor.vditor.preview.previewElement : active()).querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")]; }
 function renderOutline() {
     outline.replaceChildren();
-    for (const heading of headingElements()) {
+    const renderedSource = document.createElement("div");
+    renderedSource.innerHTML = editor.vditor.lute.Md2VditorIRDOM(display(latest));
+    const sourceHeadings = [...renderedSource.querySelectorAll("h1,h2,h3,h4,h5,h6")];
+    for (const [index,heading] of headingElements().entries()) {
         let text = heading.textContent ?? "";
         if (preferences.mode === "ir") {
             const rendered = document.createElement("div");
@@ -309,9 +301,8 @@ function renderOutline() {
         const label = text.replace(/^#+\s*/,"").replace(/\s*\{#[^}]+\}\s*$/, "").trim();
         const identifier = label.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, "").trim().replace(/\s+/g,"-");
         heading.dataset.anchor = identifier;
-        const raw = latest.split(/\r?\n/).find(line => line.replace(/^#{1,6}\s+/,"").replace(/\s*\{#[^}]+\}\s*$/,"") === label);
-        const id = raw?.match(/\{#([^}]+)\}/)?.[1];
-        if (id) heading.dataset.explicitAnchor = id;
+        const id = sourceHeadings[index]?.querySelector('[data-type="heading-id"]')?.textContent?.match(/\{#([^}]+)\}/)?.[1];
+        if (id) heading.dataset.explicitAnchor = id; else delete heading.dataset.explicitAnchor;
         const button = document.createElement("button"); button.textContent = label;
         button.style.paddingLeft = `${Number(heading.tagName.slice(1))*10}px`;
         button.addEventListener("click",() => heading.scrollIntoView({block:"start"})); outline.append(button);
@@ -321,29 +312,59 @@ function sourceSpans(): {start:number;end:number;label:string}[] {
     const spans: {start:number;end:number;label:string}[] = [];
     const frontmatter = latest.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
     if (frontmatter) spans.push({start:0,end:frontmatter[0].length,label:"Front matter"});
-    for (const match of latest.matchAll(/(?:^<[^\n]+(?:\r?\n(?!(?:\r?\n))[^\n]+)*)|(?:^#{1,6}[^\n]*\{#[^}]+\}[^\n]*)|(?:^```[^\n]*\r?\n[\s\S]*?^```[^\n]*)|(?:^ {0,3}\[[^\]]+\]:[^\n]*(?:\r?\n[ \t]+[^\n]+)*)/gm)) {
+    for (const match of latest.matchAll(/(?:^<[^\r\n]+(?:\r?\n(?!(?:\r?\n))[^\r\n]+)*)|(?:^#{1,6}[^\r\n]*\{#[^}]+\}[^\r\n]*)|(?:^```[^\r\n]*\r?\n[\s\S]*?^```[^\r\n]*)|(?:^ {0,3}\[[^\]]+\]:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]+)*)/gm)) {
         spans.push({start:match.index,end:match.index+match[0].length,label:match[0].split(/\r?\n/)[0].slice(0,80)});
     }
     return spans;
 }
+function updateSourceControls(text:string, edited?:{field:HTMLTextAreaElement;start:number;end:number;text:string}) {
+    // Diffing identical adjacent source blocks can assign a textarea edit to the
+    // wrong occurrence; retain its known replacement scope.
+    const changes = edited ? [edited] : separateChanges(latest,text).reverse();
+    for (const [field,span] of sourceControls) {
+        if (field === edited?.field) span.end = edited.start + edited.text.length;
+        else for (const change of changes) {
+            span.start = span.start >= change.start && span.start < change.end ? change.start : transformOffset(span.start,change);
+            span.end = transformOffset(span.end,change);
+        }
+        if (field === edited?.field || bridge.composing && field === sourceEditor) continue;
+        const next = display(text.slice(span.start,span.end));
+        if (field.value === next) continue;
+        let start = field.selectionStart, end = field.selectionEnd;
+        const direction = field.selectionDirection;
+        for (const change of separateChanges(field.value,next).reverse()) { start = transformOffset(start,change); end = transformOffset(end,change); }
+        field.value = next; field.setSelectionRange(start,end,direction);
+    }
+    latest = text;
+}
 function renderSourceBlocks() {
     if (sourceEditor && document.activeElement === sourceEditor) return;
-    const blocks = get("blocks"); blocks.replaceChildren(); sourceEditor = null;
+    const blocks = get("blocks"), retained = new Map(sourceControls); sourceEditor = null;
+    let index = 0;
     for (const span of sourceSpans()) {
+        const existing = [...retained].find(([_field,previous])=>previous.start===span.start && previous.end===span.end);
+        if (existing) {
+            const [field] = existing, details = field.parentElement!;
+            details.querySelector("summary")!.textContent = span.label;
+            if (blocks.children[index] !== details) blocks.insertBefore(details,blocks.children[index] ?? null);
+            retained.delete(field); index++; continue;
+        }
         const details = document.createElement("details"), label = document.createElement("summary"), field = document.createElement("textarea");
-        label.textContent = span.label; field.value = latest.slice(span.start,span.end); field.readOnly = !bridge.writable || preferences.mode === "preview";
-        field.addEventListener("focus",() => { sourceEditor = field; sourceEditorSpan = span; });
+        label.textContent = span.label; field.value = display(latest.slice(span.start,span.end)); field.readOnly = !bridge.writable || bridge.blocked || preferences.mode === "preview";
+        sourceControls.set(field,span);
+        field.addEventListener("focus",() => { sourceEditor = field; });
         field.addEventListener("input",() => {
             if (!bridge.writable || bridge.blocked || preferences.mode === "preview") return;
             const blockSource=fromDisplay(latest.slice(span.start,span.end),field.value);
             const source = latest.slice(0,span.start) + blockSource + latest.slice(span.end);
             if (!withinBudget(source)) { status.textContent = "Source block exceeds the visual document limit."; return; }
-            span.end = span.start + blockSource.length; latest = source;
-            bridge.input(source); projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false; updateFind();
+            updateSourceControls(source,{field,start:span.start,end:span.end,text:blockSource});
+            bridge.input(source); projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false; renderOutline(); updateFind();
         });
-        field.addEventListener("blur",() => { sourceEditor = null; sourceEditorSpan = null; renderSourceBlocks(); });
-        details.append(label,field); blocks.append(details);
+        field.addEventListener("blur",() => { sourceEditor = null; renderSourceBlocks(); });
+        details.append(label,field); blocks.insertBefore(details,blocks.children[index] ?? null); index++;
     }
+    for (const field of retained.keys()) { field.parentElement?.remove(); sourceControls.delete(field); }
     get("source-blocks").hidden = !blocks.childElementCount;
 }
 function persist() { bridge.emit({kind:"preferences",preferences}); }
@@ -358,6 +379,7 @@ function mode(mode: Mode) {
 }
 function format(control:string) {
     if (!ready || !bridge.writable || bridge.blocked || preferences.mode === "preview") return;
+    if (!active().contains(document.activeElement) || bridge.composing) return;
     captureIntent(); (container.querySelector(`[data-type="${control}"]`) as HTMLButtonElement | null)?.click();
 }
 function openLink(url: string) {
@@ -405,7 +427,7 @@ container.addEventListener("click",event => {
     const replacement = control === "code" ? "```\n"+selected.text+"\n```" : control === "line" ? "---" : `| ${selected.text || "col1"} | col2 | col3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |`;
     const canonical = projection.canonical.slice(0,selected.start)+replacement+projection.canonical.slice(selected.end);
     const source = projection.edit(canonical);
-    latest = source; intent = null; projecting = true;
+    updateSourceControls(source); intent = null; projecting = true;
     editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false;
     bridge.input(source); editor.focus(); renderSourceBlocks();
 },true);
@@ -475,12 +497,24 @@ function updateFind() {
     (CSS as any).highlights?.delete("current-find");
     const root = active(), nodes = textNodes(root), text = nodes.map(node => node.data).join("");
     const needle = matchCase.checked ? query.value : query.value.toLowerCase(), haystack = matchCase.checked ? text : text.toLowerCase();
+    const starts:number[] = [], ends:number[] = [];
+    if (!matchCase.checked && !findBar.hidden && needle) {
+        let originalOffset = 0;
+        // Whole-string lowercasing retains contextual forms such as final sigma;
+        // code-point lengths map expansion positions back to their original text.
+        for (const character of text) {
+            for (let index=0; index<character.toLowerCase().length; index++) {
+                starts.push(originalOffset); ends.push(originalOffset+character.length);
+            }
+            originalOffset += character.length;
+        }
+    }
     const point = (offset:number): [Node,number] => {
         for (const node of nodes) { if (offset <= node.length) return [node,offset]; offset -= node.length; }
         return [root,root.childNodes.length];
     };
     if (!findBar.hidden && needle) for (let offset = haystack.indexOf(needle); offset >= 0 && matches.length < 10000; offset = haystack.indexOf(needle,offset+needle.length)) {
-        const range = new Range(), [start,startOffset] = point(offset), [end,endOffset] = point(offset+needle.length);
+        const range = new Range(), [start,startOffset] = point(matchCase.checked ? offset : starts[offset]), [end,endOffset] = point(matchCase.checked ? offset+needle.length : ends[offset+needle.length-1]);
         range.setStart(start,startOffset); range.setEnd(end,endOffset); matches.push(range);
     }
     (CSS as any).highlights?.set("find",new (window as any).Highlight(...matches));

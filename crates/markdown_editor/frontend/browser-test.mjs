@@ -473,3 +473,104 @@ test("outline and internal anchors navigate while permitted external and relativ
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source); await context.close();
     }
 });
+
+
+test("retained source controls track ordinary edits and consecutive source changes",async()=>{
+    for (const mode of ["ir","wysiwyg","sv"]) for(const acknowledged of [false,true]) for(const newline of ["\n","\r\n"]) {
+        const source='Prefix\n\n```unknown\noriginal fence\n```\n\nMiddle\n\n```other\nsecond fence\n```\n\nTail'.replace(/\n/g,newline);
+        const {page,context}=await open(source,mode);
+        await selectText(page,'Prefix'); await page.keyboard.insertText('Longer prefix');
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:'flush',request:110}));
+        if(acknowledged) await acknowledge(page);
+        await page.locator('#source-blocks > summary').click();
+        await page.locator('#blocks details > summary').first().click();
+        const first=page.locator('#blocks textarea').first();
+        await first.fill('```unknown\nchanged fence\n```');
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('Prefix','Longer prefix').replace('original fence','changed fence'),`${mode}/${acknowledged}`);
+        await acknowledge(page); await acknowledge(page);
+        await first.evaluate(field=>{window.retainedSource=field;field.setSelectionRange(12,19);});
+        await page.evaluate(newline=>window.latheMarkdown.receive({kind:'document',revision:window.latheMarkdown.revision+1,text:'Native prefix'+newline+newline+window.latheMarkdown.base,writable:true,draft:null}),newline);
+        assert(await first.evaluate(field=>field===window.retainedSource && field.selectionStart===12 && field.selectionEnd===19));
+        await first.fill('```unknown\nchanged fence with more text\n```');
+        await acknowledge(page);
+        await page.locator('#blocks details > summary').nth(1).click();
+        await first.focus();
+        await first.evaluate(field=>{
+            window.retainedSource=field;
+            field.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+            field.value=field.value.replace('more text','\u4e2d\u6587 composition');
+            field.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',data:'\u4e2d\u6587'}));
+            if(!field.isConnected || document.activeElement!==field || field!==window.retainedSource)throw new Error('Source control replaced');
+            field.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'\u4e2d\u6587'}));
+        });
+        await page.waitForFunction(()=>!window.latheMarkdown.composing);
+        await page.locator('#blocks textarea').nth(1).fill('```other\nchanged second fence\n```');
+        const expected='Native prefix'+newline+newline+source.replace('Prefix','Longer prefix').replace('original fence','changed fence with \u4e2d\u6587 composition').replace('second fence','changed second fence');
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),expected);
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:'flush',request:111}));
+        await acknowledge(page); await acknowledge(page);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+        assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==='flushed' && message.request===111)));
+        await context.close();
+    }
+});
+
+test("native formatting actions respect source and Find focus",async()=>{
+    for(const mode of ['ir','wysiwyg','sv']) for(const focus of ['source','find']) {
+        const source='---\ntitle: one\n---\n\nTarget';
+        const {page,context}=await open(source,mode); await selectText(page,'Target');
+        if(focus==='source') {
+            await page.locator('#source-blocks > summary').click(); await page.locator('#blocks details > summary').first().click();
+            await page.locator('#blocks textarea').first().focus();
+        } else {await page.click('#find-open'); await page.fill('#query','Target');}
+        await page.evaluate(()=>window.latheRich.format('bold'));
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source,`${mode}/${focus}`);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+        assert.equal(await page.evaluate(()=>document.activeElement.tagName),focus==='source' ? 'TEXTAREA' : 'INPUT');
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['draft','edit'].includes(message.kind))),false);
+        await selectText(page,'Target'); await page.evaluate(()=>window.latheRich.format('bold'));
+        await page.waitForFunction(()=>window.latheMarkdown.pending);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('Target','**Target**'));
+        await context.close();
+    }
+});
+
+test("explicit IDs identify actual inline-formatted heading blocks",async()=>{
+    const source='[bold](#bold-id) [linked](#linked-id) [code](#code-id) [setext](#setext-id)\n\n<h1>Raw HTML heading</h1>\n\n```text\n# Target {#bold-id}\n```\n\n# Target {#other-id}\n\n'+ 'paragraph\n\n'.repeat(50)+'# **Target** {#bold-id}\n\n## [Target](https://example.com) {#linked-id}\n\n### `Target` {#code-id}\n\n*Target* {#setext-id}\n===\n';
+    for(const mode of ['ir','wysiwyg','sv','preview']) {
+        const {page,context}=await open(source,mode);
+        const root=mode==='preview' ? '#viewer' : mode==='sv' ? '.vditor-preview' : mode==='ir' ? '.vditor-ir' : '.vditor-wysiwyg';
+        assert.deepEqual(await page.locator(`${root} h1,${root} h2,${root} h3`).evaluateAll(headings=>headings.map(heading=>heading.dataset.explicitAnchor)),[undefined,'other-id','bold-id','linked-id','code-id','setext-id'],mode);
+        for(const [label,id] of [['bold','bold-id'],['linked','linked-id'],['code','code-id'],['setext','setext-id']]) {
+            if(mode==='ir') await page.locator(`${root} [data-type=a]`).filter({hasText:label}).click();
+            else await page.locator(`${root} a[href="#${id}"]`).click();
+            assert(await page.locator(root).evaluate((root,id)=>{
+                const heading=root.querySelector(`[data-explicit-anchor="${id}"]`); if(!heading)return false;
+                const bounds=heading.getBoundingClientRect(); return bounds.top<innerHeight && bounds.bottom>0;
+            },id),`${mode}/${id}`);
+        }
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==='edit')),false);
+        await context.close();
+    }
+});
+
+test("Unicode case-insensitive Find highlights exact original text ranges",async()=>{
+    const source='\u0130 Word \u0130 **WORD** \u{1f600} word \u{10400} End \u039f\u03a3';
+    for(const mode of ['ir','wysiwyg','sv','preview']) {
+        const {page,context}=await open(source,mode);
+        await page.click('#find-open');
+        for(const [query,expected] of [['word',['Word','WORD','word']],['i\u0307',['\u0130','\u0130']],['\u{10428}',['\u{10400}']],['\u03bf\u03c2',['\u039f\u03a3']]]) {
+            await page.fill('#query',query);
+            assert.equal(await page.locator('#count').innerText(),`${expected.length} matches`,`${mode}/${query}`);
+            assert.deepEqual(await page.evaluate(()=>[...CSS.highlights.get('find')].map(range=>range.toString())),expected,`${mode}/${query}`);
+            await page.click('#previous'); assert.equal(await page.locator('#count').innerText(),`${expected.length} of ${expected.length}`);
+            await page.click('#next'); assert.equal(await page.locator('#count').innerText(),`1 of ${expected.length}`);
+        }
+        await page.fill('#query','Word'); await page.check('#case');
+        assert.deepEqual(await page.evaluate(()=>[...CSS.highlights.get('find')].map(range=>range.toString())),['Word']);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['draft','edit','undo','redo'].includes(message.kind))),false);
+        await context.close();
+    }
+});

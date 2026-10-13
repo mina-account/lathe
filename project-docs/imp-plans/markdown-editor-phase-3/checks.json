@@ -5,7 +5,7 @@
     "windowsProtocol":  13,
     "linuxProtocol":  13,
     "frontendBridge":  16,
-    "frontendRealBrowser":  24,
+    "frontendRealBrowser":  28,
     "chromium":  "155.0.4283.45",
     "playwright":  "1.56.1",
     "preview":  32,
@@ -42,5 +42,9 @@
     "browser": "Microsoft Edge",
     "reviewPass1Regressions": "Confirmed all seven findings with expected-red browser/native regressions; green delayed flush/mode capture, rapid scopes, CRLF joins, recovery-only failed mapping, refreshed Find, document IDs, rendered heading fragments, and actual Open/close/Open preferences",
     "delayedInputNativeSmoke": "Fresh rebuilt Win32/X11/Wayland CEF DOM input survives immediate mode rebuild and native flush with adjacent source exact; exit 0 on each",
-    "normalClosePreferenceBarrier": "Expected red with no explicit serialization: clean close reopened at defaults; green normal close awaits document preference persistence before reopening"
+    "normalClosePreferenceBarrier": "Expected red with no explicit serialization: clean close reopened at defaults; green normal close awaits document preference persistence before reopening",
+    "reviewPass2Regressions": "All four findings confirmed red to green in packaged-browser tests: retained source-control spans across ordinary rich/split input, acknowledgments, two controls, consecutive replacements, focused selection, composition and LF/CRLF; native formatting obeys source/Find focus and succeeds on rich focus; actual heading block IDs cover bold/link/code/setext, duplicate labels, fenced pseudo-headings and preceding HTML headings; Unicode lowercase expansions retain exact original UTF-16 Find ranges, contextual final sigma, astral case pairs, next/previous and match-case",
+    "reviewPass2CrlfRegression": "Expanded source-control test failed for half of closing-fence CRLF being included in the control span; source line spans now exclude both CR and LF at their boundary and the LF/CRLF suite passes",
+    "isolatedGeneratedAssetReproduction": 11,
+    "linuxInvocation": "wsl -d Ubuntu -u an -- bash; distro Ubuntu 24.04.1 LTS"
 }

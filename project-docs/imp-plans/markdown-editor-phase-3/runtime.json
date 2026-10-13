@@ -9,7 +9,7 @@
     "cefRuntime":  "154.0.34",
     "assets":  {
                    "crates/markdown_editor/frontend/application.js":  "332f64f1b0565b09355da79b690463658715f2b9f705b93cf3b45f39c59acfa8",
-                   "crates/markdown_editor/frontend/rich.js":  "dfb84f5c708dfb66a2c6dec3d664b9417cbb996e2e5b37d8a52c173bccfdf89e",
+                   "crates/markdown_editor/frontend/rich.js":  "c552003e2260eacb3c69849a43b107b102d5b3daafa2223d1169133153131892",
                    "crates/markdown_editor/frontend/application.css":  "ce8f90ec5f72d6fe7e17cfc5b9d91063ddd543f07b286122748efbe030995315",
                    "crates/markdown_editor/frontend/index.html":  "72937eb5465d2dfe9a211f426cae64fbe0a4ce3612f3fb005b6f532cd9362745",
                    "crates/markdown_editor/frontend/package-lock.json":  "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
