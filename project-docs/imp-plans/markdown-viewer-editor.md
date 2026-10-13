@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Phases 0 through 2 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the application has a confined plaintext shared-buffer synchronization foundation. Phases 3 through 6 remain pending; Vditor 3.11.2 editing modes belong to Phase 3.
+Status: Phases 0 through 3 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the shared-buffer Item now provides confined, source-preserving Vditor 3.11.2 editing modes and viewer. Phases 4 through 6 remain pending: expanded resources/renderers/themes, complete opening/settings/install/packaging, and the user's full native/manual acceptance run.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 
@@ -227,12 +227,14 @@ Phase 2 evidence: [shared Item implementation, confinement rationale, reproducti
 
 Depends on Phase 2.
 
-- [ ] Integrate pinned Vditor instant rendering, WYSIWYG, split mode, and preview-only presentation.
-- [ ] Implement P07 toolbar controls and P08 copying, plus outline, links, find, table wrapping, preference reset, and mode persistence.
-- [ ] Implement source-preserving mode transitions, table operations, nested lists, task toggles, selection, IME, and browser/native shortcut arbitration with automated correctness coverage. Defer full native/manual acceptance to Phase 6.
-- [ ] Provide editable-source handling for unsupported syntax and control focus behavior.
+- [x] Integrate pinned Vditor instant rendering, WYSIWYG, split mode, and preview-only presentation.
+- [x] Implement P07 toolbar controls and P08 copying, plus outline, links, find, table wrapping, preference reset, and mode persistence.
+- [x] Implement source-preserving mode transitions, table operations, nested lists, task toggles, selection, IME, and browser/native shortcut arbitration with automated correctness coverage. Defer full native/manual acceptance to Phase 6.
+- [x] Provide editable-source handling for unsupported syntax and control focus behavior.
 
 Exit: P01-P08, P14-P15, P18, and P20-P22 are implemented with automated evidence; ordinary editing does not rewrite unrelated source. Full native/manual acceptance remains for Phase 6.
+
+Phase 3 evidence: [implementation, source mapping, rich confinement, reproduction, behavior-to-test matrix, checks, and actual Windows/X11/Wayland traces](markdown-editor-phase-3/README.md). Real pinned DOM tests pass 36/36 groups, including 40 fixture/mode no-op opens, 60 consecutive preservation edits, the full toolbar, table operations/wrapping, task state/toggles, Find, links, source-control clipboard/composition, selection/scroll, hostile HTML/IDs, immediate flush/mode input, rapid scopes, paragraph joins, blocked recovery, refreshed Find, footnote/backlink/HTML anchors, rendered inline heading fragments, retained source-control spans across consecutive LF/CRLF changes, native control-focus formatting, inline explicit-ID heading blocks, Unicode Find ranges, source-field overflow prevention/exact recovery and byte/escaped replacement budgets, repeated corresponding-table/row edits, normalization-boundary autolink/hard-break and setext preservation across consecutive edits, empty/blank keyboard and Chromium IME insertion, and repeated Unicode Viewer selection roundtrips. Close/Open retains document preferences with a new item ID and the original shared Buffer. Native suites pass 48/48 on both platforms, protocol-only tests 13/13, and frontend bridge tests 17/17. Preview/workspace and remote-routing regressions pass. Fresh actual Item smokes exit 0 on all three backends, assert Vditor 3.11.2 and each mode/viewer directly, and retain the shared-buffer history/flush/crash guarantees. Scoped application builds, lint, formatting, locked asset reproduction, and evidence verification pass; the evidence records unchanged repository-wide baseline exceptions. Expanded renderer/resources/themes and complete packaging remain Phases 4–5; these automated observations do not establish the Phase 6 hardware/OS/manual acceptance cases.
 
 ### Phase 4: Images, math, diagrams, and themes
 

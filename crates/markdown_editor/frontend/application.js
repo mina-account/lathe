@@ -154,11 +154,69 @@ export function fromDisplay(original        , changed        )         {
     return apply(original, { start: rawOffset(change.start), end: rawOffset(change.end), text: change.text.replace(/\n/g, original.includes("\r\n") ? "\r\n" : "\n") });
 }
 
+export class SourceProjection {
+    source = ""; canonical = "";
+    normalization                                                                = [];
+    reset(source        , canonical        ) {
+        this.source = source; this.canonical = canonical;
+        let distance = 0;
+        this.normalization = separateChanges(display(source), canonical).map(change => {
+            const canonicalStart = change.start + distance;
+            distance += change.text.length - (change.end - change.start);
+            return {...change,canonicalStart,canonicalEnd:canonicalStart + change.text.length};
+        });
+    }
+    sourceOffset(offset        , edge                  = "start")         {
+        let distance = 0, shown = offset;
+        for (const span of this.normalization) {
+            if (offset < span.canonicalStart) break;
+            // Endpoints stop before adjacent normalization, including source-only
+            // delimiters at a collapsed span; starts advance past those delimiters.
+            if (offset === span.canonicalStart && edge === "end") {
+                const removed = display(this.source).slice(span.start,span.end), previous = this.canonical[offset-1];
+                // Hidden repetitions belong to an explicitly replaced marker run.
+                const repeatedMarker = !span.text && previous && removed && [...removed].every(character=>character === previous);
+                return this.rawOffset(repeatedMarker ? span.end : span.start);
+            }
+            if (offset < span.canonicalEnd) {
+                shown = edge === "start" ? span.start : span.end;
+                return this.rawOffset(shown);
+            }
+            distance += span.text.length - (span.end - span.start);
+        }
+        return this.rawOffset(offset - distance);
+    }
+    rawOffset(offset        )         {
+        let raw = 0, shown = 0;
+        while (shown < offset && raw < this.source.length) {
+            if (this.source[raw] === "\r" && this.source[raw + 1] === "\n") raw++;
+            raw++; shown++;
+        }
+        return raw;
+    }
+    edit(canonical        )         {
+        if (canonical === this.canonical) return this.source;
+        const changes = separateChanges(this.canonical, canonical).map(change => {
+            const start = this.sourceOffset(change.start);
+            const end = change.start === change.end ? start : this.sourceOffset(change.end, "end");
+            return {start,end,text:change.text.replace(/\n/g, this.source.includes("\r\n") ? "\r\n" : "\n")};
+        });
+        for (let index = 1; index < changes.length; index++) {
+            if (changes[index].start < changes[index - 1].end) throw new Error("This syntax cannot be mapped safely. Edit its source block instead.");
+        }
+        let source = this.source;
+        for (const change of changes.reverse()) source = apply(source, change);
+        this.reset(source, canonical);
+        return source;
+    }
+}
+
 export class DocumentBridge {
     session        ; document        ; revision = 0; sequence = 0; request = 0; acknowledgedSequence = 0;
     base = ""; draft = ""; pending                 = null; composing = false; blocked = false; writable = true;
     flushes           = []; afterFlush                 = [];
     deferredDocument      = null; deferredAccepted      = null; reconciling = false; initialized = false;
+    historyQueue                      = []; historyPending                = null;
     send                                            ;
     show                        ;
     status                        ;
@@ -176,7 +234,7 @@ export class DocumentBridge {
         this.submit();
     }
     submit() {
-        if (this.pending || this.composing || this.reconciling || this.blocked) return;
+        if (this.pending || this.historyPending || this.composing || this.reconciling || this.blocked) return;
         const difference = delta(this.base, this.draft);
         if (!this.writable && difference) return;
         const change = difference ?? { start: 0, end: 0, text: "" };
@@ -185,6 +243,13 @@ export class DocumentBridge {
         this.emit({ kind: "edit", request: this.request, sequence: this.sequence, base_revision: this.revision, change });
     }
     receive(message     ) {
+        if (message.kind === "notice") { this.status(message.text); return; }
+        if (message.kind === "history_accepted") {
+            if (message.request !== this.historyPending) return;
+            this.historyPending = null;
+            this.receive({kind:"document",revision:message.revision,text:message.text,writable:message.writable,draft:null});
+            this.submit(); this.finishFlush(); return;
+        }
         if (this.composing && (message.kind === "accepted" || message.kind === "document") || this.pending && message.kind === "document") {
             if (message.kind === "document") {
                 if (!this.deferredDocument || message.revision >= this.deferredDocument.revision) this.deferredDocument = message;
@@ -225,12 +290,18 @@ export class DocumentBridge {
         }
     }
     finishFlush() {
-        if (this.pending || this.composing || this.reconciling || this.blocked || this.draft !== this.base || this.sequence !== this.acknowledgedSequence) return;
+        if (this.pending || this.historyPending || this.composing || this.reconciling || this.blocked || this.draft !== this.base || this.sequence !== this.acknowledgedSequence) return;
+        const history = this.historyQueue.shift();
+        if (history) {
+            this.historyPending = ++this.request;
+            this.emit({kind:history,request:this.historyPending,base_revision:this.revision}); return;
+        }
         for (const request of this.flushes.splice(0)) this.emit({ kind: "flushed", request, sequence: this.sequence });
         for (const callback of this.afterFlush.splice(0)) callback();
     }
     history(kind                 ) {
-        this.afterFlush.push(() => this.emit({ kind, request: ++this.request, base_revision: this.revision })); this.submit(); this.finishFlush();
+        if (!this.writable) return;
+        this.historyQueue.push(kind); this.submit(); this.finishFlush();
     }
     reconcile() {
         if (this.composing || this.reconciling) return;
@@ -242,56 +313,4 @@ export class DocumentBridge {
         this.reconciling = false;
     }
     compositionEnd() { this.composing = false; this.reconcile(); this.submit(); this.finishFlush(); }
-}
-
-if (typeof window !== "undefined") {
-    const element = document.getElementById("document")                       ;
-    const status = document.getElementById("status")               ;
-    const parameters = new URL(location.href).searchParams;
-    let projection = "";
-    const bridge = new DocumentBridge(parameters.get("session") ?? "", parameters.get("document") ?? "", message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), text => {
-        let start = element.selectionStart, end = element.selectionEnd;
-        const direction = element.selectionDirection, scroll = element.scrollTop;
-        let changes          ;
-        try { changes = separateChanges(element.value, display(text)); }
-        catch (error) {
-            console.warn("Selection reconciliation: " + String(error));
-            const enclosing = delta(element.value, display(text)); changes = enclosing ? [enclosing] : [];
-        }
-        for (const change of changes.reverse()) { start = transformOffset(start, change); end = transformOffset(end, change); }
-        projection = text; element.value = display(text); element.readOnly = !bridge.writable || bridge.blocked;
-        element.setSelectionRange(start, end, direction); element.scrollTop = scroll;
-    }, text => { status.textContent = text; });
-    (window       ).latheMarkdown = bridge;
-    element.addEventListener("input", () => { projection = fromDisplay(projection, element.value); bridge.input(projection); });
-    element.addEventListener("compositionstart", () => { bridge.composing = true; });
-    element.addEventListener("compositionend", () => bridge.compositionEnd());
-    element.addEventListener("select", () => bridge.emit({ kind: "selection", start: element.selectionStart, end: element.selectionEnd }));
-    const allowInsertion = (text        )          => {
-        const candidate = element.value.slice(0, element.selectionStart) + text + element.value.slice(element.selectionEnd);
-        if (withinBudget(fromDisplay(projection, candidate))) return true;
-        status.textContent = "This edit exceeds the visual document limit. Use the source editor for larger documents."; return false;
-    };
-    element.addEventListener("paste", event => {
-        const text = event.clipboardData?.getData("text/plain");
-        if (text !== undefined && !allowInsertion(text)) event.preventDefault();
-    });
-    element.addEventListener("drop", event => {
-        const text = event.dataTransfer?.getData("text/plain");
-        if (text !== undefined && !allowInsertion(text)) event.preventDefault();
-    });
-    element.addEventListener("beforeinput", event => {
-        if (event.inputType === "historyUndo" || event.inputType === "historyRedo") { event.preventDefault(); bridge.history(event.inputType === "historyUndo" ? "undo" : "redo"); }
-        else {
-            const text = event.data ?? event.dataTransfer?.getData("text/plain") ?? (event.inputType === "insertLineBreak" || event.inputType === "insertParagraph" ? "\n" : null);
-            if (text !== null && !allowInsertion(text)) event.preventDefault();
-        }
-    });
-    element.addEventListener("keydown", event => {
-        if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
-            event.preventDefault(); bridge.history(event.shiftKey || event.key.toLowerCase() === "y" ? "redo" : "undo");
-        }
-    });
-    bridge.emit({ kind: "ready" });
-    status.textContent = "Markdown Editor";
 }

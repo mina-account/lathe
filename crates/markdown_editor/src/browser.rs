@@ -14,7 +14,7 @@ pub fn page_url(session: &str, document: u64) -> String {
     adapter::application_url(session, document)
 }
 
-pub const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'none'; font-src 'none'; worker-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+pub const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'none'; font-src 'none'; worker-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 pub fn resource(url: &str, session: &str, document: u64) -> Option<(&'static str, &'static [u8])> {
     if url == page_url(session, document) {
@@ -26,6 +26,28 @@ pub fn resource(url: &str, session: &str, document: u64) -> Option<(&'static str
             include_bytes!("../frontend/application.js"),
         )),
         "/application.css" => Some(("text/css", include_bytes!("../frontend/application.css"))),
+        "/rich.js" => Some(("text/javascript", include_bytes!("../frontend/rich.js"))),
+        "/vendor/vditor.js" => Some((
+            "text/javascript",
+            include_bytes!("../frontend/vendor/vditor.js"),
+        )),
+        "/vendor/vditor.css" => Some(("text/css", include_bytes!("../frontend/vendor/vditor.css"))),
+        "/vendor/lute.js" => Some((
+            "text/javascript",
+            include_bytes!("../frontend/vendor/lute.js"),
+        )),
+        "/vendor/en_US.js" => Some((
+            "text/javascript",
+            include_bytes!("../frontend/vendor/en_US.js"),
+        )),
+        "/vendor/icons.js" => Some((
+            "text/javascript",
+            include_bytes!("../frontend/vendor/icons.js"),
+        )),
+        "/vendor/purify.js" => Some((
+            "text/javascript",
+            include_bytes!("../frontend/vendor/purify.js"),
+        )),
         _ => None,
     }
 }
@@ -104,7 +126,8 @@ mod tests {
         }
         assert!(CONTENT_SECURITY_POLICY.contains("connect-src 'none'"));
         assert!(CONTENT_SECURITY_POLICY.contains("frame-src 'none'"));
-        assert!(!CONTENT_SECURITY_POLICY.contains("unsafe-"));
+        assert!(CONTENT_SECURITY_POLICY.contains("script-src 'self';"));
+        assert!(!CONTENT_SECURITY_POLICY.contains("unsafe-eval"));
     }
 
     #[test]

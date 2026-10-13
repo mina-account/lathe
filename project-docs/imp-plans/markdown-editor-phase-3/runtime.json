@@ -1,0 +1,26 @@
+{
+    "referenceExtension":  "zaaack.markdown-editor@0.1.21",
+    "referenceCommit":  "033c6242cf96615fd0c88bed73d5428b76e3a44b",
+    "node":  "24.16.0",
+    "vditor":  "3.11.2",
+    "dompurify":  "3.4.17",
+    "playwright":  "1.56.1",
+    "cefBindings":  "154.5.0",
+    "cefRuntime":  "154.0.34",
+    "assets":  {
+                   "crates/markdown_editor/frontend/application.js":  "af2968282ab1e91d7e2e4525b078b8291e4d7a2b4c006e732d9fb1ef803a6248",
+                   "crates/markdown_editor/frontend/rich.js":  "3f69d936dfaf1c553c042650d9fdf893a925cefe7c3de16c3f694063b67afba7",
+                   "crates/markdown_editor/frontend/application.css":  "ce8f90ec5f72d6fe7e17cfc5b9d91063ddd543f07b286122748efbe030995315",
+                   "crates/markdown_editor/frontend/index.html":  "72937eb5465d2dfe9a211f426cae64fbe0a4ce3612f3fb005b6f532cd9362745",
+                   "crates/markdown_editor/frontend/package-lock.json":  "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
+                   "crates/markdown_editor/frontend/vendor/vditor.js":  "8c5679db69c84ca06a61310b9737cdab967325fb4879de698b09802e254ad064",
+                   "crates/markdown_editor/frontend/vendor/vditor.css":  "0865fe88664d5a9628e8f09d9214506c5109456c9af04b24965abe4f20ec073c",
+                   "crates/markdown_editor/frontend/vendor/lute.js":  "3c11d9ce4b58441dc945509d3764f57242ea877379b977a8a13c664aed2172a4",
+                   "crates/markdown_editor/frontend/vendor/en_US.js":  "91c5b70447a0d33770e17850ff1ddc4b0c88b222d25941c02c896682a56172cf",
+                   "crates/markdown_editor/frontend/vendor/icons.js":  "a91e14e09dcd7b99f49b7b8dcc6301fed6774d62547fcf4e971757aa3a802c33",
+                   "crates/markdown_editor/frontend/vendor/purify.js":  "cd37898f9782adf54820c413191b5691803f0f137c799d6edcfd38523b4c2c31",
+                   "crates/markdown_editor/frontend/vendor/VDITOR-LICENSE":  "c50d6e1944c4c1558ef12a5cfa4f0a4e8c927a56908c1a587c9d60400eef66fe",
+                   "crates/markdown_editor/frontend/vendor/DOMPURIFY-LICENSE":  "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+                   "crates/markdown_editor/frontend/vendor/DIFF-MATCH-PATCH-LICENSE":  "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+               }
+}
