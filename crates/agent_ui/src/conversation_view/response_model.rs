@@ -151,6 +151,8 @@ pub struct ResponseModel {
     uncertain_sources: HashSet<SourceReference>,
     next_activity_id: u64,
     previous_activity: Option<(ActivityPhase, u64)>,
+    activity_owner: Option<TurnIdentity>,
+    source_owners: HashMap<SourceReference, TurnIdentity>,
     observed_boundary: Option<(usize, usize)>,
 }
 
@@ -212,6 +214,26 @@ impl ResponseModel {
                     *chunk_index = 0;
                 }
             }
+            let retained_owners: HashSet<_> = self
+                .associations
+                .iter()
+                .map(|association| association.identity.clone())
+                .collect();
+            self.source_owners = self
+                .source_owners
+                .drain()
+                .filter_map(|(mut source, owner)| {
+                    if (start..end).contains(&source.entry_index)
+                        || !retained_owners.contains(&owner)
+                    {
+                        return None;
+                    }
+                    if source.entry_index >= end {
+                        source.entry_index = source.entry_index.saturating_sub(end - start);
+                    }
+                    Some((source, owner))
+                })
+                .collect();
             self.uncertain_sources = self
                 .uncertain_sources
                 .drain()
@@ -486,6 +508,70 @@ impl ResponseModel {
                     }
                 }
             }
+        }
+        let activity_association = if thread.reported_activity {
+            self.associations
+                .iter()
+                .rposition(|association| association.generation == Some(thread.activity_generation))
+                .or_else(|| {
+                    (thread.activity != ActivityPhase::Idle
+                        || external_activity_started
+                        || matching_stop)
+                        .then(|| {
+                            // ACP reports session-wide activity, independently of receipt completion.
+                            // Keep older queued work ahead of submissions awaiting their first generation.
+                            self.associations
+                                .iter()
+                                .position(|association| {
+                                    association.submission_id.is_some()
+                                        && association.generation.is_none()
+                                        && association.terminal.is_none()
+                                        && matches!(
+                                            association.submission,
+                                            Some(
+                                                SubmissionPhase::Pending
+                                                    | SubmissionPhase::Accepted { .. }
+                                            )
+                                        )
+                                })
+                                .or_else(|| self.associations.len().checked_sub(1))
+                        })
+                        .flatten()
+                })
+        } else {
+            self.associations.len().checked_sub(1).filter(|index| {
+                self.associations.get(*index).is_some_and(|association| {
+                    association.submission_id.is_none_or(|id| {
+                        thread
+                            .submission
+                            .as_ref()
+                            .is_some_and(|submission| submission.id == id)
+                    }) && (!new_external_prompt
+                        || registered_submission
+                        || matches!(association.identity, TurnIdentity::Activity(_)))
+                })
+            })
+        };
+        if thread.reported_activity
+            && let Some((_, previous_generation)) = self.previous_activity
+            && thread.activity_generation > previous_generation
+            && let Some(previous_index) = self.activity_owner.as_ref().and_then(|owner| {
+                self.associations
+                    .iter()
+                    .position(|association| &association.identity == owner)
+            })
+            && Some(previous_index) != activity_association
+            && let Some(previous) = self.associations.get_mut(previous_index)
+            && previous.generation == Some(previous_generation)
+            && previous.terminal.is_none()
+        {
+            // Advancing the ACP generation proves an idle transition even if callbacks missed it.
+            // Its stop reason is unavailable when that generation's stop event is already stale.
+            previous.terminal = Some(TurnOutcome::Unknown);
+        }
+        if let Some(association) =
+            activity_association.and_then(|index| self.associations.get_mut(index))
+        {
             if thread.activity != ActivityPhase::Idle {
                 if association.generation != Some(thread.activity_generation) {
                     if let Some(generation) = association.generation {
@@ -543,6 +629,45 @@ impl ResponseModel {
                 association.terminal = Some(TurnOutcome::Unknown);
             }
         }
+        self.activity_owner = activity_association
+            .and_then(|index| self.associations.get(index))
+            .filter(|association| association.generation == Some(thread.activity_generation))
+            .map(|association| association.identity.clone());
+        if thread.reported_activity
+            && (thread.activity != ActivityPhase::Idle
+                || matching_stop
+                || external_activity_started
+                || self.previous_activity.is_some_and(|(phase, generation)| {
+                    phase != ActivityPhase::Idle && generation == thread.activity_generation
+                }))
+            && let Some(owner) = activity_association.and_then(|index| self.associations.get(index))
+            && owner.submission_id.is_some()
+            && owner.generation == Some(thread.activity_generation)
+        {
+            let boundary = self
+                .observed_boundary
+                .unwrap_or((owner.first_entry, owner.first_chunk));
+            let owned_prompts: HashSet<_> = self
+                .associations
+                .iter()
+                .filter_map(|association| association.prompt.as_ref())
+                .collect();
+            for content in &thread.contents {
+                if content.kind == ContentKind::Prompt
+                    && source_position(&content.source) >= boundary
+                    && !owned_prompts.contains(&content.source)
+                {
+                    break;
+                }
+                if content.kind != ContentKind::Prompt
+                    && source_position(&content.source) >= boundary
+                {
+                    self.source_owners
+                        .entry(content.source.clone())
+                        .or_insert_with(|| owner.identity.clone());
+                }
+            }
+        }
         self.previous_activity = Some((thread.activity, thread.activity_generation));
 
         if let ObservationEvent::EntryUpdated(entry_index) = event {
@@ -571,6 +696,12 @@ impl ResponseModel {
             Option<SourceReference>,
             Vec<&ContentObservation>,
         )> = Vec::new();
+        let association_indexes: HashMap<_, _> = self
+            .associations
+            .iter()
+            .enumerate()
+            .map(|(index, association)| (&association.identity, index))
+            .collect();
         let prompt_owners: HashMap<_, _> = self
             .associations
             .iter()
@@ -612,17 +743,23 @@ impl ResponseModel {
         let mut association_groups: HashMap<usize, usize> = HashMap::new();
         for content in &thread.contents {
             let position = source_position(&content.source);
-            let owner = prompt_owners.get(&content.source).copied().or_else(|| {
-                association_positions
-                    .range(..=position)
-                    .next_back()
-                    .and_then(|(_, index)| {
-                        association_ends
-                            .get(*index)
-                            .filter(|end| position < **end)
-                            .map(|_| *index)
-                    })
-            });
+            let owner = self
+                .source_owners
+                .get(&content.source)
+                .and_then(|owner| association_indexes.get(owner))
+                .copied()
+                .or_else(|| prompt_owners.get(&content.source).copied())
+                .or_else(|| {
+                    association_positions
+                        .range(..=position)
+                        .next_back()
+                        .and_then(|(_, index)| {
+                            association_ends
+                                .get(*index)
+                                .filter(|end| position < **end)
+                                .map(|_| *index)
+                        })
+                });
             let association = owner.and_then(|index| self.associations.get(index));
             if let Some(group_index) = owner.and_then(|index| association_groups.get(&index))
                 && let Some((_, _, contents)) = groups.get_mut(*group_index)
@@ -661,10 +798,17 @@ impl ResponseModel {
         }
         for (association_index, association) in self.associations.iter().enumerate() {
             if association.prompt.is_none()
-                && (thread
-                    .submission
-                    .as_ref()
-                    .is_some_and(|submission| association.submission_id == Some(submission.id))
+                && ((association.generation == Some(thread.activity_generation)
+                    && self.activity_owner.as_ref() == Some(&association.identity))
+                    || (association.terminal.is_none()
+                        && matches!(
+                            association.submission,
+                            Some(SubmissionPhase::Pending | SubmissionPhase::Accepted { .. })
+                        ))
+                    || thread
+                        .submission
+                        .as_ref()
+                        .is_some_and(|submission| association.submission_id == Some(submission.id))
                     || (self
                         .associations
                         .last()
@@ -680,6 +824,22 @@ impl ResponseModel {
             }
         }
 
+        groups.sort_by_key(|(identity, _, contents)| {
+            association_indexes
+                .get(identity)
+                .and_then(|index| {
+                    self.associations.get(*index).map(|association| {
+                        (association.first_entry, association.first_chunk, *index)
+                    })
+                })
+                .unwrap_or_else(|| {
+                    let position = contents.first().map_or((thread.entry_count, 0), |content| {
+                        source_position(&content.source)
+                    });
+                    (position.0, position.1, self.associations.len())
+                })
+        });
+
         let associations_by_identity: HashMap<_, _> = self
             .associations
             .iter()
@@ -693,13 +853,18 @@ impl ResponseModel {
             .map(|(identity, prompt, contents)| {
                 let association = associations_by_identity.get(&identity).copied();
                 let current = Some(&identity) == last_identity.as_ref();
+                let active = if thread.reported_activity {
+                    self.activity_owner.as_ref() == Some(&identity)
+                } else {
+                    current
+                };
                 let pending = contents.iter().any(|content| content.pending_action)
-                    || (current && thread.pending_permission);
+                    || (active && thread.pending_permission);
                 let failed = contents.iter().any(|content| content.failed);
                 let lifecycle =
-                    if pending || (current && thread.activity == ActivityPhase::RequiresAction) {
+                    if pending || (active && thread.activity == ActivityPhase::RequiresAction) {
                         TurnLifecycle::RequiresAction
-                    } else if current && thread.activity == ActivityPhase::Running {
+                    } else if active && thread.activity == ActivityPhase::Running {
                         TurnLifecycle::Running
                     } else if let Some(association) = association {
                         match &association.submission {
@@ -1693,6 +1858,85 @@ mod tests {
             TurnLifecycle::Settled(TurnOutcome::Success)
         );
         assert_eq!(second.predecessor.as_ref(), Some(&first.identity));
+    }
+
+    #[test]
+    fn overlapping_source_ownership_survives_prefix_removal_and_shared_chunks() {
+        use ContentKind::*;
+        let mut thread = submitting();
+        thread.contents = vec![content(0, None, Compaction, "prefix")];
+        thread.entry_count = 1;
+        let mut model = ResponseModel::default();
+        model.observe(&thread, ObservationEvent::Refresh);
+        accept(&mut thread, true);
+        thread.contents.push(content(1, None, Prompt, "prompt"));
+        thread.entry_count = 2;
+        model.observe(&thread, ObservationEvent::Refresh);
+        let first_submission = thread.submission.clone().expect("first submission");
+        thread.submission_updates.push(first_submission);
+        thread.submission = Some(SubmissionObservation {
+            id: 8,
+            kind: acp_thread::SubmissionKind::Prompt,
+            phase: SubmissionPhase::Pending,
+            outcome: None,
+        });
+        model.observe(&thread, ObservationEvent::Refresh);
+        thread.activity = ActivityPhase::Running;
+        thread.activity_generation = 1;
+        model.observe(&thread, ObservationEvent::Refresh);
+        thread.submission.as_mut().expect("second submission").phase = SubmissionPhase::Accepted {
+            prompt: ProviderIdentity::Keyed("second".into()),
+            echoed: true,
+        };
+        thread.contents.push(content(2, None, Prompt, "second"));
+        thread.entry_count = 3;
+        model.observe(&thread, ObservationEvent::Refresh);
+        thread
+            .contents
+            .push(content(3, Some(0), Message, "first-answer"));
+        thread.entry_count = 4;
+        thread.activity = ActivityPhase::Idle;
+        stop(&mut model, &thread, 1, TurnOutcome::Success);
+        thread.activity = ActivityPhase::Running;
+        thread.activity_generation = 2;
+        model.observe(&thread, ObservationEvent::Refresh);
+        thread
+            .contents
+            .push(content(3, Some(1), Message, "second-answer"));
+        thread.activity = ActivityPhase::Idle;
+        stop(&mut model, &thread, 2, TurnOutcome::Interrupted);
+        thread.contents.remove(0);
+        for content in &mut thread.contents {
+            content.source.entry_index -= 1;
+        }
+        thread.entry_count -= 1;
+        model.observe(
+            &thread,
+            ObservationEvent::EntriesRemoved { start: 0, end: 1 },
+        );
+        model.observe(&thread, ObservationEvent::EntryUpdated(2));
+        assert_eq!(model.turns.len(), 2);
+        let first = model.turns.first().expect("first");
+        let second = model.turns.last().expect("second");
+        assert_eq!(first.identity, TurnIdentity::Submission(1));
+        assert_eq!(
+            first.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Success)
+        );
+        assert_eq!(
+            first.response,
+            vec![content(2, Some(0), Message, "first-answer").source]
+        );
+        assert_eq!(second.identity, TurnIdentity::Submission(8));
+        assert_eq!(
+            second.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Interrupted)
+        );
+        assert_eq!(
+            second.response,
+            vec![content(2, Some(1), Message, "second-answer").source]
+        );
+        assert_eq!(second.predecessor, Some(first.identity.clone()));
     }
 
     #[test]
