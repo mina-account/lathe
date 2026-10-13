@@ -801,14 +801,41 @@ impl ResponseModel {
                     .map(|generation| (generation, association.identity.clone()))
             })
             .collect();
+        let associations_by_prompt: HashMap<_, _> = self
+            .associations
+            .iter()
+            .filter_map(|association| {
+                association
+                    .prompt
+                    .as_ref()
+                    .map(|prompt| (prompt, &association.identity))
+            })
+            .collect();
+        let identities_by_prompt: HashMap<_, _> = thread
+            .contents
+            .iter()
+            .filter(|content| content.kind == ContentKind::Prompt)
+            .filter_map(|content| {
+                let SourceIdentity::Prompt(ProviderIdentity::Keyed(id)) = &content.source.identity
+                else {
+                    return None;
+                };
+                let identity = associations_by_prompt.get(&content.source).map_or_else(
+                    || TurnIdentity::Prompt(content.source.clone()),
+                    |identity| (*identity).clone(),
+                );
+                Some((id, identity))
+            })
+            .collect();
         for content in &thread.contents {
-            let owner = match content.owner {
+            let owner = match content.owner.as_ref() {
                 Some(acp_thread::PresentationOwner::Submission(id)) => {
                     identities_by_submission.get(&id.as_u64())
                 }
                 Some(acp_thread::PresentationOwner::Activity(generation)) => {
-                    identities_by_generation.get(&generation)
+                    identities_by_generation.get(generation)
                 }
+                Some(acp_thread::PresentationOwner::Prompt(id)) => identities_by_prompt.get(id),
                 None => None,
             };
             if let Some(owner) = owner {
@@ -910,15 +937,18 @@ impl ResponseModel {
             }
         }
         let mut association_groups: HashMap<usize, usize> = HashMap::new();
+        let mut identity_groups: HashMap<TurnIdentity, usize> = HashMap::new();
         for content in &thread.contents {
             let position = source_position(&content.source);
-            let owner = self
-                .source_owners
-                .get(&content.source)
+            let source_owner = self.source_owners.get(&content.source);
+            let owner = source_owner
                 .and_then(|owner| association_indexes.get(owner))
                 .copied()
                 .or_else(|| prompt_owners.get(&content.source).copied())
                 .or_else(|| {
+                    if source_owner.is_some() {
+                        return None;
+                    }
                     association_positions
                         .range(..=position)
                         .next_back()
@@ -930,13 +960,21 @@ impl ResponseModel {
                         })
                 });
             let association = owner.and_then(|index| self.associations.get(index));
-            if let Some(group_index) = owner.and_then(|index| association_groups.get(&index))
+            let associated_identity = source_owner
+                .cloned()
+                .or_else(|| association.map(|association| association.identity.clone()))
+                .or_else(|| {
+                    (content.kind == ContentKind::Prompt)
+                        .then(|| TurnIdentity::Prompt(content.source.clone()))
+                });
+            if let Some(group_index) = associated_identity
+                .as_ref()
+                .and_then(|identity| identity_groups.get(identity))
                 && let Some((_, _, contents)) = groups.get_mut(*group_index)
             {
                 contents.push(content);
                 continue;
             }
-            let associated_identity = association.map(|association| association.identity.clone());
             let starts_group = groups.last().is_none_or(|(identity, _, _)| {
                 associated_identity
                     .as_ref()
@@ -954,11 +992,19 @@ impl ResponseModel {
                 let prompt = association
                     .and_then(|association| association.prompt.clone())
                     .or_else(|| {
+                        if let TurnIdentity::Prompt(source) = &identity {
+                            Some(source.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .or_else(|| {
                         (content.kind == ContentKind::Prompt).then(|| content.source.clone())
                     });
                 if let Some(owner) = owner {
                     association_groups.insert(owner, groups.len());
                 }
+                identity_groups.insert(identity.clone(), groups.len());
                 groups.push((identity, prompt, Vec::new()));
             }
             if let Some((_, _, contents)) = groups.last_mut() {
@@ -1049,6 +1095,17 @@ impl ResponseModel {
                     .map(|generation| (generation, &association.identity))
             })
             .collect();
+        let identities_by_prompt: HashMap<_, _> = groups
+            .iter()
+            .filter_map(|(identity, prompt, _)| {
+                let SourceIdentity::Prompt(ProviderIdentity::Keyed(id)) =
+                    &prompt.as_ref()?.identity
+                else {
+                    return None;
+                };
+                Some((id, identity))
+            })
+            .collect();
         let permission_owners: HashSet<_> = thread
             .permission_owners
             .iter()
@@ -1059,8 +1116,12 @@ impl ResponseModel {
                 Some(acp_thread::PresentationOwner::Activity(generation)) => {
                     associations_by_generation.get(generation).copied()
                 }
+                Some(acp_thread::PresentationOwner::Prompt(id)) => {
+                    identities_by_prompt.get(id).copied()
+                }
                 None => None,
             })
+            .cloned()
             .collect();
         let unowned_permission = if thread.permission_owners.is_empty() {
             thread.pending_permission

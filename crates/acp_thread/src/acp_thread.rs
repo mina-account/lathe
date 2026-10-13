@@ -4076,6 +4076,7 @@ impl AcpThread {
     ) -> Option<PresentationOwner> {
         request
             .presentation_owner
+            .clone()
             .map(|owner| self.submissions.resolve_owner(owner))
     }
 
@@ -4817,8 +4818,11 @@ impl AcpThread {
         {
             let id = id.clone();
             if location.entry_index() >= previous_entry_count {
-                self.submissions
-                    .observe_prompt(&id, self.foreground_activity() != ForegroundActivity::Idle);
+                self.submissions.observe_prompt(
+                    &id,
+                    self.foreground_activity() != ForegroundActivity::Idle,
+                    (location.entry_index(), 0),
+                );
             }
             self.observe_submission_echo(&id, cx);
         }

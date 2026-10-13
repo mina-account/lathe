@@ -83,10 +83,11 @@ pub struct SubmissionActivity {
     pub boundary: (usize, usize),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PresentationOwner {
     Submission(SubmissionId),
     Activity(u64),
+    Prompt(Arc<str>),
 }
 
 pub struct SubmissionRecord {
@@ -132,11 +133,14 @@ pub(crate) struct SessionSubmissions {
     activities: BTreeMap<SubmissionId, SubmissionActivity>,
     activity_owner: Option<SubmissionId>,
     resumed_activity: Option<(SubmissionId, SubmissionActivity)>,
-    unmatched_activity_prompts: Vec<acp_v2::MessageId>,
+    unmatched_activity_prompts: Vec<(acp_v2::MessageId, (usize, usize))>,
     external_activity_prompt: Option<acp_v2::MessageId>,
+    resumed_external_prompt: Option<acp_v2::MessageId>,
     activity_boundary: (usize, usize),
     content_owners: BTreeMap<(usize, Option<usize>), PresentationOwner>,
     generation_owners: BTreeMap<u64, SubmissionId>,
+    generation_prompts: BTreeMap<u64, acp_v2::MessageId>,
+    activity_generation: u64,
     submission_boundaries: BTreeMap<SubmissionId, (usize, usize)>,
     next_id: u64,
     latest_id: Option<SubmissionId>,
@@ -155,9 +159,12 @@ impl SessionSubmissions {
             resumed_activity: None,
             unmatched_activity_prompts: Vec::default(),
             external_activity_prompt: None,
+            resumed_external_prompt: None,
             activity_boundary: (0, 0),
             content_owners: BTreeMap::default(),
             generation_owners: BTreeMap::default(),
+            generation_prompts: BTreeMap::default(),
+            activity_generation: 0,
             submission_boundaries: BTreeMap::default(),
             next_id: 0,
             latest_id: None,
@@ -261,7 +268,16 @@ impl SessionSubmissions {
     ) -> Option<PresentationOwner> {
         if active {
             // A delayed external echo can disprove the tentative submission resumption.
-            Some(PresentationOwner::Activity(generation))
+            Some(
+                if self.activity_owner.is_none()
+                    && self.resumed_external_prompt.is_none()
+                    && let Some(prompt) = &self.external_activity_prompt
+                {
+                    PresentationOwner::Prompt(prompt.0.clone())
+                } else {
+                    PresentationOwner::Activity(generation)
+                },
+            )
         } else {
             self.awaiting_activity().map(PresentationOwner::Submission)
         }
@@ -273,7 +289,13 @@ impl SessionSubmissions {
                 .generation_owners
                 .get(&generation)
                 .copied()
-                .map_or(owner, PresentationOwner::Submission),
+                .map(PresentationOwner::Submission)
+                .or_else(|| {
+                    self.generation_prompts
+                        .get(&generation)
+                        .map(|prompt| PresentationOwner::Prompt(prompt.0.clone()))
+                })
+                .unwrap_or(owner),
             _ => owner,
         }
     }
@@ -299,7 +321,7 @@ impl SessionSubmissions {
     ) -> Option<PresentationOwner> {
         self.content_owners
             .get(&position)
-            .copied()
+            .cloned()
             .map(|owner| self.resolve_owner(owner))
     }
 
@@ -315,7 +337,16 @@ impl SessionSubmissions {
             self.external_activity_prompt = None;
         }
         self.unmatched_activity_prompts
-            .retain(|prompt| contains_prompt(prompt));
+            .retain(|(prompt, _)| contains_prompt(prompt));
+        self.generation_prompts
+            .retain(|_, prompt| contains_prompt(prompt));
+        if self
+            .resumed_external_prompt
+            .as_ref()
+            .is_some_and(|prompt| !contains_prompt(prompt))
+        {
+            self.resumed_external_prompt = None;
+        }
         if self.resumed_activity.as_ref().is_some_and(|(id, _)| {
             self.receipts
                 .get(id)
@@ -332,6 +363,7 @@ impl SessionSubmissions {
         boundary: (usize, usize),
     ) {
         self.activity_boundary = boundary;
+        self.activity_generation = generation;
         let eligible = |id| {
             self.records.get(&id).map_or_else(
                 || self.receipts.contains_key(&id),
@@ -372,6 +404,16 @@ impl SessionSubmissions {
                     .cloned()
             })
             .flatten();
+        self.resumed_external_prompt = self
+            .external_activity_prompt
+            .as_ref()
+            .filter(|prompt| previous_external_prompt.as_ref() == Some(*prompt))
+            .cloned();
+        if self.resumed_external_prompt.is_none()
+            && let Some(prompt) = &self.external_activity_prompt
+        {
+            self.generation_prompts.insert(generation, prompt.clone());
+        }
         if let Some(id) = self.activity_owner {
             self.generation_owners.insert(generation, id);
             let boundary = self
@@ -389,9 +431,15 @@ impl SessionSubmissions {
         }
     }
 
-    pub(crate) fn observe_prompt(&mut self, message_id: &acp_v2::MessageId, active: bool) {
+    pub(crate) fn observe_prompt(
+        &mut self,
+        message_id: &acp_v2::MessageId,
+        active: bool,
+        boundary: (usize, usize),
+    ) {
         if self.resumed_activity.is_some() || (self.activity_owner.is_none() && active) {
-            self.unmatched_activity_prompts.push(message_id.clone());
+            self.unmatched_activity_prompts
+                .push((message_id.clone(), boundary));
             self.reconcile_activity_prompt();
         }
     }
@@ -402,7 +450,7 @@ impl SessionSubmissions {
         }
         let receipt_prompts: HashSet<_> = self.receipts.values().collect();
         self.unmatched_activity_prompts
-            .retain(|prompt| !receipt_prompts.contains(prompt));
+            .retain(|(prompt, _)| !receipt_prompts.contains(prompt));
         if !self.unmatched_activity_prompts.is_empty()
             && !self
                 .records
@@ -417,7 +465,31 @@ impl SessionSubmissions {
                 self.activities.insert(id, previous);
                 self.activity_owner = None;
             }
-            self.external_activity_prompt = self.unmatched_activity_prompts.last().cloned();
+            // A session generation can contain several external prompts. Sources born before
+            // its first delayed echo belong to that prompt, not to a later prompt in the batch.
+            if let Some((prompt, _)) = self.unmatched_activity_prompts.first()
+                && self.resumed_external_prompt.as_ref() != Some(prompt)
+            {
+                self.generation_prompts
+                    .entry(self.activity_generation)
+                    .or_insert_with(|| prompt.clone());
+            }
+            if let Some((prompt, boundary)) = self.unmatched_activity_prompts.last() {
+                if self
+                    .resumed_external_prompt
+                    .as_ref()
+                    .is_some_and(|previous| previous != prompt)
+                {
+                    self.resumed_external_prompt = None;
+                } else if self
+                    .external_activity_prompt
+                    .as_ref()
+                    .is_some_and(|previous| previous != prompt)
+                {
+                    self.activity_boundary = *boundary;
+                }
+                self.external_activity_prompt = Some(prompt.clone());
+            }
             self.unmatched_activity_prompts.clear();
         }
     }
@@ -573,6 +645,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn external_presentation_owners_survive_later_prompts_in_one_generation() {
+        let mut submissions = SessionSubmissions::new(None);
+        let first_prompt = acp_v2::MessageId::new("first");
+        let second_prompt = acp_v2::MessageId::new("second");
+        submissions.start_activity(1, None, (0, 1));
+        let early_owner = submissions
+            .presentation_owner(1, true)
+            .expect("early request owner");
+        submissions.observe_prompt(&first_prompt, true, (1, 0));
+        let first_owner = submissions
+            .presentation_owner(1, true)
+            .expect("first source owner");
+        submissions.observe_prompt(&second_prompt, true, (2, 0));
+        let second_owner = submissions
+            .presentation_owner(1, true)
+            .expect("second source owner");
+        assert_eq!(submissions.resolve_owner(early_owner), first_owner);
+        assert_eq!(
+            first_owner,
+            PresentationOwner::Prompt(first_prompt.0.clone())
+        );
+        assert_eq!(
+            second_owner,
+            PresentationOwner::Prompt(second_prompt.0.clone())
+        );
+        assert_eq!(submissions.activity_boundary(), (2, 0));
+        submissions.truncate_prompt_entries(2);
+        submissions.retain_activity_prompts(|prompt| prompt == &first_prompt);
+        assert!(submissions.external_activity_prompt().is_none());
+        submissions.start_activity(2, None, (2, 0));
+        assert_eq!(
+            submissions.resolve_owner(PresentationOwner::Activity(1)),
+            first_owner
+        );
+        assert_eq!(
+            submissions.resolve_owner(PresentationOwner::Activity(2)),
+            PresentationOwner::Activity(2)
+        );
+        submissions.truncate_prompt_entries(0);
+        submissions.retain_activity_prompts(|_| false);
+        assert_eq!(
+            submissions.resolve_owner(PresentationOwner::Activity(1)),
+            PresentationOwner::Activity(1)
+        );
+    }
+
+    #[test]
     fn submission_activity_tracks_queued_generations_and_resumption() {
         let mut submissions = SessionSubmissions::new(None);
         let first = submissions.register(Arc::from([]), SubmissionKind::Prompt);
@@ -677,7 +796,7 @@ mod tests {
             );
             submissions.finish_activity(2, Some(acp_v2::StopReason::Cancelled));
             if delayed_prompt {
-                submissions.observe_prompt(&external_prompt, false);
+                submissions.observe_prompt(&external_prompt, false, (0, 0));
             }
             let historical = submissions.activity(id).expect("historical receipt");
             assert_eq!(historical.generation, 1);
@@ -719,9 +838,9 @@ mod tests {
             let queued = submissions.register(Arc::from([]), SubmissionKind::Prompt);
             let queued_receipt = acp_v2::PromptResponse::new("queued");
             let external_prompt = acp_v2::PromptResponse::new("external").message_id;
-            submissions.observe_prompt(&external_prompt, true);
+            submissions.observe_prompt(&external_prompt, true, (0, 0));
             if echo_before_acceptance {
-                submissions.observe_prompt(&queued_receipt.message_id, true);
+                submissions.observe_prompt(&queued_receipt.message_id, true, (0, 0));
             }
             assert_eq!(
                 submissions
@@ -738,7 +857,7 @@ mod tests {
                 },
             );
             if !echo_before_acceptance {
-                submissions.observe_prompt(&queued_receipt.message_id, true);
+                submissions.observe_prompt(&queued_receipt.message_id, true, (0, 0));
             }
             let historical = submissions.activity(local).expect("historical receipt");
             assert_eq!(historical.generation, 1);

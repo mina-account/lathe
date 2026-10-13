@@ -6961,6 +6961,220 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_response_model_external_prompts_share_generation(cx: &mut TestAppContext) {
+        use super::response_model::{
+            ProviderIdentity, ResponseModel, SourceIdentity, TurnLifecycle, TurnOutcome,
+        };
+
+        init_test(cx);
+        for delayed_echo in [false, true] {
+            let connection = StubAgentConnection::new().with_receipt_submissions(true);
+            let (conversation_view, cx) =
+                setup_conversation_view(StubAgentServer::new(connection), cx).await;
+            let view = active_thread(&conversation_view, cx);
+            let thread = view.read_with(cx, |view, _| view.thread.clone());
+            thread.update(cx, |thread, cx| {
+                if !delayed_echo {
+                    thread
+                        .upsert_user_message(acp_v2::UserMessage::new("first"), cx)
+                        .expect("first prompt");
+                }
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                        cx,
+                    )
+                    .expect("running");
+            });
+            cx.run_until_parked();
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new("first-answer")
+                            .content(vec!["First answer".into()]),
+                        cx,
+                    )
+                    .expect("first answer");
+            });
+            cx.run_until_parked();
+            let request = generic_permission_prompt(&thread, None, cx);
+            let (first_permission, first_response) =
+                request_test_generic_permission(&thread, request, cx);
+            if delayed_echo {
+                thread.update(cx, |thread, cx| {
+                    thread
+                        .upsert_user_message(acp_v2::UserMessage::new("first"), cx)
+                        .expect("delayed first prompt");
+                });
+                cx.run_until_parked();
+            }
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_user_message(acp_v2::UserMessage::new("second"), cx)
+                    .expect("second prompt");
+            });
+            cx.run_until_parked();
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new("second-answer")
+                            .content(vec!["Second answer".into()]),
+                        cx,
+                    )
+                    .expect("second answer");
+            });
+            cx.run_until_parked();
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new("first-answer")
+                            .content(vec!["Updated first answer".into()]),
+                        cx,
+                    )
+                    .expect("old keyed update");
+            });
+            let request = generic_permission_prompt(&thread, None, cx);
+            let (second_permission, second_response) =
+                request_test_generic_permission(&thread, request, cx);
+            cx.run_until_parked();
+            for reconstruct in [false, true] {
+                view.update(cx, |view, cx| {
+                    if reconstruct {
+                        view.response_model = ResponseModel::default();
+                    }
+                    view.sync_response_model(None, cx);
+                    assert_eq!(view.response_model.turns.len(), 2);
+                    for (turn, prompt, answer) in view
+                        .response_model
+                        .turns
+                        .iter()
+                        .zip([("first", "first-answer"), ("second", "second-answer")])
+                        .map(|(turn, (prompt, answer))| (turn, prompt, answer))
+                    {
+                        assert_eq!(turn.lifecycle, TurnLifecycle::RequiresAction);
+                        assert_eq!(
+                            turn.prompt.as_ref().map(|source| &source.identity),
+                            Some(&SourceIdentity::Prompt(ProviderIdentity::Keyed(
+                                prompt.into()
+                            )))
+                        );
+                        assert_eq!(
+                            turn.activity.len(),
+                            1,
+                            "{prompt} must retain only its own answer"
+                        );
+                        assert_eq!(
+                            turn.activity.first().map(|source| &source.identity),
+                            Some(&SourceIdentity::Message(ProviderIdentity::Keyed(
+                                answer.into()
+                            )))
+                        );
+                    }
+                });
+            }
+            thread.update(cx, |thread, cx| {
+                thread.cancel_permission_request(first_permission, cx)
+            });
+            assert_eq!(
+                first_response.await,
+                acp_v2::RequestPermissionOutcome::Cancelled
+            );
+            cx.run_until_parked();
+            view.update(cx, |view, cx| {
+                view.response_model = ResponseModel::default();
+                view.sync_response_model(None, cx);
+                assert_eq!(
+                    view.response_model.turns.first().expect("first").lifecycle,
+                    TurnLifecycle::Settled(TurnOutcome::Unknown)
+                );
+                assert_eq!(
+                    view.response_model
+                        .turns
+                        .first()
+                        .expect("first")
+                        .response
+                        .len(),
+                    1
+                );
+                assert_eq!(
+                    view.response_model.turns.last().expect("second").lifecycle,
+                    TurnLifecycle::RequiresAction
+                );
+            });
+            thread.update(cx, |thread, cx| {
+                thread.cancel_permission_request(second_permission, cx)
+            });
+            assert_eq!(
+                second_response.await,
+                acp_v2::RequestPermissionOutcome::Cancelled
+            );
+            cx.run_until_parked();
+            for reconstruct in [false, true] {
+                view.update(cx, |view, cx| {
+                    if reconstruct {
+                        view.response_model = ResponseModel::default();
+                    }
+                    view.sync_response_model(None, cx);
+                    let first = view.response_model.turns.first().expect("first");
+                    let second = view.response_model.turns.last().expect("second");
+                    assert_eq!(
+                        first.lifecycle,
+                        TurnLifecycle::Settled(TurnOutcome::Unknown)
+                    );
+                    assert_eq!(first.response.len(), 1);
+                    assert_eq!(second.lifecycle, TurnLifecycle::Running);
+                    assert_eq!(second.activity.len(), 1);
+                });
+            }
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Idle(
+                            acp_v2::IdleStateUpdate::new()
+                                .stop_reason(acp_v2::StopReason::Cancelled),
+                        ),
+                        cx,
+                    )
+                    .expect("interrupted generation");
+            });
+            cx.run_until_parked();
+            for reconstruct in [false, true] {
+                view.update(cx, |view, cx| {
+                    if reconstruct {
+                        view.response_model = ResponseModel::default();
+                    }
+                    view.sync_response_model(None, cx);
+                    let first = view.response_model.turns.first().expect("first");
+                    let second = view.response_model.turns.last().expect("second");
+                    assert_eq!(
+                        first.lifecycle,
+                        TurnLifecycle::Settled(TurnOutcome::Unknown)
+                    );
+                    assert_eq!(
+                        second.lifecycle,
+                        TurnLifecycle::Settled(TurnOutcome::Interrupted)
+                    );
+                    assert_eq!(first.response.len(), 1);
+                    assert_eq!(second.response.len(), 1);
+                    assert_eq!(
+                        first.response.first().map(|source| &source.identity),
+                        Some(&SourceIdentity::Message(ProviderIdentity::Keyed(
+                            "first-answer".into()
+                        )))
+                    );
+                    assert_eq!(
+                        second.response.first().map(|source| &source.identity),
+                        Some(&SourceIdentity::Message(ProviderIdentity::Keyed(
+                            "second-answer".into()
+                        )))
+                    );
+                    assert_eq!(second.predecessor.as_ref(), Some(&first.identity));
+                });
+            }
+        }
+    }
+
+    #[gpui::test]
     async fn test_response_model_external_delayed_prompt_preserves_history(
         cx: &mut TestAppContext,
     ) {
