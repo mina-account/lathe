@@ -54,6 +54,11 @@ use workspace::{OpenOptions, SERIALIZATION_THROTTLE_TIME};
 use super::elicitation::{
     ElicitationCard, ElicitationCardHandlers, ElicitationFormState, should_render_elicitation,
 };
+use super::response_model::{
+    ActivityPhase, ContentKind, ContentObservation, ObservationEvent, ProviderIdentity,
+    ResponseModel, SourceIdentity, SourceReference, SubmissionObservation, SubmissionPhase,
+    ThreadObservation, TurnOutcome,
+};
 use super::*;
 
 const DATA_RETENTION_LEARN_MORE_URL: &str = "https://support.claude.com/en/articles/15425996-data-retention-practices-for-mythos-class-models";
@@ -623,6 +628,7 @@ pub struct ThreadView {
     _sandbox_status_refresh_task: Option<Task<()>>,
     pub hovered_edited_file_buttons: Option<usize>,
     pub current_submission: Option<SubmissionId>,
+    pub response_model: ResponseModel,
     pub _subscriptions: Vec<Subscription>,
     pub message_editor: Entity<MessageEditor>,
     pub add_context_menu_handle: PopoverMenuHandle<ContextMenu>,
@@ -1065,6 +1071,7 @@ impl ThreadView {
             _sandbox_status_refresh_task: None,
             hovered_edited_file_buttons: None,
             current_submission,
+            response_model: ResponseModel::default(),
             message_editor,
             add_context_menu_handle: PopoverMenuHandle::default(),
             thinking_effort_menu_handle: PopoverMenuHandle::default(),
@@ -1084,6 +1091,7 @@ impl ThreadView {
             thread_search_visible: false,
         };
 
+        this.sync_response_model(None, cx);
         this.sync_reported_activity(cx);
         this.sync_generating_indicator(cx);
         this.sync_editor_mode(cx);
@@ -1500,6 +1508,163 @@ impl ThreadView {
             self.turn_fields.last_turn_duration = duration;
         }
         cx.notify();
+    }
+
+    pub(crate) fn sync_response_model(&mut self, event: Option<&AcpThreadEvent>, cx: &App) {
+        let event = match event {
+            Some(AcpThreadEvent::EntryUpdated(index)) => ObservationEvent::EntryUpdated(*index),
+            Some(AcpThreadEvent::EntriesRemoved(range)) => ObservationEvent::EntriesRemoved {
+                start: range.start,
+                end: range.end,
+            },
+            Some(AcpThreadEvent::Stopped {
+                activity_generation,
+                stop_reason,
+                ..
+            }) => ObservationEvent::Stopped {
+                generation: *activity_generation,
+                outcome: match stop_reason {
+                    Some(acp_v2::StopReason::EndTurn) => TurnOutcome::Success,
+                    Some(acp_v2::StopReason::Cancelled) => TurnOutcome::Interrupted,
+                    Some(
+                        acp_v2::StopReason::MaxTokens
+                        | acp_v2::StopReason::MaxTurnRequests
+                        | acp_v2::StopReason::Refusal,
+                    ) => TurnOutcome::Failed,
+                    _ => TurnOutcome::Unknown,
+                },
+            },
+            Some(AcpThreadEvent::Error | AcpThreadEvent::Refusal) => ObservationEvent::Failed,
+            Some(
+                AcpThreadEvent::StatusChanged
+                | AcpThreadEvent::SubmissionUpdated(_)
+                | AcpThreadEvent::NewEntry
+                | AcpThreadEvent::ToolAuthorizationRequested(_)
+                | AcpThreadEvent::ToolAuthorizationReceived(_)
+                | AcpThreadEvent::ElicitationRequested(_)
+                | AcpThreadEvent::ElicitationResponded(_),
+            )
+            | None => ObservationEvent::Refresh,
+            _ => return,
+        };
+        let thread = self.thread.read(cx);
+        let provider_identity = |identity: &acp_thread::MessageIdentity| match identity {
+            acp_thread::MessageIdentity::Legacy(identity) => {
+                ProviderIdentity::Legacy(identity.as_ref().map(|identity| identity.0.clone()))
+            }
+            acp_thread::MessageIdentity::Keyed(identity) => {
+                ProviderIdentity::Keyed(identity.0.clone())
+            }
+        };
+        let mut contents = Vec::new();
+        for (entry_index, entry) in thread.entries().iter().enumerate() {
+            let (identity, kind, pending_action, failed) = match entry {
+                AgentThreadEntry::UserMessage(message) => (
+                    SourceIdentity::Prompt(provider_identity(&message.identity)),
+                    ContentKind::Prompt,
+                    false,
+                    false,
+                ),
+                AgentThreadEntry::AssistantMessage(message) => {
+                    for (chunk_index, chunk) in message.chunks.iter().enumerate() {
+                        let (identity, block, kind) = match chunk {
+                            AssistantMessageChunk::Message {
+                                identity, block, ..
+                            } => (
+                                SourceIdentity::Message(provider_identity(identity)),
+                                block,
+                                ContentKind::Message,
+                            ),
+                            AssistantMessageChunk::Thought {
+                                identity, block, ..
+                            } => (
+                                SourceIdentity::Thought(provider_identity(identity)),
+                                block,
+                                ContentKind::Thought,
+                            ),
+                        };
+                        contents.push(ContentObservation {
+                            source: SourceReference {
+                                entry_index,
+                                chunk_index: Some(chunk_index),
+                                identity,
+                            },
+                            kind,
+                            visible: block.visible_content(cx),
+                            pending_action: false,
+                            failed: false,
+                        });
+                    }
+                    continue;
+                }
+                AgentThreadEntry::ToolCall(call) => (
+                    SourceIdentity::Tool(call.id.0.clone()),
+                    ContentKind::Tool,
+                    call.authorization_id()
+                        .is_some_and(|id| thread.permission_request(id).is_some()),
+                    false,
+                ),
+                AgentThreadEntry::Elicitation(id) => (
+                    SourceIdentity::Elicitation(id.0.clone()),
+                    ContentKind::Elicitation,
+                    thread.elicitation(id).is_some_and(|(_, elicitation)| {
+                        matches!(elicitation.status, ElicitationStatus::Pending { .. })
+                    }),
+                    false,
+                ),
+                AgentThreadEntry::ContextCompaction(compaction) => (
+                    SourceIdentity::Compaction(compaction.id.0.clone()),
+                    ContentKind::Compaction,
+                    false,
+                    compaction.error.is_some()
+                        || compaction.status == acp_thread::ContextCompactionStatus::Failed,
+                ),
+            };
+            contents.push(ContentObservation {
+                source: SourceReference {
+                    entry_index,
+                    chunk_index: None,
+                    identity,
+                },
+                kind,
+                visible: true,
+                pending_action,
+                failed,
+            });
+        }
+        let submission = thread.latest_submission_id().and_then(|id| {
+            let record = thread.submission(id)?;
+            let phase = match &record.state {
+                SubmissionState::Pending => SubmissionPhase::Pending,
+                SubmissionState::Accepted { receipt, echoed } => SubmissionPhase::Accepted {
+                    prompt: ProviderIdentity::Keyed(receipt.message_id.0.clone()),
+                    echoed: *echoed,
+                },
+                SubmissionState::Completed => SubmissionPhase::Completed,
+                SubmissionState::Failed(_) => SubmissionPhase::Failed,
+                SubmissionState::Cancelled => SubmissionPhase::Cancelled,
+            };
+            Some(SubmissionObservation {
+                id: id.as_u64(),
+                phase,
+            })
+        });
+        self.response_model.observe(
+            &ThreadObservation {
+                contents,
+                entry_count: thread.entries().len(),
+                submission,
+                reported_activity: thread.uses_reported_activity(),
+                activity: match thread.foreground_activity() {
+                    ForegroundActivity::Idle => ActivityPhase::Idle,
+                    ForegroundActivity::Running => ActivityPhase::Running,
+                    ForegroundActivity::RequiresAction => ActivityPhase::RequiresAction,
+                },
+                activity_generation: thread.activity_generation(),
+                pending_permission: thread.pending_permission_requests().next().is_some(),
+            },
+            event,
+        );
     }
 
     pub(crate) fn report_activity_completion(
