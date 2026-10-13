@@ -148,6 +148,7 @@ pub enum ObservationEvent {
 pub struct ResponseModel {
     pub turns: Vec<ClassifiedTurn>,
     associations: Vec<TurnAssociation>,
+    observed_submissions: HashSet<u64>,
     uncertain_sources: HashSet<SourceReference>,
     next_activity_id: u64,
     previous_activity: Option<(ActivityPhase, u64)>,
@@ -265,20 +266,17 @@ impl ResponseModel {
                 }
             })
             .collect();
-        let submission_updates: HashMap<_, _> = thread
-            .submission_updates
+        let submission_updates: BTreeMap<_, _> = thread
+            .submission
             .iter()
-            .chain(thread.submission.iter())
+            .chain(thread.submission_updates.iter())
             .map(|submission| (submission.id, submission))
             .collect();
         let mut registered_submission = false;
-        if let Some(submission) = &thread.submission {
+        for submission in submission_updates.values() {
             let identity = TurnIdentity::Submission(submission.id);
-            if self
-                .associations
-                .iter()
-                .all(|association| association.submission_id != Some(submission.id))
-            {
+            // Retry and removal can retire associations while their receipt evidence remains.
+            if self.observed_submissions.insert(submission.id) {
                 registered_submission = true;
                 let retry_prompt = (!thread.reported_activity
                     && submission.kind == acp_thread::SubmissionKind::Retry)
@@ -295,7 +293,7 @@ impl ResponseModel {
                     association.submission = Some(submission.phase.clone());
                     association.baseline_generation = thread.activity_generation;
                     association.generation = None;
-                    association.terminal = None;
+                    association.terminal = submission.outcome;
                     association.resumption = None;
                     self.associations.push(association);
                 } else {
@@ -307,6 +305,14 @@ impl ResponseModel {
                         || provisional_boundary(thread),
                         |content| (content.source.entry_index, 0),
                     );
+                    // Receipt caches outlive views; bounded echoes on first observation are history.
+                    let historical_receipt = self.previous_activity.is_none()
+                        && matches!(submission.phase, SubmissionPhase::Accepted { .. })
+                        && prompt.is_some_and(|prompt| {
+                            last_prompt.is_some_and(|last| {
+                                prompt.source.entry_index < last.source.entry_index
+                            })
+                        });
                     self.associations.push(TurnAssociation {
                         identity: retry_prompt.map_or(identity, |prompt| {
                             TurnIdentity::Prompt(prompt.source.clone())
@@ -322,7 +328,9 @@ impl ResponseModel {
                             submission.phase,
                             SubmissionPhase::Accepted { .. } | SubmissionPhase::Completed
                         ),
-                        terminal: None,
+                        terminal: submission
+                            .outcome
+                            .or(historical_receipt.then_some(TurnOutcome::Unknown)),
                         resumption: None,
                     });
                 }
@@ -402,6 +410,12 @@ impl ResponseModel {
             && !registered_submission
             && (new_external_prompt
                 || (thread.submission.is_none()
+                    && submission_updates.values().all(|submission| {
+                        !matches!(
+                            submission.phase,
+                            SubmissionPhase::Pending | SubmissionPhase::Accepted { .. }
+                        )
+                    })
                     && self.associations.last().is_none_or(|association| {
                         matches!(association.identity, TurnIdentity::Submission(_))
                     })))
@@ -1207,6 +1221,115 @@ mod tests {
                 outcome,
             },
         );
+    }
+
+    #[test]
+    fn cached_historical_receipt_keeps_unknown_outcome_on_initial_observation() {
+        use ContentKind::*;
+        for activity in [ActivityPhase::Idle, ActivityPhase::Running] {
+            let mut model = ResponseModel::default();
+            let mut thread = submitting();
+            accept(&mut thread, false);
+            thread.submission_updates = thread.submission.take().into_iter().collect();
+            thread.submission = Some(SubmissionObservation {
+                id: 2,
+                kind: acp_thread::SubmissionKind::Prompt,
+                phase: SubmissionPhase::Accepted {
+                    prompt: ProviderIdentity::Keyed("current-prompt".into()),
+                    echoed: true,
+                },
+                outcome: None,
+            });
+            thread.contents = vec![
+                content(0, None, Prompt, "prompt"),
+                content(1, Some(0), Message, "historical answer"),
+                content(2, None, Prompt, "current-prompt"),
+                content(3, Some(0), Message, "current answer"),
+            ];
+            thread.entry_count = 4;
+            thread.activity = activity;
+            thread.activity_generation = 2;
+            model.observe(&thread, ObservationEvent::Refresh);
+            assert_eq!(model.turns.len(), 2);
+            let historical = model.turns.first().expect("historical receipt");
+            let current = model.turns.last().expect("current receipt");
+            assert_eq!(historical.identity, TurnIdentity::Submission(1));
+            assert_eq!(
+                historical.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Unknown)
+            );
+            assert_eq!(historical.response.len(), 1);
+            assert_eq!(current.identity, TurnIdentity::Submission(2));
+            assert_eq!(
+                current.lifecycle,
+                if activity == ActivityPhase::Idle {
+                    TurnLifecycle::Submitting
+                } else {
+                    TurnLifecycle::Running
+                }
+            );
+            assert!(current.response.is_empty());
+            assert_eq!(current.predecessor, Some(historical.identity.clone()));
+        }
+    }
+
+    #[test]
+    fn pruned_receipt_registers_once_and_stays_removed() {
+        use ContentKind::*;
+        let mut model = ResponseModel::default();
+        let mut thread = submitting();
+        accept(&mut thread, false);
+        thread.submission_updates = thread.submission.take().into_iter().collect();
+        thread.contents = vec![
+            content(0, None, Prompt, "prompt"),
+            content(1, Some(0), Message, "answer"),
+        ];
+        thread.entry_count = 2;
+        thread.activity = ActivityPhase::Running;
+        thread.activity_generation = 1;
+        model.observe(&thread, ObservationEvent::Refresh);
+        let turn = model.turns.first().expect("pruned receipt turn");
+        assert_eq!(turn.identity, TurnIdentity::Submission(1));
+        assert_eq!(turn.lifecycle, TurnLifecycle::Running);
+        thread.activity = ActivityPhase::Idle;
+        stop(&mut model, &thread, 1, TurnOutcome::Success);
+        let turn = model.turns.first().expect("settled receipt turn");
+        assert_eq!(turn.lifecycle, TurnLifecycle::Settled(TurnOutcome::Success));
+        assert_eq!(turn.response.len(), 1);
+        thread.contents.clear();
+        thread.entry_count = 0;
+        model.observe(
+            &thread,
+            ObservationEvent::EntriesRemoved { start: 0, end: 2 },
+        );
+        model.observe(&thread, ObservationEvent::Refresh);
+        assert!(model.turns.is_empty());
+    }
+
+    #[test]
+    fn coalesced_legacy_completion_preserves_terminal_metadata() {
+        use ContentKind::*;
+        let mut model = ResponseModel::default();
+        let mut thread = submitting();
+        thread.reported_activity = false;
+        thread.submission.as_mut().expect("latest submission").phase = SubmissionPhase::Completed;
+        let mut completion = thread.submission.clone().expect("completed submission");
+        completion.outcome = Some(TurnOutcome::Interrupted);
+        thread.submission_updates.push(completion);
+        model.observe(&thread, ObservationEvent::Refresh);
+        thread.contents = vec![
+            content(0, None, Prompt, "prompt"),
+            content(1, Some(0), Message, "partial answer"),
+        ];
+        thread.entry_count = 2;
+        model.observe(&thread, ObservationEvent::Refresh);
+        let turn = model.turns.first().expect("completed turn");
+        assert_eq!(turn.identity, TurnIdentity::Submission(1));
+        assert_eq!(
+            turn.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Interrupted)
+        );
+        assert_eq!(turn.response.len(), 1);
     }
 
     #[test]

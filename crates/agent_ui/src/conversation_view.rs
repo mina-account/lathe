@@ -5291,28 +5291,35 @@ pub(crate) mod tests {
 
     #[gpui::test]
     async fn test_response_model_overlapping_receipts(cx: &mut TestAppContext) {
-        check_overlapping_receipts(cx, false, false, false).await;
+        check_overlapping_receipts(cx, false, false, false, false).await;
     }
 
     #[gpui::test]
     async fn test_response_model_overlapping_receipts_with_delayed_acceptance(
         cx: &mut TestAppContext,
     ) {
-        check_overlapping_receipts(cx, true, false, false).await;
+        check_overlapping_receipts(cx, true, false, false, false).await;
     }
 
     #[gpui::test]
     async fn test_response_model_overlapping_receipts_with_interleaved_echo(
         cx: &mut TestAppContext,
     ) {
-        check_overlapping_receipts(cx, false, true, false).await;
+        check_overlapping_receipts(cx, false, true, false, false).await;
     }
 
     #[gpui::test]
     async fn test_response_model_overlapping_receipts_with_reversed_echoes(
         cx: &mut TestAppContext,
     ) {
-        check_overlapping_receipts(cx, false, true, true).await;
+        check_overlapping_receipts(cx, false, true, true, false).await;
+    }
+
+    #[gpui::test]
+    async fn test_response_model_overlapping_receipts_with_coalesced_registration(
+        cx: &mut TestAppContext,
+    ) {
+        check_overlapping_receipts(cx, true, true, true, true).await;
     }
 
     #[gpui::test]
@@ -5472,6 +5479,7 @@ pub(crate) mod tests {
         delayed_acceptance: bool,
         interleaved_echo: bool,
         delayed_first_echo: bool,
+        coalesced_registration: bool,
     ) {
         use super::response_model::{
             ProviderIdentity, SourceIdentity, TurnIdentity, TurnLifecycle, TurnOutcome,
@@ -5484,9 +5492,25 @@ pub(crate) mod tests {
         add_to_workspace(conversation_view.clone(), cx);
         let thread_view = active_thread(&conversation_view, cx);
         let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
-        let mut finish_first = Some(connection.defer_next_receipt_response());
-        let first_submission =
-            thread.update(cx, |thread, cx| thread.send(vec!["first".into()], cx));
+        let (first_submission, finish_first, mut second_submission, mut finish_second) = thread
+            .update(cx, |thread, cx| {
+                let finish_first = connection.defer_next_receipt_response();
+                let first_submission = thread.send(vec!["first".into()], cx);
+                let (second_submission, finish_second) = if coalesced_registration {
+                    let finish_second = connection.defer_next_receipt_response();
+                    let second_submission = thread.send(vec!["second".into()], cx);
+                    (Some(second_submission), Some(finish_second))
+                } else {
+                    (None, None)
+                };
+                (
+                    first_submission,
+                    finish_first,
+                    second_submission,
+                    finish_second,
+                )
+            });
+        let mut finish_first = Some(finish_first);
         let first_id = TurnIdentity::Submission(first_submission.id.as_u64());
         cx.run_until_parked();
         if !delayed_acceptance {
@@ -5505,11 +5529,13 @@ pub(crate) mod tests {
                 cx.run_until_parked();
             }
         }
-        let mut finish_second = Some(connection.defer_next_receipt_response());
-        message_editor(&conversation_view, cx).update_in(cx, |editor, window, cx| {
-            editor.set_text("second", window, cx);
-        });
-        thread_view.update_in(cx, |view, window, cx| view.send(window, cx));
+        if !coalesced_registration {
+            finish_second = Some(connection.defer_next_receipt_response());
+            message_editor(&conversation_view, cx).update_in(cx, |editor, window, cx| {
+                editor.set_text("second", window, cx);
+            });
+            thread_view.update_in(cx, |view, window, cx| view.send(window, cx));
+        }
         cx.run_until_parked();
         let second_id = thread.read_with(cx, |thread, _| {
             TurnIdentity::Submission(thread.latest_submission_id().expect("second").as_u64())
@@ -5601,6 +5627,9 @@ pub(crate) mod tests {
                     .expect("second echo after first stop");
             });
             cx.run_until_parked();
+        }
+        if let Some(second_submission) = second_submission.take() {
+            second_submission.await.expect("second accepted");
         }
         let first_source = SourceIdentity::Message(ProviderIdentity::Keyed("first-answer".into()));
         let second_source =
