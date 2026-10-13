@@ -43,3 +43,10 @@ for (const [file,hash] of Object.entries(runtime.assets)) {
     assert.equal(createHash("sha256").update(await readFile(new URL(`../../../${file}`,import.meta.url))).digest("hex"),hash,file);
 }
 console.log("Verified locked packaged core asset bytes");
+const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
+assert.equal(checks.frontendBridge,17);
+assert.equal(checks.frontendRealBrowser,36);
+assert.equal(checks.isolatedGeneratedAssetReproduction,11);
+assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
+assert(checks.reviewPass4Regressions && checks.reviewPass4Verification && checks.reviewPass4SetextCounterCases);
+console.log("Verified recorded boundary, empty-input, Viewer-selection and final-asset checks");

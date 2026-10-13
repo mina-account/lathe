@@ -94,10 +94,8 @@ function restoreSelection(selected                              , oldText       
     if (!selected) return;
     const root = active(), text = root.textContent ?? "";
     let {start,end} = selected;
-    if (preferences.mode !== "preview") {
-        for (const change of separateChanges(oldText,text).reverse()) {
-            start = transformOffset(start, change); end = transformOffset(end, change);
-        }
+    for (const change of separateChanges(oldText,text).reverse()) {
+        start = transformOffset(start, change); end = transformOffset(end, change);
     }
     if (selected.text && text.slice(start,end) !== selected.text) {
         const found = text.indexOf(selected.text);
@@ -125,6 +123,7 @@ function show(text        ) {
     projecting = true;
     try {
         editor.setValue(display(text), true);
+        initializeEmptyBlock();
         lastSerialized = editor.getValue(); projection.reset(text,lastSerialized);
         renderViewer(); renderOutline(); renderSourceBlocks(); updateFind();
         restoreSelection(selected,oldText); scrollElement().scrollTop = scroll;
@@ -137,11 +136,13 @@ function commit() {
         const actual = editor.getValue();
         if (actual === lastSerialized) return;
         if (!intent) throw new Error("The input has no safe source scope.");
-        let canonical        ;
+        let canonical        , serializedCanonical                = null;
         if (intent.sourceView) {
-            const changes = separateChanges(projection.canonical,preserveTableLayout(projection.canonical,actual)).filter(change => change.end >= intent .start && change.start <= intent .end);
+            const preserved = preserveTableLayout(projection.canonical,actual);
+            const changes = separateChanges(projection.canonical,intent.preserveSetext ? preserveSetextLayout(projection.canonical,preserved) : preserved).filter(change => change.end >= intent .start && change.start <= intent .end);
             canonical = projection.canonical;
             for (const change of changes.reverse()) canonical = canonical.slice(0,change.start)+change.text+canonical.slice(change.end);
+            if (intent.preserveSetext) serializedCanonical = preserveSetextLayout(actual,canonical);
         } else {
             const children = editableBlocks();
             const blocks = children.map(serializeBlock);
@@ -152,10 +153,15 @@ function commit() {
             const start = previous+1, end = next;
             let replacement = serializeBlockHtml(children.slice(start,end).map(block=>block.outerHTML).join(""));
             replacement = preserveTableLayout(projection.canonical.slice(intent.start,intent.end),replacement);
+            if (intent.preserveSetext) {
+                serializedCanonical = projection.canonical.slice(0,intent.start)+replacement+projection.canonical.slice(intent.end);
+                replacement = preserveSetextLayout(projection.canonical.slice(intent.start,intent.end),replacement);
+            }
             if (intent.start === intent.end) replacement = replacement.trimEnd()+"\n\n";
             canonical = projection.canonical.slice(0,intent.start)+replacement+projection.canonical.slice(intent.end);
         }
         const source = projection.edit(canonical);
+        if (serializedCanonical !== null) projection.reset(source,serializedCanonical);
         // Reparsing moves reference definitions and adjusts table layout. Keep the
         // source mapping in its original block order rather than adopting that output.
         lastSerialized=actual; intent = null;
@@ -202,9 +208,25 @@ function serializeBlockHtml(html       )        {
     const lute = editor.vditor.lute;
     return editor.getCurrentMode() === "ir" ? lute.VditorIRDOM2Md(html) : lute.VditorDOM2Md(html);
 }
+function preserveSetextLayout(before       ,after       )        {
+    const original=before.split("\n"), changed=after.split("\n");
+    if (original.length !== changed.length) return after;
+    for (let index=1; index<original.length; index++) {
+        if (/^(=+|-+)$/.test(original[index]) && /^(=+|-+)$/.test(changed[index]) && original[index][0] === changed[index][0]) changed[index]=original[index];
+    }
+    return changed.join("\n");
+}
 function serializeBlock(block        )        { return serializeBlockHtml(block.outerHTML); }
 function editableBlocks()           {
     return [...active().children].filter(block=>!["link-ref-defs-block","footnotes-block"].includes(block.getAttribute("data-type") ?? ""));
+}
+function initializeEmptyBlock() {
+    if (editor.getCurrentMode() === "sv" || editableBlocks().length || preferences.mode === "preview") return;
+    const paragraph = document.createElement("p"); paragraph.dataset.block = "0";
+    if (editor.getCurrentMode() === "ir") {
+        const text = document.createElement("span"); text.dataset.type = "text"; paragraph.append(text);
+    }
+    paragraph.append(document.createElement("br")); active().append(paragraph);
 }
 function captureIntent(target      , deletion                      ) {
     if (!ready || projecting || preferences.mode === "preview" || bridge.blocked) return;
@@ -218,13 +240,20 @@ function captureScope(target      , deletion                      ) {
     if (editor.getCurrentMode() === "sv") {
         const selection_ = selection(); if (!selection_) return;
         const text = root.textContent ?? "";
-        intent = {start:text.lastIndexOf("\n",Math.max(0,selection_.start-1))+1,end:(text.indexOf("\n",selection_.end)+1 || text.length),previous:null,next:null,sourceView:true}; return;
+        const start=text.lastIndexOf("\n",Math.max(0,selection_.start-1))+1,end=(text.indexOf("\n",selection_.end)+1 || text.length);
+        const preserveSetext=!text.slice(start,selection_.end).includes("\n") && /^(=+|-+)$/.test(text.slice(end,text.indexOf("\n",end)+1 || text.length).trim());
+        intent = {start,end,previous:null,next:null,sourceView:true,preserveSetext}; return;
     }
     const children = editableBlocks();
+    if (!children.length && (root.contains(target ?? range?.startContainer ?? null) || document.activeElement === root)) {
+        intent = {start:projection.canonical.length,end:projection.canonical.length,previous:null,next:null,sourceView:false}; return;
+    }
     const blockIndex = (node          )        => children.findIndex(block=>block===node || block.contains(node));
     let first = blockIndex(target ?? range?.startContainer ?? null);
     let last = target ? first : blockIndex(range?.endContainer ?? null);
     if (first < 0 || last < first) return;
+    const markerSelection=[target ?? range?.startContainer,range?.endContainer].some(node=>node?.parentElement?.closest('[data-type="heading-marker"]'));
+    const preserveSetext=first === last && /^[=-]$/.test(children[first].getAttribute("data-marker") ?? "") && !markerSelection;
     if (deletion && range?.collapsed && first === last) {
         const prefix = range.cloneRange(), suffix = range.cloneRange();
         prefix.selectNodeContents(children[first]); prefix.setEnd(range.startContainer,range.startOffset);
@@ -256,8 +285,8 @@ function captureScope(target      , deletion                      ) {
     if (start < 0) {
         const trimmed = before.trimEnd(), found = projection.canonical.indexOf(trimmed,offset);
         if (found < 0) throw new Error("The selected source block cannot be mapped safely.");
-        intent={start:found,end:found+trimmed.length,previous:serialized[first-1]??null,next:serialized[last+1]??null,...occurrences,sourceView:false};
-    } else intent={start,end:start+before.length,previous:serialized[first-1]??null,next:serialized[last+1]??null,...occurrences,sourceView:false};
+        intent={start:found,end:found+trimmed.length,previous:serialized[first-1]??null,next:serialized[last+1]??null,...occurrences,sourceView:false,preserveSetext};
+    } else intent={start,end:start+before.length,previous:serialized[first-1]??null,next:serialized[last+1]??null,...occurrences,sourceView:false,preserveSetext};
 }
 function build(selected = selection(), oldText = active().textContent ?? "") {
     if (bridge.composing) return;
@@ -286,6 +315,7 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
             editor.vditor.undo.redo = () => bridge.history("redo");
             editor.vditor.undo.addToUndoStack = () => {};
             editor.vditor.undo.resetIcon = () => {};
+            initializeEmptyBlock();
             lastSerialized=editor.getValue(); projection.reset(latest,lastSerialized);
             (get("mode")                     ).value = preferences.mode;
             container.hidden = preferences.mode === "preview"; viewer.hidden = preferences.mode !== "preview";

@@ -1,6 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DocumentBridge, delta, display, fromDisplay, rebase, separateChanges, withinBudget } from "./application.ts";
+import { DocumentBridge, SourceProjection, delta, display, fromDisplay, rebase, separateChanges, withinBudget } from "./application.ts";
+
+test("projection boundaries exclude adjacent normalized source from replacements", () => {
+    for (const newline of ["\n","\r\n"]) for (const [source,canonical,target] of [
+        ["<https://example.com/target>","https://example.com/target","target"],
+        ["<target@example.com>","target@example.com","com"],
+        ["first  \nnext","first\nnext","first"],
+        ["__target__","**target**","target"],
+        ["before &amp; target","before & target","before"],
+        ["target\n=======","# target","target"],
+    ]) {
+        const original=source.replace(/\n/g,newline), projection=new SourceProjection();
+        projection.reset(original,canonical);
+        assert.equal(projection.edit(canonical.replace(target,"CHANGED")),original.replace(target,"CHANGED"),source);
+    }
+    const projection=new SourceProjection(); projection.reset("target\n=======","target\n======");
+    assert.equal(projection.edit("target\n------"),"target\n------");
+});
 
 test("rapid toolbar history commands wait for their own acknowledgment and revision", () => {
     const messages = [];

@@ -4,8 +4,8 @@
     "linuxNative":  48,
     "windowsProtocol":  13,
     "linuxProtocol":  13,
-    "frontendBridge":  16,
-    "frontendRealBrowser":  31,
+    "frontendBridge":  17,
+    "frontendRealBrowser":  36,
     "chromium":  "155.0.4283.45",
     "playwright":  "1.56.1",
     "preview":  32,
@@ -48,5 +48,8 @@
     "isolatedGeneratedAssetReproduction": 11,
     "reviewPass3Regressions": "Both findings confirmed expected red to green: cancelable source-field overflow is prevented; exact noncancelable/composition drafts are retained and blocked across flush, blur and mode changes without authoritative edits; UTF-8, JSON escaping, selected replacement, surrounding source and Enter budgets; corresponding-table/row occurrence mapping preserves exact LF/CRLF source through repeated real keyboard edits in all editing modes",
     "reviewPass3Verification": "Fresh final 31 browser groups, 16 bridge tests, Windows 48 native/13 protocol, app checks and repository-wrapper lint; 11 isolated locked generated assets match; fresh final-byte Win32/Wayland/X11 smoke builds exit 0; unchanged Rust preview/workspace/routing and Linux native/protocol/application/lint results reused from pass 2; Markdown formatting passes and baseline root/workspace format failures remain unchanged",
+    "reviewPass4Regressions": "All three findings confirmed expected red to green in actual packaged DOM: shared projection endpoint affinity preserves autolink closing markers and hard-break spaces in all three editing modes; adjacent email/entity/emphasis and setext boundaries retain exact LF/CRLF source over consecutive edits, acknowledgments and flush; empty/blank keyboard and Chromium CDP IME preserve insertion scope/whitespace and acknowledgment barriers; Viewer transforms repeated ASCII/Unicode selection offsets and preserves direction and occurrence on roundtrips",
+    "reviewPass4Verification": "Final-byte full 36 browser groups and 17 bridge tests; fresh Windows default/browser app checks and scoped repository-wrapper lint; all 11 isolated npm ci/build assets exactly match; fresh final-byte Win32/Wayland/X11 smoke builds exit 0 and updated traces/hash verifier pass; unchanged Rust Windows native/protocol from pass 3 and Linux native/protocol, preview/workspace/routing, Linux application/lint from pass 2 reused because no Rust/build definitions changed; Markdown formatting and diff checks pass, documented baseline exceptions unchanged",
+    "reviewPass4SetextCounterCases": "Untouched underline preserved during repeated heading text edits; local canonical correspondence follows serializer marker lengths without changing source; explicit split marker type changes include the normalized hidden marker suffix; IR bold and WYSIWYG heading-level formatting remain effective",
     "linuxInvocation": "wsl -d Ubuntu -u an -- bash; distro Ubuntu 24.04.1 LTS"
 }

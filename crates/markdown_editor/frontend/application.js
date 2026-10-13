@@ -170,6 +170,14 @@ export class SourceProjection {
         let distance = 0, shown = offset;
         for (const span of this.normalization) {
             if (offset < span.canonicalStart) break;
+            // Endpoints stop before adjacent normalization, including source-only
+            // delimiters at a collapsed span; starts advance past those delimiters.
+            if (offset === span.canonicalStart && edge === "end") {
+                const removed = display(this.source).slice(span.start,span.end), previous = this.canonical[offset-1];
+                // Hidden repetitions belong to an explicitly replaced marker run.
+                const repeatedMarker = !span.text && previous && removed && [...removed].every(character=>character === previous);
+                return this.rawOffset(repeatedMarker ? span.end : span.start);
+            }
             if (offset < span.canonicalEnd) {
                 shown = edge === "start" ? span.start : span.end;
                 return this.rawOffset(shown);

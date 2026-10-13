@@ -63,6 +63,109 @@ async function selectText(page,text) {
     },text);
 }
 
+test("normalization boundaries preserve autolink markers and hard breaks through edits and flush",async()=>{
+    for (const mode of ["ir","wysiwyg","sv"]) for (const newline of ["\n","\r\n"]) for (const [block,target] of [
+        ["<https://example.com/target>","target"],["<target@example.com>","com"],
+        ["first  \nnext","first"],["__target__ and _keep_","target"],
+        ["before &amp; target and &#65;","target"],["target\n=======","target"],["target\n-------","target"],
+    ]) {
+        const source=("Before\n\n"+block+"\n\nTail").replace(/\n/g,newline), {page,context}=await open(source,mode);
+        await selectText(page,target); await page.keyboard.insertText("CHANGED"); await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false,`${mode}: ${block}`);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace(target,"CHANGED"),`${mode}: ${block}`);
+        await acknowledge(page);
+        await selectText(page,"CHANGED"); await page.keyboard.insertText("SECOND"); await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace(target,"SECOND"),`${mode}: repeated ${block}`);
+        await acknowledge(page); await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:994}));
+        assert.deepEqual(await page.evaluate(()=>({blocked:window.latheMarkdown.blocked,flushed:window.testMessages.some(message=>message.kind==="flushed"&&message.request===994),same:window.latheMarkdown.base===window.latheRich.projection.source})),{blocked:false,flushed:true,same:true});
+        await context.close();
+    }
+});
+
+test("empty and blank documents accept first keyboard input in every editing mode",async()=>{
+    for (const mode of ["ir","wysiwyg","sv"]) for (const source of ["","\n","\n\n","\r\n","\r\n\r\n","   "," \n\t\n"]) {
+        const {page,context}=await open(source,mode);
+        await page.evaluate(()=>window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element.setAttribute("data-empty-test",""));
+        await page.locator("[data-empty-test]").click(); await page.keyboard.type("abc");
+        await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false,`${mode}: ${JSON.stringify(source)}`);
+        const draft=await page.evaluate(()=>window.latheMarkdown.draft);
+        assert.equal(draft.replace("abc","" ).trim(),"",`${mode}: ${JSON.stringify(source)}`);
+        assert(draft.includes("abc"),`${mode}: all typed characters retained`);
+        assert(draft.replace("abc","").includes(source),`${mode}: original blank source retained: ${JSON.stringify({source,draft})}`);
+        await acknowledge(page); await acknowledge(page); await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:995}));
+        assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed"&&message.request===995)));
+        await context.close();
+    }
+});
+
+test("explicit setext marker edits and heading formatting remain effective",async()=>{
+    const source="Before\n\ntarget\n=======\n\nTail", {page,context}=await open(source,"sv");
+    await selectText(page,"======"); await page.keyboard.insertText("---"); await page.evaluate(()=>window.latheRich.commit());
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("=======","------"));
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+    await context.close();
+    for (const mode of ["ir","wysiwyg"]) {
+        const {page,context}=await open(source,mode);
+        await selectText(page,"target");
+        if (mode === "ir") await page.locator('[data-type=bold]').first().click();
+        else { await page.locator('[data-type=headings]').first().click(); await page.locator('[data-tag=h3]').click(); }
+        await page.waitForFunction(()=>window.latheMarkdown.pending); await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),mode === "ir" ? "Before\n\n**target**\n=======\n\nTail" : "Before\n\n### target\n\nTail");
+        await context.close();
+    }
+});
+
+test("empty rich composition retains input and waits for acknowledgment before flush",async()=>{
+    for (const mode of ["ir","wysiwyg","sv"]) for (const source of ["","\n","\r\n","  \n\n"]) {
+        const {page,context}=await open(source,mode);
+        await page.evaluate(()=>window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element.setAttribute("data-empty-test",""));
+        await page.locator("[data-empty-test]").click();
+        const composition=await context.newCDPSession(page);
+        await composition.send("Input.imeSetComposition",{text:"中文😀",selectionStart:4,selectionEnd:4});
+        await page.evaluate(()=>{
+            const root=window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element;
+            window.composingRoot=root;
+            window.latheRich.commit(); window.latheMarkdown.receive({kind:"flush",request:996});
+        });
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false,`${mode}: ${JSON.stringify(source)}`);
+        assert(await page.evaluate(()=>window.composingRoot.textContent.includes("中文😀")));
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="edit"||message.kind==="flushed")),false);
+        await composition.send("Input.insertText",{text:"中文😀"});
+        await page.waitForFunction(()=>window.latheMarkdown.pending);
+        const draft=await page.evaluate(()=>window.latheMarkdown.draft);
+        assert(draft.includes("中文😀"),JSON.stringify(await page.evaluate(()=>({draft:window.latheMarkdown.draft,canonical:window.latheRich.projection.canonical,dom:window.composingRoot.innerHTML,messages:window.testMessages,status:document.querySelector("#status").textContent}))));
+        assert(draft.replace("中文😀","").startsWith(source));
+        await acknowledge(page);
+        assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed"&&message.request===996)));
+        await context.close();
+    }
+});
+
+test("Viewer selection retains the same repeated Unicode occurrence across presentations",async()=>{
+    for (const mode of ["ir","wysiwyg","sv"]) for (const word of ["word","中文😀word"]) for (const backward of [false,true]) {
+        const source=`# **${word}**\n\nEarlier [${word}](https://example.com).\n\nLast ${word} end`, {page,context}=await open(source,mode);
+        await page.evaluate(({word,backward})=>{
+            const root=window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element; root.focus();
+            const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+            while (walker.nextNode()) {
+                const node=walker.currentNode,index=node.data.indexOf(`Last ${word} end`); if(index<0)continue;
+                const start=index+5,end=start+word.length;
+                window.getSelection().setBaseAndExtent(node,backward ? end:start,node,backward ? start:end); return;
+            }
+            throw new Error("Last occurrence missing");
+        },{word,backward});
+        for (const destination of ["preview",mode]) {
+            await page.evaluate(destination=>window.latheRich.mode(destination),destination); await page.waitForFunction(()=>window.latheRich.ready);
+            assert.deepEqual(await page.evaluate(()=>({text:window.getSelection().toString(),parent:window.getSelection().anchorNode.parentElement.textContent,backward:window.getSelection().anchorOffset>window.getSelection().focusOffset})),{text:word,parent:`Last ${word} end`,backward},`${mode} to ${destination}`);
+        }
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="edit")),false);
+        await context.close();
+    }
+});
+
 test("source-field overflow is prevented or retained behind save and mode barriers",async()=>{
     for (const [character,count,composition] of [["x",8*1024*1024,false],["中",3*1024*1024,true],['"',4*1024*1024,true]]) {
         const source="---\na: b\n---\n\nTail", {page,context}=await open(source);
