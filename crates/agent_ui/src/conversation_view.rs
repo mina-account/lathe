@@ -5074,6 +5074,61 @@ pub(crate) mod tests {
             assert_eq!(turn.lifecycle, TurnLifecycle::Settled(TurnOutcome::Success));
             assert_eq!(turn.response.len(), 1);
         });
+        let retried_response = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .first()
+                .expect("retried turn")
+                .response
+                .clone()
+        });
+        connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+            acp_v1::ContentChunk::new("Later answer".into()),
+        )]);
+        thread
+            .update(cx, |thread, cx| {
+                thread.send(vec!["Later prompt".into()], cx)
+            })
+            .await
+            .expect("later answer");
+        cx.run_until_parked();
+        let later_response = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .last()
+                .expect("later turn")
+                .response
+                .clone()
+        });
+        view.update(cx, |view, cx| {
+            view.response_model = Default::default();
+            view.sync_response_model(None, cx);
+            assert_eq!(view.response_model.turns.len(), 2);
+            let retried = view
+                .response_model
+                .turns
+                .first()
+                .expect("reconstructed retry");
+            let later = view
+                .response_model
+                .turns
+                .last()
+                .expect("reconstructed later turn");
+            assert_eq!(retried.identity, identity);
+            assert_eq!(
+                retried.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(retried.response, retried_response);
+            assert_eq!(retried.predecessor, None);
+            assert_ne!(retried.prompt, later.prompt);
+            assert_eq!(
+                later.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(later.response, later_response);
+            assert_eq!(later.predecessor, Some(identity));
+        });
     }
 
     #[gpui::test]

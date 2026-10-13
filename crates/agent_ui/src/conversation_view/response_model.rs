@@ -288,7 +288,18 @@ impl ResponseModel {
                 registered_submission = true;
                 let retry_prompt = (!thread.reported_activity
                     && submission.kind == acp_thread::SubmissionKind::Retry)
-                    .then_some(last_prompt)
+                    .then(|| match &submission.prompt {
+                        Some(source) => prompt_sources.get(source).copied(),
+                        None if matches!(submission.phase, SubmissionPhase::Pending)
+                            && thread
+                                .submission
+                                .as_ref()
+                                .is_some_and(|latest| latest.id == submission.id) =>
+                        {
+                            last_prompt
+                        }
+                        None => None,
+                    })
                     .flatten();
                 let retry_association = retry_prompt.and_then(|prompt| {
                     self.associations.iter().rposition(|association| {
@@ -1369,6 +1380,127 @@ mod tests {
             TurnLifecycle::Settled(TurnOutcome::Interrupted)
         );
         assert_eq!(turn.response.len(), 1);
+    }
+
+    #[test]
+    fn reconstructed_legacy_retry_reuses_its_retained_historical_prompt() {
+        use ContentKind::*;
+        let mut thread = history(&[Prompt, Thought, Message, Prompt, Message]);
+        thread.reported_activity = false;
+        let first_prompt = thread
+            .contents
+            .first()
+            .expect("first prompt")
+            .source
+            .clone();
+        let later_prompt = thread.contents.get(3).expect("later prompt").source.clone();
+        thread.submission_updates = vec![
+            SubmissionObservation {
+                id: 1,
+                kind: acp_thread::SubmissionKind::Prompt,
+                phase: SubmissionPhase::Completed,
+                outcome: Some(TurnOutcome::Interrupted),
+                prompt: Some(first_prompt.clone()),
+                generation: None,
+            },
+            SubmissionObservation {
+                id: 2,
+                kind: acp_thread::SubmissionKind::Retry,
+                phase: SubmissionPhase::Completed,
+                outcome: Some(TurnOutcome::Success),
+                prompt: Some(first_prompt.clone()),
+                generation: None,
+            },
+        ];
+        thread.submission = Some(SubmissionObservation {
+            id: 3,
+            kind: acp_thread::SubmissionKind::Prompt,
+            phase: SubmissionPhase::Failed,
+            outcome: Some(TurnOutcome::Failed),
+            prompt: Some(later_prompt.clone()),
+            generation: None,
+        });
+        let mut model = ResponseModel::default();
+        model.observe(&thread, ObservationEvent::Refresh);
+        model.observe(&thread, ObservationEvent::Refresh);
+        assert_eq!(model.turns.len(), 2);
+        let first = model.turns.first().expect("retried turn");
+        let later = model.turns.last().expect("later turn");
+        assert_eq!(first.identity, TurnIdentity::Submission(1));
+        assert_eq!(first.prompt.as_ref(), Some(&first_prompt));
+        assert_eq!(
+            first.lifecycle,
+            TurnLifecycle::Settled(TurnOutcome::Success)
+        );
+        assert_eq!(
+            first.activity,
+            vec![thread.contents.get(1).expect("thought").source.clone()]
+        );
+        assert_eq!(
+            first.response,
+            vec![
+                thread
+                    .contents
+                    .get(2)
+                    .expect("retried answer")
+                    .source
+                    .clone()
+            ]
+        );
+        assert_eq!(first.predecessor, None);
+        assert_eq!(later.identity, TurnIdentity::Submission(3));
+        assert_eq!(later.prompt.as_ref(), Some(&later_prompt));
+        assert_eq!(later.lifecycle, TurnLifecycle::Settled(TurnOutcome::Failed));
+        assert_eq!(
+            later.response,
+            vec![thread.contents.last().expect("later answer").source.clone()]
+        );
+        assert_eq!(later.predecessor, Some(first.identity.clone()));
+    }
+
+    #[test]
+    fn reconstructed_deleted_retry_prompt_does_not_reopen_a_later_turn() {
+        use ContentKind::*;
+        for retained_prompt in [None, Some(content(0, None, Prompt, "deleted").source)] {
+            let mut thread = history(&[Prompt, Message]);
+            thread.reported_activity = false;
+            thread.submission_updates.push(SubmissionObservation {
+                id: 1,
+                kind: acp_thread::SubmissionKind::Retry,
+                phase: SubmissionPhase::Completed,
+                outcome: Some(TurnOutcome::Interrupted),
+                prompt: retained_prompt,
+                generation: None,
+            });
+            thread.submission = Some(SubmissionObservation {
+                id: 2,
+                kind: acp_thread::SubmissionKind::Prompt,
+                phase: SubmissionPhase::Completed,
+                outcome: Some(TurnOutcome::Success),
+                prompt: Some(
+                    thread
+                        .contents
+                        .first()
+                        .expect("later prompt")
+                        .source
+                        .clone(),
+                ),
+                generation: None,
+            });
+            let turns = classified(&thread);
+            assert_eq!(turns.len(), 1);
+            let later = turns.first().expect("later turn");
+            assert_eq!(later.identity, TurnIdentity::Submission(2));
+            assert_eq!(
+                later.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(
+                later.response,
+                vec![thread.contents.last().expect("answer").source.clone()]
+            );
+            assert_eq!(later.predecessor, None);
+        }
     }
 
     #[test]
