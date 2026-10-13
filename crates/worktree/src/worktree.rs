@@ -974,9 +974,45 @@ impl Worktree {
         content: Option<Vec<u8>>,
         cx: &Context<Worktree>,
     ) -> Task<Result<CreatedEntry>> {
+        self.create_entry_with_options(path, is_directory, content, false, cx)
+    }
+
+    pub fn load_binary_file_with_limit(
+        &self,
+        path: &RelPath,
+        limit: usize,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<LoadedBinaryFile>> {
+        match self {
+            Worktree::Local(this) => this.load_binary_file_with_limit(path, Some(limit), cx),
+            Worktree::Remote(_) => Task::ready(Err(anyhow!(
+                "Remote binary reads require the project byte adapter"
+            ))),
+        }
+    }
+
+    pub fn create_entry_exclusive(
+        &mut self,
+        path: Arc<RelPath>,
+        content: Vec<u8>,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<CreatedEntry>> {
+        self.create_entry_with_options(path, false, Some(content), true, cx)
+    }
+
+    fn create_entry_with_options(
+        &mut self,
+        path: Arc<RelPath>,
+        is_directory: bool,
+        content: Option<Vec<u8>>,
+        exclusive: bool,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<CreatedEntry>> {
         let worktree_id = self.id();
         match self {
-            Worktree::Local(this) => this.create_entry(path, is_directory, content, cx),
+            Worktree::Local(this) => {
+                this.create_entry_with_options(path, is_directory, content, exclusive, cx)
+            }
             Worktree::Remote(this) => {
                 let project_id = this.project_id;
                 let request = this.client.request(proto::CreateProjectEntry {
@@ -985,6 +1021,7 @@ impl Worktree {
                     path: path.as_ref().as_unix_str().to_owned(),
                     content,
                     is_directory,
+                    exclusive,
                 });
                 cx.spawn(async move |this, cx| {
                     let response = request.await?;
@@ -1154,7 +1191,7 @@ impl Worktree {
         let (scan_id, entry) = this.update(&mut cx, |this, cx| {
             anyhow::Ok((
                 this.scan_id(),
-                this.create_entry(
+                this.create_entry_with_options(
                     RelPath::from_unix_str(&request.path)
                         .with_context(|| {
                             format!("received invalid relative path {:?}", request.path)
@@ -1162,6 +1199,7 @@ impl Worktree {
                         .into(),
                     request.is_directory,
                     request.content,
+                    request.exclusive,
                     cx,
                 ),
             ))
@@ -1667,6 +1705,16 @@ impl LocalWorktree {
         path: &RelPath,
         cx: &Context<Worktree>,
     ) -> Task<Result<LoadedBinaryFile>> {
+        self.load_binary_file_with_limit(path, None, cx)
+    }
+
+    fn load_binary_file_with_limit(
+        &self,
+        path: &RelPath,
+        limit: Option<usize>,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<LoadedBinaryFile>> {
+        let root = self.abs_path.clone();
         let path = Arc::from(path);
         let abs_path = self.absolutize(&path);
         let fs = self.fs.clone();
@@ -1675,7 +1723,26 @@ impl LocalWorktree {
 
         let worktree = cx.weak_entity();
         cx.background_spawn(async move {
-            let content = fs.load_bytes(&abs_path).await?;
+            let content = if let Some(limit) = limit {
+                let root = fs.canonicalize(root.as_path()).await?;
+                let canonical = fs.canonicalize(&abs_path).await?;
+                anyhow::ensure!(
+                    canonical.starts_with(&root),
+                    "Binary resource resolves outside its owning worktree"
+                );
+                let mut content = Vec::new();
+                fs.open_sync(&canonical)
+                    .await?
+                    .take((limit as u64).saturating_add(1))
+                    .read_to_end(&mut content)?;
+                anyhow::ensure!(
+                    content.len() <= limit,
+                    "Binary resource exceeds its byte limit"
+                );
+                content
+            } else {
+                fs.load_bytes(&abs_path).await?
+            };
 
             let worktree = worktree.upgrade().context("worktree was dropped")?;
             let file = match entry.await? {
@@ -1793,6 +1860,18 @@ impl LocalWorktree {
         content: Option<Vec<u8>>,
         cx: &Context<Worktree>,
     ) -> Task<Result<CreatedEntry>> {
+        self.create_entry_with_options(path, is_dir, content, false, cx)
+    }
+
+    fn create_entry_with_options(
+        &self,
+        path: Arc<RelPath>,
+        is_dir: bool,
+        content: Option<Vec<u8>>,
+        exclusive: bool,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<CreatedEntry>> {
+        let root = self.abs_path.clone();
         let abs_path = self.absolutize(&path);
         let path_excluded = self.settings.is_path_excluded(&path);
         let fs = self.fs.clone();
@@ -1803,6 +1882,19 @@ impl LocalWorktree {
                     .await
                     .with_context(|| format!("creating directory {task_abs_path:?}"))
             } else {
+                if exclusive {
+                    let root = fs.canonicalize(root.as_path()).await?;
+                    let parent = task_abs_path
+                        .parent()
+                        .context("Image destination has no parent")?;
+                    let parent = fs.canonicalize(parent).await?;
+                    anyhow::ensure!(
+                        parent.starts_with(root),
+                        "Exclusive asset destination resolves outside its owning worktree"
+                    );
+                    fs.create_file(&task_abs_path, fs::CreateOptions::default())
+                        .await?;
+                }
                 fs.write(&task_abs_path, content.as_deref().unwrap_or(&[]))
                     .await
                     .with_context(|| format!("creating file {task_abs_path:?}"))
@@ -2529,6 +2621,7 @@ impl RemoteWorktree {
                         path: target_path.as_unix_str().to_owned(),
                         is_directory,
                         content,
+                        exclusive: false,
                     });
                 }
             }

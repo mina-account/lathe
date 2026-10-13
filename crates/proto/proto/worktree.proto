@@ -100,6 +100,7 @@ message CreateProjectEntry {
   string path = 3;
   bool is_directory = 4;
   optional bytes content = 5;
+  bool exclusive = 6;
 }
 
 message RenameProjectEntry {

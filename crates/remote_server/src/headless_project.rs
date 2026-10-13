@@ -881,7 +881,15 @@ impl HeadlessProject {
             .context("worktree not found")?;
 
         let download_task = worktree.update(&mut cx, |worktree: &mut Worktree, cx| {
-            worktree.load_binary_file(path.as_ref(), cx)
+            if let Some(limit) = message.payload.byte_limit {
+                worktree.load_binary_file_with_limit(
+                    path.as_ref(),
+                    limit.min(4 * 1024 * 1024) as usize,
+                    cx,
+                )
+            } else {
+                worktree.load_binary_file(path.as_ref(), cx)
+            }
         });
 
         let downloaded_file = download_task.await?;

@@ -83,6 +83,106 @@ use util::{
 };
 
 #[gpui::test]
+async fn test_project_binary_resources_complete_remote_chunks_and_preserve_exclusive_writes(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let filesystem = FakeFs::new(server_cx.executor());
+    filesystem
+        .insert_tree(path!("/code/project"), json!({"assets":{"empty.bin":""}}))
+        .await;
+    let bytes = (0..(2 * 1024 * 1024 + 17))
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    filesystem
+        .write(path!("/code/project/assets/中 #.bin").as_ref(), &bytes)
+        .await
+        .expect("binary fixture");
+    let (project, _headless) = init_test(&filesystem, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project"), true, cx)
+        })
+        .await
+        .expect("remote worktree");
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let path: ProjectPath = (worktree_id, rel_path("assets/中 #.bin")).into();
+    let first = project.update(cx, |project, cx| {
+        project.load_binary_resource(path.clone(), 4 * 1024 * 1024, cx)
+    });
+    let second = project.update(cx, |project, cx| {
+        project.load_binary_resource(path.clone(), 4 * 1024 * 1024, cx)
+    });
+    assert_eq!(first.await.expect("all first chunks"), bytes);
+    assert_eq!(second.await.expect("all concurrent chunks"), bytes);
+    assert!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                path.clone(),
+                16,
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    let empty: ProjectPath = (worktree_id, rel_path("assets/empty.bin")).into();
+    assert!(
+        project
+            .update(cx, |project, cx| project
+                .load_binary_resource(empty, 16, cx))
+            .await
+            .expect("empty resource")
+            .is_empty()
+    );
+    assert!(
+        worktree
+            .update(cx, |worktree, cx| worktree.create_entry_exclusive(
+                rel_path("assets/中 #.bin").into(),
+                b"overwrite".to_vec(),
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        filesystem
+            .load_bytes(path!("/code/project/assets/中 #.bin").as_ref())
+            .await
+            .expect("unchanged remote file"),
+        bytes
+    );
+    worktree
+        .update(cx, |worktree, cx| {
+            worktree.create_entry_exclusive(rel_path("assets/upload.bin").into(), bytes.clone(), cx)
+        })
+        .await
+        .expect("remote exclusive import");
+    let uploaded: ProjectPath = (worktree_id, rel_path("assets/upload.bin")).into();
+    assert_eq!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                uploaded,
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .expect("remote imported resource"),
+        bytes
+    );
+    let missing: ProjectPath = (worktree_id, rel_path("assets/missing.bin")).into();
+    assert!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                missing,
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .is_err()
+    );
+}
+
+#[gpui::test]
 async fn test_basic_remote_editing(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
     let fs = FakeFs::new(server_cx.executor());
     fs.insert_tree(

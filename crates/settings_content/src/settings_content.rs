@@ -264,6 +264,8 @@ pub struct SettingsContent {
     /// The settings for the markdown preview.
     pub markdown_preview: Option<MarkdownPreviewSettingsContent>,
 
+    pub markdown_editor: Option<MarkdownEditorSettingsContent>,
+
     pub repl: Option<ReplSettingsContent>,
 
     /// Whether or not to enable Helix mode.
@@ -481,7 +483,7 @@ fallible_options::flattened_deserialize!(SettingsContent {
         pull_request_panel, git_activity_panel, mobile_dev_panel, tabs, tab_bar, status_bar,
         preview_tabs, agent, agent_servers, ai_accounts, audio, auto_update, base_keymap,
         collaboration_panel, debugger, diagnostics, git,
-        global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
+        global_lsp_settings, image_viewer, markdown_preview, markdown_editor, repl, helix_mode, hide_mouse,
         journal, log, line_indicator_format, language_models, copilot, outline_panel, project_panel,
         node, proxy, reduce_motion, allow_binary_downloads, prompt_before_binary_downloads,
         approved_binary_downloads, server_url, credentials_url, session,
@@ -1422,6 +1424,20 @@ pub enum LineIndicatorFormat {
     Short,
     #[default]
     Long,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, MergeFrom, Default, PartialEq)]
+pub struct MarkdownEditorSettingsContent {
+    pub image_save_folder: Option<String>,
+    pub use_app_theme_colors: Option<bool>,
+    pub show_line_numbers: Option<bool>,
+    pub default_open_outline: Option<bool>,
+    pub custom_css: Option<String>,
+    pub content_theme: Option<String>,
+    pub code_theme: Option<String>,
+    /// Explicit network service URL ending at the PlantUML server root.
+    pub plantuml_service: Option<String>,
 }
 
 /// The settings for the markdown preview.

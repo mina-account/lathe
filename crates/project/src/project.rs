@@ -1,5 +1,7 @@
 pub mod agent_registry_store;
 pub mod agent_server_store;
+pub mod binary_download_consent;
+mod binary_resource;
 pub mod bookmark_store;
 pub mod buffer_store;
 pub mod color_extractor;
@@ -21,7 +23,6 @@ pub mod task_store;
 pub mod telemetry_snapshot;
 pub mod terminals;
 pub mod toolchain_store;
-pub mod binary_download_consent;
 pub mod trusted_worktrees;
 pub mod worktree_store;
 
@@ -256,6 +257,7 @@ pub struct Project {
     toolchain_store: Option<Entity<ToolchainStore>>,
     agent_location: Option<AgentLocation>,
     downloading_files: Arc<Mutex<HashMap<(WorktreeId, String), DownloadingFile>>>,
+    binary_resource_downloads: HashMap<u64, binary_resource::BinaryResourceDownload>,
     last_worktree_paths: WorktreePaths,
 }
 
@@ -1218,6 +1220,7 @@ impl Project {
         client.add_entity_request_handler(Self::handle_find_search_candidates_chunk);
         client.add_entity_message_handler(Self::handle_find_search_candidates_cancel);
         client.add_entity_message_handler(Self::handle_create_file_for_peer);
+        client.add_entity_request_handler(Self::handle_binary_resource_request);
 
         WorktreeStore::init(&client);
         BufferStore::init(&client);
@@ -1433,6 +1436,7 @@ impl Project {
 
                 agent_location: None,
                 downloading_files: Default::default(),
+                binary_resource_downloads: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
             }
         })
@@ -1677,6 +1681,7 @@ impl Project {
                 toolchain_store: Some(toolchain_store),
                 agent_location: None,
                 downloading_files: Default::default(),
+                binary_resource_downloads: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
             };
 
@@ -1969,6 +1974,7 @@ impl Project {
                 toolchain_store: None,
                 agent_location: None,
                 downloading_files: Default::default(),
+                binary_resource_downloads: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
             };
             project.set_role(role, cx);
@@ -3250,8 +3256,7 @@ impl Project {
         let downloading_files = self.downloading_files.clone();
         let path_str = path.as_unix_str().to_owned();
 
-        static NEXT_FILE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        let file_id = NEXT_FILE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let file_id = binary_resource::next_file_id();
 
         // Register BEFORE sending request to avoid race condition
         let key = (worktree_id, path_str.clone());
@@ -3282,6 +3287,7 @@ impl Project {
                     worktree_id: worktree_id.to_proto(),
                     path: path_str.clone(),
                     file_id,
+                    byte_limit: None,
                 })
                 .await?;
 
@@ -6229,6 +6235,11 @@ impl Project {
         mut cx: AsyncApp,
     ) -> Result<()> {
         use proto::create_file_for_peer::Variant;
+        if this.update(&mut cx, |this, _| {
+            this.receive_binary_resource(&envelope.payload)
+        }) {
+            return Ok(());
+        }
         log::debug!("handle_create_file_for_peer: received message");
 
         let downloading_files: Arc<Mutex<HashMap<(WorktreeId, String), DownloadingFile>>> =

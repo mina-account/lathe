@@ -10,6 +10,7 @@ const rust = await readFile(new URL("../src/browser.rs",import.meta.url),"utf8")
 const csp = rust.match(/CONTENT_SECURITY_POLICY: &str = "([^"]+)"/)[1];
 const resources = new Set(["index.html","application.js","application.css","rich.js","vendor/vditor.js","vendor/lute.js","vendor/en_US.js","vendor/purify.js","vendor/vditor.css","vendor/icons.js"]);
 before(async () => {
+    for (const {path} of JSON.parse(await readFile(new URL("vendor/manifest.json",import.meta.url),"utf8"))) resources.add(path);
     server = createServer(async (request,response) => {
         const path = new URL(request.url,"http://localhost").pathname.slice(1);
         if (!resources.has(path)) {response.statusCode=404; response.end(); return;}
@@ -25,7 +26,7 @@ after(async () => {await browser?.close(); server?.closeAllConnections(); await 
 async function open(source,mode="ir",writable=true) {
     const context = await browser.newContext(), page = await context.newPage();
     const errors = [], external = [];
-    page.on("pageerror",error => errors.push(error.message));
+    page.on("pageerror",error => errors.push(error.stack));
     await context.route("**/*",route => {
         if (route.request().url().startsWith(origin+"/")) return route.continue();
         external.push(route.request().url()); return route.abort();
@@ -80,6 +81,158 @@ test("normalization boundaries preserve autolink markers and hard breaks through
         assert.deepEqual(await page.evaluate(()=>({blocked:window.latheMarkdown.blocked,flushed:window.testMessages.some(message=>message.kind==="flushed"&&message.request===994),same:window.latheMarkdown.base===window.latheRich.projection.source})),{blocked:false,flushed:true,same:true});
         await context.close();
     }
+});
+
+test("every frozen local renderer has output beside its preserved editable source",async()=>{
+    const inputs={mermaid:"graph TD; A-->B",graphviz:"digraph G { a -> b; }",echarts:'{"xAxis":{"data":["A","B"]},"yAxis":{},"series":[{"type":"bar","data":[1,2]}]}',abc:"X:1\nT:Example\nM:4/4\nK:C\nCDEF GABc|",flowchart:"st=>start: Start\ne=>end: End\nst->e",markmap:"# Root\n\n- Child",smiles:"CCO",math:"\\ce{H2O} + x^2",mindmap:"- Root\n    - Child"};
+    for (const [language,input] of Object.entries(inputs)) {
+        const source=`Before\n\n\`\`\`${language}\n${input}\n\`\`\`\n\nTail`, {page,context,external}=await open(source,"preview");
+        await page.waitForSelector(`[data-renderer="${language}"][data-state="ready"]`,{timeout:20000});
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.equal(await page.locator(`[data-renderer="${language}"] svg, [data-renderer="${language}"] .katex`).count()>0,true,language);
+        const text=await page.locator(`[data-renderer="${language}"]`).textContent();
+        if(language==="mermaid" || language==="graphviz") { assert.match(text,/a|A/,language); assert.match(text,/b|B/,language); }
+        if(language==="markmap" || language==="mindmap") { assert.match(text,/Root/); assert.match(text,/Child/); }
+        if(language==="flowchart") { assert.match(text,/Start/); assert.match(text,/End/); }
+        if(language==="abc") assert.match(text,/Example/);
+        if(language==="smiles") assert.match(text,/O/);
+        if(language==="math") assert.match(text,/H.*2.*O/);
+        if(language==="math" || language==="markmap") assert.equal(await page.evaluate(()=>window.katex.version),"0.16.9");
+        if(language==="echarts") { assert.match(text,/A/); assert.match(text,/B/); assert(await page.locator('[data-renderer="echarts"] svg path').count()>2); }
+        assert.deepEqual(external,[]); await context.close();
+    }
+    for(const combined of ["```math\n\\ce{H2O}\n```\n\n```markmap\n# Root\n- Child\n```\n\n```math\nx^2\n```","```markmap\n# Root\n- Child\n```\n\n```math\n\\ce{H2O}\n```\n\n```math\nx^2\n```"]) {
+        const {page,context}=await open(combined,"ir");
+        await page.waitForFunction(()=>document.querySelectorAll('#blocks [data-renderer][data-state="ready"]').length===3);
+        assert.equal(await page.evaluate(()=>window.katex.version),"0.16.9");
+        assert.match(await page.locator('[data-renderer="math"]').first().textContent(),/H.*2.*O/);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),combined);
+        const field=page.locator('#blocks textarea').nth(combined.startsWith('```math')?0:1);
+        await field.fill("```math\n\\ce{CO2}\n```");await field.blur();await acknowledge(page);
+        await page.waitForFunction(()=>document.querySelector('[data-renderer="math"]')?.dataset.state==="ready" && /C.*O.*2/.test(document.querySelector('[data-renderer="math"]').textContent));
+        assert.equal(await page.evaluate(()=>window.katex.version),"0.16.9");
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),combined.replace('H2O','CO2'));await context.close();
+    }
+});
+
+test("malformed renderers report errors beside exact source and never execute chart code",async()=>{
+    const invalid={mermaid:"graph TD { ???",graphviz:"digraph { a ->",echarts:'({series:[],run:()=>{window.hostileExecuted=true}})',abc:"invalid",flowchart:"INVALID -> ???",markmap:"invalid",smiles:"invalid ???",math:"{ INVALID",mindmap:"# Root\n- Child",plantuml:"INVALID -> ???"};
+    for(const [language,input] of Object.entries(invalid)) {
+        const source=`\`\`\`${language}\n${input}\n\`\`\``,{page,context}=await open(source,"preview");
+        await page.waitForSelector(`[data-renderer="${language}"][data-state="error"]`,{timeout:20000});
+        assert.equal(await page.locator("#blocks textarea").inputValue(),source);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.equal(await page.evaluate(()=>window.hostileExecuted),undefined);await context.close();
+    }
+    const {page,context}=await open("```wavedrom\n{signal:[]}\n```\n\n```sequence\nA->B: hello\n```","preview");
+    assert.equal(await page.locator("[data-renderer]").count(),0);await context.close();
+});
+
+test("Mermaid sequence, sequential ABC and SMILES, and math delimiters render offline in every presentation",async()=>{
+    const source="Escaped \\$5, `\\$code$`, numeric $2x+1$ and $\\ce{H2O}$.\n\n$$\na^2+b^2=c^2\n$$\n\n```mermaid\nsequenceDiagram\nAlice->>Bob: Hello\n```\n\n```abc\nX:1\nK:C\nCDEF|\n```\n\n```smiles\nCCO\n```\n\nTail";
+    for(const mode of ["ir","wysiwyg","sv","preview"]) {
+        const {page,context,external}=await open(source,mode);
+        try { await page.waitForFunction(()=>["mermaid","abc","smiles"].every(language=>document.querySelector(`[data-renderer="${language}"][data-state="ready"]`)) && document.querySelectorAll('[data-renderer="math"][data-state="ready"]').length>=3); }
+        catch(error){throw new Error(`${mode}: ${JSON.stringify(await page.locator('[data-renderer]').evaluateAll(elements=>elements.map(element=>({language:element.dataset.renderer,state:element.dataset.state,text:element.textContent.slice(0,200)}))))}`,{cause:error});}
+        assert.equal(await page.locator('[data-renderer="math"][data-state="error"]').count(),0);
+        const root=mode==="preview"?page.locator('#viewer'):mode==="sv"?page.locator('.vditor-preview'):page.locator(`.vditor-${mode}`);
+        assert(await root.locator('.katex').count()>=3,`${mode}: in-flow inline and block math`);
+        assert(await page.locator('[data-renderer="mermaid"] svg').count());
+        assert.deepEqual(external,[]);assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        if(mode!=="preview") {
+            await selectText(page,"Tail");await page.keyboard.insertText("Changed");await page.evaluate(()=>window.latheRich.commit());
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('Tail','Changed'));await acknowledge(page);
+            await selectText(page,"Changed");await page.keyboard.insertText("Again");await page.evaluate(()=>window.latheRich.commit());
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('Tail','Again'));await acknowledge(page);
+            await page.evaluate(()=>window.latheMarkdown.receive({kind:'flush',request:772}));
+            assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==='flushed'&&message.request===772)));
+            await selectText(page,"Again");
+            const composition=await context.newCDPSession(page);
+            await page.evaluate(()=>window.mathComposingRoot=window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element);
+            await composition.send('Input.imeSetComposition',{text:'中文😀',selectionStart:4,selectionEnd:4});
+            await page.evaluate(()=>{window.latheRich.commit();window.latheMarkdown.receive({kind:'flush',request:773});});
+            assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==='flushed'&&message.request===773)),false);
+            assert(await page.evaluate(()=>window.mathComposingRoot===window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element));
+            await composition.send('Input.insertText',{text:'中文😀'});await page.waitForFunction(()=>window.latheMarkdown.pending);
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('Tail','中文😀'));await acknowledge(page);
+            assert(await page.evaluate(()=>window.testMessages.some(message=>message.kind==='flushed'&&message.request===773)));
+        }
+        await context.close();
+    }
+});
+
+test("theme choices and app colors update the existing document without moving selection or history",async()=>{
+    const {page,context}=await open("# Heading\n\nordinary selected paragraph\n\n```rust\nfn main() {}\n```","ir");
+    await selectText(page,"selected");
+    await page.evaluate(()=>{window.originalEditor=window.latheRich.editor;window.originalProjection=window.latheRich.projection;});
+    const baseline=JSON.parse(await readFile(new URL("../../../project-docs/imp-plans/markdown-editor-baseline/runtime.json",import.meta.url),"utf8"));
+    for(const theme of baseline.contentThemes)await page.selectOption("#content-theme",theme);
+    for(const theme of baseline.codeThemes)await page.selectOption("#code-theme",theme);
+    await page.evaluate(()=>window.latheMarkdown.receive({kind:"appearance",dark:true,use_app_theme_colors:true,show_line_numbers:false,background:"rgb(10, 20, 30)",foreground:"rgb(200, 210, 220)",accent:"rgb(40, 50, 60)",custom_css:".vditor-reset p { letter-spacing: 3px; }",plantuml_service:null}));
+    assert.equal(await page.evaluate(()=>window.latheRich.editor===window.originalEditor),true);
+    assert.equal(await page.evaluate(()=>window.getSelection().toString()),"selected");
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),"rgb(10, 20, 30)");
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.vditor-ir p')).letterSpacing),"3px");
+    assert.equal(await page.locator('.line-gutter').count(),0);
+    assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>["edit","draft","undo","redo"].includes(message.kind)).length),0);
+    await context.close();
+});
+
+test("image resources use project byte messages and preserve source through real neighboring edits",async()=>{
+    const source="Before\n\n![image](assets/%E4%B8%AD%20%23.png)\n\nTail",png="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6rQAAAABJRU5ErkJggg==";
+    for(const mode of ["ir","wysiwyg","sv","preview"]) {
+        const {page,context,external}=await open(source,mode);
+        await page.evaluate(png=>{for(const message of window.testMessages.filter(message=>message.kind==="resource"))window.latheMarkdown.receive({kind:"resource",request:message.request,mime:"image/png",bytes:png,error:null});},png);
+        try { await page.waitForFunction(()=>[...document.querySelectorAll('img')].some(image=>image.src.startsWith("blob:") && image.naturalWidth===1)); }
+        catch(error){throw new Error(`${mode}: ${JSON.stringify(await page.evaluate(()=>({images:[...document.querySelectorAll('img')].map(image=>image.outerHTML),messages:window.testMessages,status:document.querySelector('#status').textContent})))}`,{cause:error});}
+        if(mode!=="preview") {
+            await selectText(page,"Tail");await page.keyboard.insertText("Changed");await page.evaluate(()=>window.latheRich.commit());
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Tail","Changed"));
+        }
+        assert.deepEqual(external,[]);await context.close();
+    }
+});
+
+test("PlantUML is explicitly service backed and sanitizes configured service output",async()=>{
+    const source="```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```",{page,context,external}=await open(source,"preview");
+    await page.waitForSelector('[data-renderer="plantuml"][data-state="error"]');
+    assert.match(await page.locator('[data-renderer="plantuml"]').textContent(),/cannot render offline/);
+    await page.evaluate(()=>{
+        window.latheMarkdown.receive({kind:"appearance",plantuml_service:"https://configured.invalid/plantuml",dark:false,show_line_numbers:true});
+        window.latheMarkdown.send=message=>{window.testMessages.push(message);if(message.kind==="plantuml")window.latheMarkdown.receive({kind:"resource",request:message.request,mime:"image/svg+xml",bytes:btoa('<svg onload="window.hostileExecuted=true" xmlns="http://www.w3.org/2000/svg"><script>window.hostileExecuted=true</script><text onclick="window.hostileExecuted=true">Alice and Bob</text><a href="javascript:evil()">unsafe</a></svg>'),error:null});};
+        window.latheMarkdown.receive({kind:"document",revision:1,text:window.latheMarkdown.draft+"\n",writable:true,draft:null});
+    });
+    await page.waitForSelector('[data-renderer="plantuml"][data-state="ready"]');
+    assert.equal(await page.locator('[data-renderer="plantuml"] script,[data-renderer="plantuml"] [onclick],[data-renderer="plantuml"] a').count(),0);
+    assert.equal(await page.evaluate(()=>window.hostileExecuted),undefined);assert.deepEqual(external,[]);await context.close();
+});
+
+test("clipboard and drop file messages capture the original source caret after pending edits flush",async()=>{
+    for(const mode of ["ir","wysiwyg","sv"]) for(const transfer of ["paste","drop"]) {
+        const source="Before\n\n**alpha** middle Tail",{page,context}=await open(source,mode);
+        await selectText(page,"middle");
+        await page.evaluate(transfer=>{
+            const data=new DataTransfer();data.items.add(new File([new Uint8Array([1,2,3])],"clipboard.png",{type:"image/png"}));
+            const root=window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element;
+            root.dispatchEvent(transfer==="paste"?new ClipboardEvent("paste",{clipboardData:data,bubbles:true,cancelable:true}):new DragEvent("drop",{dataTransfer:data,bubbles:true,cancelable:true}));
+        },transfer);
+        await page.waitForFunction(()=>window.testMessages.some(message=>message.kind==="import_images"));
+        const message=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="import_images"));
+        assert.equal(message.position,source.indexOf("middle"),`${mode}/${transfer}`);assert.equal(message.base_revision,0);assert.equal(message.images[0].bytes,"AQID");
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);await context.close();
+    }
+});
+
+test("resource failures, resets, hostile SVG and custom CSS leave source and document permissions intact",async()=>{
+    const source="Before\n\n![original](assets/a.png)\n\nTail",{page,context,external}=await open(source,"wysiwyg");
+    await page.evaluate(()=>{for(const request of window.testMessages.filter(message=>message.kind==="resource"))window.latheMarkdown.receive({kind:"resource",request:request.request,mime:"",bytes:"",error:"Disconnected"});});
+    await page.waitForSelector("img.resource-error");
+    await selectText(page,"Tail");await page.keyboard.insertText("Changed");await page.evaluate(()=>window.latheRich.commit());
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Tail","Changed"));await acknowledge(page);
+    await page.evaluate(()=>window.latheMarkdown.receive({kind:"resources_reset"}));
+    await page.waitForFunction(()=>window.testMessages.filter(message=>message.kind==="resource").length>=2);
+    await page.evaluate(()=>window.latheMarkdown.receive({kind:"appearance",dark:false,use_app_theme_colors:true,show_line_numbers:false,background:"#fff",foreground:"#222",accent:"blue",custom_css:'@import url("https://evil.invalid/steal.css"); .vditor-reset { background-image:url("file:///private"); }',plantuml_service:null}));
+    assert.deepEqual(external,[]);assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Tail","Changed"));await context.close();
 });
 
 test("empty and blank documents accept first keyboard input in every editing mode",async()=>{

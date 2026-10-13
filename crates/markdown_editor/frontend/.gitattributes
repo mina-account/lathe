@@ -5,3 +5,5 @@
 *.html text eol=lf
 *.css text eol=lf
 vendor/* -text whitespace=-blank-at-eof
+vendor/** -text whitespace=-blank-at-eof
+vendor/dist/** -text whitespace=-blank-at-eof,-blank-at-eol

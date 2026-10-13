@@ -6,6 +6,17 @@ button, select, input { font:inherit; }
 #status { margin:0; padding:3px 8px; font-size:12px; min-height:16px; }
 main { display:flex; flex:1; min-height:0; }
 #document { flex:1; min-width:0; }
+#document { position:relative; }
+.app-theme, .app-theme .vditor-reset, .app-theme .vditor-content { background:var(--app-background); color:var(--app-foreground); }
+.app-theme .vditor { --textarea-background-color:var(--app-background); --text-color:var(--app-foreground); --border-color:var(--app-accent); }
+.line-numbers .vditor-ir .vditor-reset { padding-left:60px !important; }
+.line-gutter { position:absolute; left:4px; top:0; width:30px; height:100%; overflow:hidden; pointer-events:none; user-select:none; }
+.line-gutter span { position:absolute; right:0; font:11px monospace; opacity:.5; }
+.renderer-output { padding:8px; max-width:100%; overflow:auto; }
+.renderer-output svg { max-width:100%; }
+.renderer-output[data-state=error] { color:#bd3030; }
+.resource-error { outline:1px solid #bd3030; }
+.has-renderers #source-blocks { height:30%; flex-shrink:0; box-sizing:border-box; }
 #viewer { flex:1; overflow:auto; padding:16px; min-width:0; }
 #outline { width:190px; overflow:auto; flex-shrink:0; border-right:1px solid #ddd; }
 #outline button { display:block; text-align:left; width:100%; border:0; background:transparent; padding:8px; cursor:pointer; }
