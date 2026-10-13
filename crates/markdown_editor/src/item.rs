@@ -1,4 +1,5 @@
 use crate::protocol::{self, ClientMessage, HostMessage, Protocol};
+use crate::protocol::{Mode, ViewPreferences};
 use anyhow::{Result, bail};
 use editor::Editor;
 use futures::channel::oneshot;
@@ -17,8 +18,20 @@ use workspace::{
 
 actions!(
     markdown_editor,
-    [Open, OpenSource, RecoverDraft, RestartBrowser]
+    [Open, OpenSource, RecoverDraft, RestartBrowser, Find]
 );
+
+#[derive(Clone, PartialEq, gpui::Action)]
+#[action(namespace = markdown_editor, no_json, no_register)]
+struct Format {
+    control: &'static str,
+}
+
+#[derive(Clone, PartialEq, gpui::Action)]
+#[action(namespace = markdown_editor, no_json, no_register)]
+struct ChangeMode {
+    mode: &'static str,
+}
 
 pub trait BrowserSurface {
     fn send(&mut self, message: &HostMessage) -> Result<()>;
@@ -100,6 +113,10 @@ pub struct MarkdownEditor {
     pub buffer: Entity<Buffer>,
     pub protocol: Protocol,
     pub browser_ready: bool,
+    pub preferences: ViewPreferences,
+    #[cfg(feature = "test-support")]
+    pub copied_text: Option<String>,
+    window: gpui::AnyWindowHandle,
     surface: Option<Box<dyn BrowserSurface>>,
     accepting_input: bool,
     focus: FocusHandle,
@@ -110,6 +127,7 @@ pub struct MarkdownEditor {
     retired_images: Vec<Arc<gpui::RenderImage>>,
     bounds: gpui::Bounds<gpui::Pixels>,
     selection: std::ops::Range<usize>,
+    input_text: Option<String>,
     marked: Option<std::ops::Range<usize>>,
     captured: Option<gpui::MouseDownEvent>,
     pointer: gpui::Point<gpui::Pixels>,
@@ -118,18 +136,116 @@ pub struct MarkdownEditor {
     _pump: Task<()>,
 }
 
+fn heading_offset(text: &str, fragment: &str) -> Option<usize> {
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+    let options = Options::ENABLE_HEADING_ATTRIBUTES | Options::ENABLE_STRIKETHROUGH;
+    let mut heading: Option<(usize, String)> = None;
+    for (event, range) in Parser::new_ext(text, options).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Heading { id, .. }) => {
+                if id.as_deref() == Some(fragment) {
+                    return Some(range.start);
+                }
+                heading = Some((range.start, String::new()));
+            }
+            Event::Text(text) | Event::Code(text) if heading.is_some() => {
+                if let Some((_, title)) = &mut heading {
+                    title.push_str(&text);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak if heading.is_some() => {
+                if let Some((_, title)) = &mut heading {
+                    title.push(' ');
+                }
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some((offset, title)) = heading.take() {
+                    let slug = title
+                        .to_lowercase()
+                        .chars()
+                        .filter(|character| {
+                            character.is_alphanumeric()
+                                || character.is_whitespace()
+                                || *character == '-'
+                        })
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join("-");
+                    if slug == fragment {
+                        return Some(offset);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn document_preference_key(source: &Editor, buffer: &Buffer, cx: &App) -> Result<Option<String>> {
+    let Some(file) = buffer.file() else {
+        return Ok(None);
+    };
+    let Some(project) = source.project() else {
+        return Ok(None);
+    };
+    let project = project.read(cx);
+    let Some(path) = project.absolute_path(&ProjectPath::from_file(file.as_ref(), cx), cx) else {
+        return Ok(None);
+    };
+    let identity = serde_json::to_string(&(
+        project.remote_connection_options(cx),
+        project.remote_id().filter(|_| !project.is_local()),
+        path,
+    ))?;
+    Ok(Some(format!("markdown-editor-document-{identity}")))
+}
+
 pub fn init(cx: &mut App) {
     workspace::register_serializable_item::<MarkdownEditor>(cx);
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     cx.bind_keys([
         gpui::KeyBinding::new("ctrl-z", editor::actions::Undo, Some("MarkdownEditor")),
         gpui::KeyBinding::new("ctrl-y", editor::actions::Redo, Some("MarkdownEditor")),
+        gpui::KeyBinding::new("ctrl-f", Find, Some("MarkdownEditor")),
         gpui::KeyBinding::new(
             "ctrl-shift-z",
             editor::actions::Redo,
             Some("MarkdownEditor"),
         ),
     ]);
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    cx.bind_keys(
+        [
+            ("ctrl-b", "bold"),
+            ("ctrl-i", "italic"),
+            ("ctrl-d", "strike"),
+            ("ctrl-k", "link"),
+            ("ctrl-l", "list"),
+            ("ctrl-o", "ordered-list"),
+            ("ctrl-j", "check"),
+            ("ctrl-shift-i", "outdent"),
+            ("ctrl-shift-o", "indent"),
+            ("ctrl-;", "quote"),
+            ("ctrl-shift-h", "line"),
+            ("ctrl-u", "code"),
+            ("ctrl-g", "inline-code"),
+            ("ctrl-m", "table"),
+        ]
+        .map(|(key, control)| {
+            gpui::KeyBinding::new(key, Format { control }, Some("MarkdownEditor"))
+        }),
+    );
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    cx.bind_keys(
+        [
+            ("ctrl-alt-7", "wysiwyg"),
+            ("ctrl-alt-8", "ir"),
+            ("ctrl-alt-9", "sv"),
+        ]
+        .map(|(key, mode)| gpui::KeyBinding::new(key, ChangeMode { mode }, Some("MarkdownEditor"))),
+    );
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         #[cfg(all(feature = "browser", any(target_os = "windows", target_os = "linux")))]
         workspace.register_action(|workspace, _: &Open, window, cx| {
@@ -247,6 +363,24 @@ impl MarkdownEditor {
         let document = buffer.entity_id().as_u64();
         let session = format!("{}-{}", std::process::id(), cx.entity_id().as_u64());
         let text = buffer.read(cx).snapshot().text();
+        let preferences = document_preference_key(source.read(cx), buffer.read(cx), cx)
+            .and_then(|key| {
+                key.map(|key| db::kvp::KeyValueStore::global(cx).read_kvp(&key))
+                    .transpose()
+                    .map(Option::flatten)
+            })
+            .and_then(|value| {
+                value
+                    .map(|value| serde_json::from_str(&value).map_err(Into::into))
+                    .transpose()
+            });
+        let preferences = match preferences {
+            Ok(preferences) => preferences.unwrap_or_default(),
+            Err(error) => {
+                log::error!("Markdown document preferences restoration: {error:#}");
+                ViewPreferences::default()
+            }
+        };
         let subscription = cx.subscribe(&buffer, |this, _, event, cx| {
             if matches!(
                 event,
@@ -278,6 +412,10 @@ impl MarkdownEditor {
             buffer,
             protocol: Protocol::new(session, document, text),
             browser_ready: false,
+            preferences,
+            #[cfg(feature = "test-support")]
+            copied_text: None,
+            window: window.window_handle(),
             surface: None,
             accepting_input: false,
             focus: cx.focus_handle(),
@@ -288,6 +426,7 @@ impl MarkdownEditor {
             retired_images: Vec::new(),
             bounds: Default::default(),
             selection: 0..0,
+            input_text: None,
             marked: None,
             captured: None,
             pointer: Default::default(),
@@ -295,6 +434,18 @@ impl MarkdownEditor {
             _release_subscription: release_subscription,
             _pump: Task::ready(()),
         }
+    }
+
+    fn persist_document_preferences(&self, cx: &mut Context<Self>) -> Task<Result<()>> {
+        let key = document_preference_key(self.source.read(cx), self.buffer.read(cx), cx);
+        let preferences = serde_json::to_string(&self.preferences);
+        let store = db::kvp::KeyValueStore::global(cx);
+        cx.background_spawn(async move {
+            if let Some(key) = key? {
+                store.write_kvp(key, preferences?).await?;
+            }
+            Ok(())
+        })
     }
 
     pub fn attach(
@@ -307,10 +458,7 @@ impl MarkdownEditor {
         }
         self.surface = Some(surface);
         self.accepting_input = true;
-        self.send(
-            self.protocol
-                .document_message(!self.source.read(cx).read_only(cx)),
-        )?;
+        self.send(self.protocol.document_message(self.writable(cx)))?;
         self.error = None;
         Ok(())
     }
@@ -322,11 +470,13 @@ impl MarkdownEditor {
         Ok(())
     }
 
+    fn writable(&self, cx: &App) -> bool {
+        self.preferences.mode != Mode::Preview && !self.source.read(cx).read_only(cx)
+    }
+
     fn synchronize(&mut self, cx: &mut Context<Self>) {
         self.protocol.update(self.buffer.read(cx).snapshot().text());
-        let message = self
-            .protocol
-            .document_message(!self.source.read(cx).read_only(cx));
+        let message = self.protocol.document_message(self.writable(cx));
         if let Err(error) = self.send(message) {
             self.failed(error, cx);
         }
@@ -342,6 +492,140 @@ impl MarkdownEditor {
         )?;
         self.protocol.update(self.buffer.read(cx).snapshot().text());
         match &message {
+            ClientMessage::InputState {
+                text, start, end, ..
+            } => {
+                self.selection = *start..*end;
+                self.input_text = Some(text.clone());
+            }
+            ClientMessage::Preferences { preferences, .. } => {
+                if self.protocol.draft.is_some() && preferences.mode != self.preferences.mode {
+                    bail!("Flush visual edits before changing presentation");
+                }
+                self.preferences = preferences.clone();
+                self.synchronize(cx);
+                cx.emit(ItemEvent::UpdateTab);
+            }
+            ClientMessage::Copy { text, .. } => {
+                #[cfg(feature = "test-support")]
+                {
+                    self.copied_text = Some(text.clone());
+                }
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+            }
+            ClientMessage::OpenLink { url, .. } => {
+                let url = url.clone();
+                let source = self.source.clone();
+                let base_directory = self.buffer.read(cx).file().and_then(|file| {
+                    let path = ProjectPath::from_file(file.as_ref(), cx);
+                    self.source
+                        .read(cx)
+                        .project()
+                        .and_then(|project| project.read(cx).absolute_path(&path, cx))
+                        .or_else(|| file.as_local().map(|file| file.abs_path(cx)))
+                        .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+                });
+                let window = self.window;
+                cx.spawn(async move |this, cx| {
+                    let result = async {
+                        let decoded_url = urlencoding::decode(&url)?;
+                        if decoded_url.split_once(':').is_some_and(|(scheme, _)| {
+                            matches!(
+                                scheme.to_ascii_lowercase().as_str(),
+                                "https" | "http" | "mailto"
+                            )
+                        }) {
+                            cx.update(|cx| cx.open_url(&url));
+                            return anyhow::Ok(());
+                        }
+                        let (path, fragment) = util::markdown::split_local_url_fragment(&url);
+                        let path = urlencoding::decode(path)?.into_owned();
+                        let fragment = fragment
+                            .map(urlencoding::decode)
+                            .transpose()?
+                            .map(|fragment| fragment.into_owned());
+                        let workspace = source
+                            .read_with(cx, |source, _| source.workspace())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("This link requires a project workspace")
+                            })?;
+                        let target = cx
+                            .update(|cx| {
+                                workspace::path_link::resolve_open_target(
+                                    &workspace.downgrade(),
+                                    workspace::path_link::PathMatching::Exact,
+                                    &path,
+                                    base_directory.as_deref(),
+                                    cx,
+                                )
+                            })
+                            .await
+                            .filter(|target| target.is_file())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("Could not find Markdown link destination: {path}")
+                            })?;
+                        let project =
+                            workspace.read_with(cx, |workspace, _| workspace.project().clone());
+                        let (worktree, path) = project
+                            .update(cx, |project, cx| {
+                                project.find_or_create_worktree(
+                                    target.path().path.clone(),
+                                    false,
+                                    cx,
+                                )
+                            })
+                            .await?;
+                        let project_path = ProjectPath {
+                            worktree_id: worktree.read_with(cx, |worktree, _| worktree.id()),
+                            path,
+                        };
+                        let opened = window
+                            .update(cx, |_, window, cx| {
+                                workspace.update(cx, |workspace, cx| {
+                                    workspace.open_path(project_path, None, true, window, cx)
+                                })
+                            })?
+                            .await?;
+                        if let Some(fragment) = fragment {
+                            window.update(cx, |_, window, cx| {
+                                if let Some(editor) = opened.act_as::<Editor>(cx) {
+                                    editor.update(cx, |editor, cx| {
+                                        if let Some(offset) =
+                                            heading_offset(&editor.text(cx), &fragment)
+                                        {
+                                            editor.change_selections(
+                                                editor::SelectionEffects::scroll(
+                                                    editor::scroll::Autoscroll::center(),
+                                                ),
+                                                window,
+                                                cx,
+                                                |selections| {
+                                                    selections.select_ranges([
+                                                        editor::MultiBufferOffset(offset)
+                                                            ..editor::MultiBufferOffset(offset),
+                                                    ])
+                                                },
+                                            );
+                                        }
+                                    });
+                                }
+                            })?;
+                        }
+                        Ok(())
+                    }
+                    .await;
+                    if let Err(error) = result {
+                        log::error!("Markdown link: {error:#}");
+                        this.update(cx, |this, _| {
+                            this.send(HostMessage::Notice {
+                                text: error.to_string(),
+                            })
+                        })??;
+                    }
+                    anyhow::Ok(())
+                })
+                .detach_and_log_err(cx);
+            }
             ClientMessage::Selection { start, end, .. } => {
                 let text = self
                     .protocol
@@ -358,10 +642,10 @@ impl MarkdownEditor {
             }
             ClientMessage::Ready { .. } => {
                 self.browser_ready = true;
-                self.send(
-                    self.protocol
-                        .document_message(!self.source.read(cx).read_only(cx)),
-                )?;
+                self.send(HostMessage::Preferences {
+                    preferences: self.preferences.clone(),
+                })?;
+                self.send(self.protocol.document_message(self.writable(cx)))?;
             }
             ClientMessage::Draft {
                 sequence,
@@ -374,10 +658,7 @@ impl MarkdownEditor {
                 cx.emit(ItemEvent::Edit);
             }
             ClientMessage::Edit { request, .. } => {
-                match self
-                    .protocol
-                    .prepare(&message, !self.source.read(cx).read_only(cx))
-                {
+                match self.protocol.prepare(&message, self.writable(cx)) {
                     Ok(change) => {
                         if let Some(changes) = change.filter(|changes| !changes.is_empty()) {
                             self.buffer.update(cx, |buffer, cx| {
@@ -416,8 +697,8 @@ impl MarkdownEditor {
                     }
                 }
             }
-            ClientMessage::Undo { .. } | ClientMessage::Redo { .. } => {
-                if self.source.read(cx).read_only(cx) || self.protocol.draft.is_some() {
+            ClientMessage::Undo { request, .. } | ClientMessage::Redo { request, .. } => {
+                if !self.writable(cx) || self.protocol.draft.is_some() {
                     bail!("Flush visual input before undo/redo");
                 }
                 if self.protocol.history(&message)? {
@@ -430,6 +711,12 @@ impl MarkdownEditor {
                     });
                 }
                 self.synchronize(cx);
+                self.send(HostMessage::HistoryAccepted {
+                    request: *request,
+                    revision: self.protocol.revision,
+                    text: self.protocol.current().to_owned(),
+                    writable: self.writable(cx),
+                })?;
             }
         }
         cx.notify();
@@ -552,7 +839,7 @@ impl MarkdownEditor {
         cx.spawn(async move |this, cx| match flush.await {
             Ok(()) => {
                 if let Err(error) = this.update(cx, |this, cx| {
-                    if !this.source.read(cx).read_only(cx) {
+                    if this.writable(cx) {
                         this.buffer.update(cx, |buffer, cx| {
                             if redo {
                                 buffer.redo(cx);
@@ -734,6 +1021,166 @@ mod tests {
     use crate::protocol::Change;
     use gpui::{TestAppContext, UpdateGlobal, VisualTestContext};
 
+    #[test]
+    fn relative_heading_targets_include_setext_and_skip_fenced_source() {
+        let text = "```md\n# hidden\n```\n\nSetext title\n============\n\n## Visible title ##\n\n# Custom {#explicit}\n";
+        assert_eq!(heading_offset(text, "hidden"), None);
+        assert_eq!(
+            heading_offset(text, "setext-title"),
+            text.find("Setext title")
+        );
+        assert_eq!(
+            heading_offset(text, "visible-title"),
+            text.find("## Visible")
+        );
+        assert_eq!(heading_offset(text, "explicit"), text.find("# Custom"));
+        for (heading, fragment) in [
+            ("# [Target](https://example.com)", "target"),
+            (
+                "## **Bold** and `code` &amp; ![image](x.png)",
+                "bold-and-code-image",
+            ),
+            (
+                "# [Reference][id]\n\n[id]: https://example.com",
+                "reference",
+            ),
+            ("# <span>HTML</span> title", "html-title"),
+            ("Linked [title](other.md)\n===", "linked-title"),
+        ] {
+            let text = format!("intro\n\n{heading}\n");
+            assert_eq!(heading_offset(&text, fragment), Some(7), "{heading}");
+        }
+    }
+
+    #[cfg(feature = "browser")]
+    #[gpui::test]
+    async fn document_preferences_survive_close_and_open_with_a_new_item(cx: &mut TestAppContext) {
+        use util::path;
+        cx.update(|cx| {
+            cx.set_global(db::AppDatabase::test_new());
+            workspace::AppState::test(cx);
+            editor::init(cx);
+            super::init(cx);
+        });
+        let filesystem = project::FakeFs::new(cx.executor());
+        filesystem
+            .insert_tree(
+                path!("/project"),
+                serde_json::json!({"doc.md":"# Document\n", "other.md":"# Other\n"}),
+            )
+            .await;
+        let project = Project::test(filesystem, None, cx).await;
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(path!("/project"), true, cx)
+            })
+            .await
+            .expect("worktree");
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi_workspace.read_with(cx, |multi, _| multi.workspace().clone());
+        workspace.update(cx, |workspace, _| workspace.set_random_database_id());
+        let source = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_abs_path(
+                    path!("/project/doc.md").into(),
+                    workspace::OpenOptions::default(),
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("source")
+            .downcast::<Editor>()
+            .expect("editor");
+        let buffer = source.read_with(cx, |source, cx| {
+            source.buffer().read(cx).as_singleton().expect("buffer")
+        });
+        let tasks = multi_workspace.update_in(cx, |multi, window, cx| {
+            multi.flush_all_serialization(window, cx)
+        });
+        for task in tasks {
+            task.await;
+        }
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&source, true, true, window, cx)
+        });
+        cx.dispatch_action(Open);
+        cx.run_until_parked();
+        let visual = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item_as::<MarkdownEditor>(cx)
+                .expect("visual")
+        });
+        let preferences = ViewPreferences {
+            mode: Mode::Wysiwyg,
+            outline: true,
+            wrap: false,
+            scroll: 321,
+        };
+        visual.update(cx, |item, cx| {
+            item.receive(
+                ClientMessage::Preferences {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    preferences: preferences.clone(),
+                },
+                cx,
+            )
+            .expect("preferences");
+        });
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        pane.update_in(cx, |pane, window, cx| {
+            pane.close_item_by_id(visual.entity_id(), workspace::SaveIntent::Close, window, cx)
+        })
+        .await
+        .expect("close");
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&source, true, true, window, cx)
+        });
+        cx.dispatch_action(Open);
+        cx.run_until_parked();
+        let reopened = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item_as::<MarkdownEditor>(cx)
+                .expect("reopened")
+        });
+        assert_ne!(reopened.entity_id(), visual.entity_id());
+        reopened.read_with(cx, |item, _| {
+            assert_eq!(item.preferences, preferences);
+            assert_eq!(item.buffer, buffer);
+        });
+        let other = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_abs_path(
+                    path!("/project/other.md").into(),
+                    workspace::OpenOptions::default(),
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("other")
+            .downcast::<Editor>()
+            .expect("other editor");
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&other, true, true, window, cx)
+        });
+        cx.dispatch_action(Open);
+        cx.run_until_parked();
+        workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(
+                workspace
+                    .active_item_as::<MarkdownEditor>(cx)
+                    .expect("other visual")
+                    .read(cx)
+                    .preferences,
+                ViewPreferences::default()
+            )
+        });
+    }
+
     fn fixture<'a>(
         cx: &'a mut TestAppContext,
         text: &str,
@@ -789,6 +1236,269 @@ mod tests {
             },
             cx,
         )
+    }
+
+    #[gpui::test]
+    fn viewer_rejects_forged_mutations_and_history_without_changing_native_buffer(
+        cx: &mut TestAppContext,
+    ) {
+        let (item, cx) = fixture(cx, "original 😀");
+        item.update(cx, |item, cx| {
+            item.preferences.mode = Mode::Preview;
+            let version = item.buffer.read(cx).version();
+            draft(item, 1, 0, "changed 😀", cx).expect("retain forged draft");
+            edit(
+                item,
+                1,
+                1,
+                0,
+                Change {
+                    start: 0,
+                    end: 8,
+                    text: "changed".into(),
+                },
+                cx,
+            )
+            .expect("reject into visible conflict");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "original 😀");
+            assert_eq!(item.buffer.read(cx).version(), version);
+            assert!(item.protocol.conflict.is_some());
+            let message = ClientMessage::Undo {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                request: 2,
+                base_revision: 0,
+            };
+            assert!(item.receive(message, cx).is_err());
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "original 😀");
+        });
+    }
+
+    #[gpui::test]
+    fn rich_input_state_uses_dom_utf16_for_native_composition_and_clipboard(
+        cx: &mut TestAppContext,
+    ) {
+        let (item, cx) = fixture(cx, "**formatted 😀**");
+        item.update_in(cx, |item, window, cx| {
+            item.receive(
+                ClientMessage::InputState {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    text: "formatted 😀".into(),
+                    start: 10,
+                    end: 12,
+                },
+                cx,
+            )
+            .expect("DOM input state");
+            let mut adjusted = None;
+            assert_eq!(
+                gpui::EntityInputHandler::text_for_range(item, 10..12, &mut adjusted, window, cx),
+                Some("😀".into())
+            );
+            assert_eq!(item.selection, 10..12);
+            item.receive(
+                ClientMessage::Copy {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    text: "<strong>formatted</strong>".into(),
+                },
+                cx,
+            )
+            .expect("native clipboard");
+            assert_eq!(
+                cx.read_from_clipboard().and_then(|item| item.text()),
+                Some("<strong>formatted</strong>".into())
+            );
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "**formatted 😀**");
+        });
+    }
+
+    #[gpui::test]
+    fn ordered_toolbar_history_allows_intervening_source_edits_and_duplicate_commands(
+        cx: &mut TestAppContext,
+    ) {
+        let (item, cx) = fixture(cx, "a");
+        item.update(cx, |item, cx| {
+            draft(item, 1, 0, "ab", cx).expect("draft");
+            edit(
+                item,
+                1,
+                1,
+                0,
+                Change {
+                    start: 1,
+                    end: 1,
+                    text: "b".into(),
+                },
+                cx,
+            )
+            .expect("edit");
+            let revision = item.protocol.revision;
+            item.buffer.update(cx, |buffer, cx| {
+                buffer.finalize_last_transaction();
+                buffer.start_transaction();
+                buffer.edit([(2..2, "c")], None, cx);
+                buffer.end_transaction(cx);
+                buffer.finalize_last_transaction();
+            });
+            let undo = ClientMessage::Undo {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                request: 2,
+                base_revision: revision,
+            };
+            item.receive(undo.clone(), cx)
+                .expect("ordered native history despite source race");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "ab");
+            item.receive(undo, cx).expect("duplicate acknowledgment");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "ab");
+            item.receive(
+                ClientMessage::Undo {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    request: 3,
+                    base_revision: item.protocol.revision,
+                },
+                cx,
+            )
+            .expect("second undo");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "a");
+            item.receive(
+                ClientMessage::Redo {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    request: 4,
+                    base_revision: item.protocol.revision,
+                },
+                cx,
+            )
+            .expect("redo");
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "ab");
+        });
+    }
+
+    #[gpui::test]
+    async fn relative_markdown_links_resolve_in_the_owning_project_and_navigate_heading(
+        cx: &mut TestAppContext,
+    ) {
+        use util::path;
+        cx.update(|cx| {
+            cx.set_global(db::AppDatabase::test_new());
+            workspace::AppState::test(cx);
+            editor::init(cx);
+            super::init(cx);
+        });
+        let filesystem = project::FakeFs::new(cx.executor());
+        filesystem.insert_tree(path!("/project"),serde_json::json!({"docs":{"current.md":"# Current","other file.markdown":"intro\n\n# Target {#explicit}\n\nbody","other#file.markdown":"intro\n\n# Target {#explicit}\n\nbody"}})).await;
+        let project = Project::test(filesystem, [path!("/project").as_ref()], cx).await;
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_local_buffer(path!("/project/docs/current.md"), cx)
+            })
+            .await
+            .expect("current Markdown buffer");
+        let (multi, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi.read_with(cx, |multi, _| multi.workspace().clone());
+        let visual = workspace.update_in(cx, |workspace, window, cx| {
+            let source =
+                cx.new(|cx| Editor::for_buffer(buffer.clone(), Some(project.clone()), window, cx));
+            let visual = cx.new(|cx| MarkdownEditor::new(source, buffer, window, cx));
+            workspace.active_pane().update(cx, |pane, cx| {
+                pane.add_item(Box::new(visual.clone()), true, true, None, window, cx)
+            });
+            visual
+        });
+        for (url, filename) in [
+            ("other%20file.markdown#explicit", "docs/other file.markdown"),
+            ("other%23file.markdown#explicit", "docs/other#file.markdown"),
+        ] {
+            visual.update(cx, |item, cx| {
+                item.receive(
+                    ClientMessage::OpenLink {
+                        session: item.protocol.session.clone(),
+                        document: item.protocol.document,
+                        url: url.into(),
+                    },
+                    cx,
+                )
+                .expect("relative link")
+            });
+            cx.run_until_parked();
+            let destination = workspace
+                .read_with(cx, |workspace, cx| workspace.active_item_as::<Editor>(cx))
+                .expect("destination source item");
+            destination.update(cx, |editor, cx| {
+                let buffer = editor
+                    .buffer()
+                    .read(cx)
+                    .as_singleton()
+                    .expect("singleton destination");
+                assert_eq!(
+                    buffer
+                        .read(cx)
+                        .file()
+                        .expect("destination file")
+                        .path()
+                        .as_ref(),
+                    util::rel_path::rel_path(filename)
+                );
+                assert_eq!(editor.text(cx), "intro\n\n# Target {#explicit}\n\nbody");
+                let snapshot = editor.display_snapshot(cx);
+                assert_eq!(
+                    editor
+                        .selections
+                        .newest::<editor::MultiBufferOffset>(&snapshot)
+                        .head(),
+                    editor::MultiBufferOffset(7)
+                );
+            });
+        }
+        visual.update(cx, |item, cx| {
+            item.receive(
+                ClientMessage::OpenLink {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    url: "https://example.com/page#fragment".into(),
+                },
+                cx,
+            )
+            .expect("external link")
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            cx.opened_url().as_deref(),
+            Some("https://example.com/page#fragment")
+        );
+    }
+
+    #[gpui::test]
+    fn external_links_preserve_encoded_query_and_fragment_semantics(cx: &mut TestAppContext) {
+        let (item, cx) = fixture(cx, "# Source");
+        for url in [
+            "https://example.com/search?q=a%26b#part%20one",
+            "http://example.com/?q=%23fragment%3Fvalue",
+            "mailto:hello@example.com?subject=a%26b",
+            "HTTPS://example.com/search?q=a%26b",
+            "HTTP://example.com/search?q=a%26b",
+            "MAILTO:hello@example.com?subject=a%26b",
+        ] {
+            item.update(cx, |item, cx| {
+                item.receive(
+                    ClientMessage::OpenLink {
+                        session: item.protocol.session.clone(),
+                        document: item.protocol.document,
+                        url: url.into(),
+                    },
+                    cx,
+                )
+                .expect("external encoded link")
+            });
+            cx.run_until_parked();
+            assert_eq!(cx.opened_url().as_deref(), Some(url));
+        }
     }
 
     #[gpui::test]
@@ -2480,12 +3190,28 @@ mod tests {
                 workspace.database_id().expect("workspace id"),
             )
         });
+        visual.update(cx, |item, _| {
+            item.preferences = ViewPreferences {
+                mode: Mode::Sv,
+                outline: true,
+                wrap: false,
+                scroll: 1234,
+            }
+        });
         let tasks = multi_workspace.update_in(cx, |multi, window, cx| {
             multi.flush_all_serialization(window, cx)
         });
         for task in tasks {
             task.await;
         }
+        let serialize = workspace
+            .update(cx, |workspace, cx| {
+                visual.update(cx, |item, cx| {
+                    item.serialize(workspace, visual.entity_id().as_u64(), false, cx)
+                })
+            })
+            .expect("visual preferences serialization");
+        serialize.await.expect("visual preferences persisted");
         let native_id = native.entity_id().as_u64();
         let visual_id = visual.entity_id().as_u64();
         let stale_id = visual_id + 1000;
@@ -2550,7 +3276,16 @@ mod tests {
             assert_eq!(source.text(cx), "native unsaved")
         });
         visual_restored.read_with(cx, |item, cx| {
-            assert_eq!(item.buffer.read(cx).snapshot().text(), "markdown unsaved")
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "markdown unsaved");
+            assert_eq!(
+                item.preferences,
+                ViewPreferences {
+                    mode: Mode::Sv,
+                    outline: true,
+                    wrap: false,
+                    scroll: 1234
+                }
+            );
         });
         assert!(
             multi_workspace
@@ -2587,6 +3322,18 @@ impl Focusable for MarkdownEditor {
 
 impl Item for MarkdownEditor {
     type Event = ItemEvent;
+    fn added_to_workspace(
+        &mut self,
+        workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.source.update(cx, |source, cx| {
+            if source.workspace() != workspace.weak_handle().upgrade() {
+                source.added_to_workspace(workspace, window, cx);
+            }
+        });
+    }
     fn tab_content_text(&self, _: usize, cx: &App) -> SharedString {
         format!("Markdown {}", self.source.read(cx).tab_content_text(0, cx)).into()
     }
@@ -2683,7 +3430,12 @@ impl Item for MarkdownEditor {
         }
     }
     fn prepare_to_save(&mut self, _: &mut Window, cx: &mut Context<Self>) -> Task<Result<()>> {
-        self.flush(cx)
+        let flush = self.flush(cx);
+        cx.spawn(async move |this, cx| {
+            flush.await?;
+            this.update(cx, |this, cx| this.persist_document_preferences(cx))?
+                .await
+        })
     }
     fn save(
         &mut self,
@@ -2761,6 +3513,15 @@ impl SerializableItem for MarkdownEditor {
         window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<Entity<Self>>> {
+        let preferences = db::kvp::KeyValueStore::global(cx)
+            .read_kvp(&format!("markdown-editor-{}-{}", workspace_id.raw(), item))
+            .and_then(|value| {
+                value
+                    .map(|value| {
+                        serde_json::from_str::<ViewPreferences>(&value).map_err(Into::into)
+                    })
+                    .transpose()
+            });
         let source = Editor::deserialize(project, workspace, workspace_id, item, window, cx);
         window.spawn(cx, async move |cx| {
             let source = source.await?;
@@ -2772,7 +3533,14 @@ impl SerializableItem for MarkdownEditor {
                     .as_singleton()
                     .ok_or_else(|| anyhow::anyhow!("Markdown item requires a singleton buffer"))?;
                 let item = cx.new(|cx| Self::new(source, buffer, window, cx));
-                item.update(cx, |item, cx| item.start_browser(cx));
+                item.update(cx, |item, cx| {
+                    match preferences {
+                        Ok(Some(preferences)) => item.preferences = preferences,
+                        Ok(None) => {}
+                        Err(error) => log::error!("Markdown preferences restoration: {error:#}"),
+                    }
+                    item.start_browser(cx);
+                });
                 Ok(item)
             })?
         })
@@ -2787,9 +3555,28 @@ impl SerializableItem for MarkdownEditor {
         if self.protocol.draft.is_some() {
             return None;
         }
-        self.source.update(cx, |source, cx| {
+        let preferences = serde_json::to_string(&self.preferences);
+        let document_key = document_preference_key(self.source.read(cx), self.buffer.read(cx), cx);
+        let store = db::kvp::KeyValueStore::global(cx);
+        let key = format!(
+            "markdown-editor-{}-{}",
+            workspace.database_id()?.raw(),
+            item
+        );
+        let source = self.source.update(cx, |source, cx| {
             source.serialize(workspace, item, closing, cx)
-        })
+        });
+        Some(cx.background_spawn(async move {
+            let preferences = preferences?;
+            if let Some(document_key) = document_key? {
+                store.write_kvp(document_key, preferences.clone()).await?;
+            }
+            store.write_kvp(key, preferences).await?;
+            if let Some(source) = source {
+                source.await?;
+            }
+            Ok(())
+        }))
     }
     fn should_serialize(&self, _: &ItemEvent) -> bool {
         true
@@ -2870,6 +3657,27 @@ impl Render for MarkdownEditor {
             .size_full()
             .key_context("MarkdownEditor")
             .track_focus(&self.focus)
+            .on_action(cx.listener(|this, action: &Format, _, cx| {
+                if this.writable(cx) {
+                    if let Err(error) = this
+                        .browser_script(&format!("window.latheRich?.format('{}')", action.control))
+                    {
+                        this.failed(error, cx);
+                    }
+                }
+            }))
+            .on_action(cx.listener(|this, action: &ChangeMode, _, cx| {
+                if let Err(error) =
+                    this.browser_script(&format!("window.latheRich?.mode('{}')", action.mode))
+                {
+                    this.failed(error, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &Find, _, cx| {
+                if let Err(error) = this.browser_script("window.latheRich?.openFind()") {
+                    this.failed(error, cx);
+                }
+            }))
             .on_action(cx.listener(|this, _: &RestartBrowser, _, cx| this.start_browser(cx)))
             .on_action(
                 cx.listener(|this, _: &editor::actions::Undo, _, cx| this.history(false, cx)),
@@ -2933,12 +3741,13 @@ impl gpui::EntityInputHandler for MarkdownEditor {
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<String> {
-        let text = self
-            .protocol
-            .draft
-            .as_ref()
-            .map(|draft| draft.text.as_str())
-            .unwrap_or(self.protocol.current());
+        let text = self.input_text.as_deref().unwrap_or_else(|| {
+            self.protocol
+                .draft
+                .as_ref()
+                .map(|draft| draft.text.as_str())
+                .unwrap_or(self.protocol.current())
+        });
         let start = protocol::utf16_to_byte(text, range.start).ok()?;
         let end = protocol::utf16_to_byte(text, range.end).ok()?;
         *adjusted = Some(range);
@@ -3001,11 +3810,9 @@ impl gpui::EntityInputHandler for MarkdownEditor {
         if !self.accepting_input {
             return;
         }
-        let range = range
-            .or_else(|| self.marked.clone())
-            .or_else(|| Some(self.selection.clone()));
         let start = range
             .as_ref()
+            .or(self.marked.as_ref())
             .map_or(self.selection.start, |range| range.start);
         self.marked = Some(start..start + text.encode_utf16().count());
         if let Some(surface) = &mut self.surface {

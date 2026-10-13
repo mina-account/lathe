@@ -1,0 +1,48 @@
+{"event":"gpui_backend","handle":"Wayland(WaylandWindowHandle { surface: 0x5575b14b3b30 })","scale":1.0}
+{"event":"navigation","url":"https://lathe-markdown.invalid/index.html?session=62052-4294967308-1&document=4294967301","allowed":true}
+{"event":"browser_created","session":"62052-4294967308-1"}
+{"event":"resource","url":"https://lathe-markdown.invalid/index.html?session=62052-4294967308-1&document=4294967301","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/vditor.css","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/application.css","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/purify.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/lute.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/en_US.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/vditor.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/rich.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/icons.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/application.js","status":200}
+{"event":"rich_runtime","version":"3.11.2","mode":"ir","source_preserved":true}
+{"event":"rich_runtime","version":"3.11.2","mode":"wysiwyg","source_preserved":true}
+{"event":"delayed_rich_input_mode","passed":true,"text":"# debounced 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n0123456789"}
+{"event":"navigation","url":"https://foreign.invalid/","allowed":false}
+{"event":"visual_to_native","buffer":4294967301,"source_same_buffer":true,"text":"# visual 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n0123456789"}
+{"event":"queued_no_op_acknowledged","passed":true}
+{"event":"rich_runtime","version":"3.11.2","mode":"sv","source_preserved":true}
+{"event":"native_to_visual_to_native","text":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n0123456789"}
+{"event":"rapid_toolbar_history","passed":true}
+{"event":"browser_native_undo","text":"# native 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n0123456789"}
+{"event":"browser_native_redo","text":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n0123456789"}
+{"event":"rich_runtime","version":"3.11.2","mode":"ir","source_preserved":true}
+{"event":"disjoint_external_rebase","text":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\nX1234L678Y"}
+{"event":"rich_runtime","version":"3.11.2","mode":"preview","source_preserved":true}
+{"event":"delayed_rich_input_flush","passed":true,"text":"# flush-input 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\nX1234L678Y"}
+{"event":"real_item_flush","passed":true}
+{"event":"cancelled_composition_flush","passed":true}
+{"event":"unacknowledged_draft_dirty","native_text":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\nX1234L678Y","draft":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\nX1234L678Y retained"}
+{"event":"renderer_crash_retained_draft","error":"Markdown renderer terminated (9): 9","draft":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\nX1234L678Y retained"}
+{"event":"navigation","url":"https://lathe-markdown.invalid/index.html?session=62052-4294967308-2&document=4294967301","allowed":true}
+{"event":"browser_created","session":"62052-4294967308-2"}
+{"event":"browser_closed","session":"62052-4294967308-1"}
+{"event":"resource","url":"https://lathe-markdown.invalid/index.html?session=62052-4294967308-2&document=4294967301","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/vditor.css","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/application.css","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/purify.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/lute.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/en_US.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/vditor.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/rich.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/icons.js","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/application.js","status":200}
+{"event":"recreated_browser_retained_draft","native_text":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\nX1234L678Y","draft":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\nX1234L678Y retained"}
+{"event":"retired_surface_released","tracked":1}
+{"event":"browser_closed","session":"62052-4294967308-2"}

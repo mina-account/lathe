@@ -1,1 +1,1 @@
-{"name":"lathe-markdown-document","version":"0.1.0","private":true,"type":"module","engines":{"node":">=24.0.0"},"scripts":{"build":"node build.mjs","test":"node --test test.mjs"}}
+{"name":"lathe-markdown-document","version":"0.1.0","private":true,"type":"module","engines":{"node":">=24.0.0"},"scripts":{"build":"node build.mjs","test":"node --test test.mjs","test:browser":"node --test browser-test.mjs"},"dependencies":{"dompurify":"3.4.17","vditor":"3.11.2"},"devDependencies":{"playwright":"1.56.1"}}
