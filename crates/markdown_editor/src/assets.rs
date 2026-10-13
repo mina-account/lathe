@@ -73,6 +73,64 @@ fn validate_frames(frames: image::Frames<'_>) -> Result<()> {
     Ok(())
 }
 
+fn clipboard_image(bytes: &[u8]) -> Result<Vec<u8>> {
+    if image::guess_format(bytes)? != image::ImageFormat::Bmp {
+        image_type(bytes)?;
+        return Ok(bytes.to_vec());
+    }
+    if bytes.len() > 64 * 1024 * 1024 {
+        bail!("Clipboard image exceeds the 64 MiB decoded limit");
+    }
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Bmp);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+    reader.limits(limits);
+    let mut output = Cursor::new(Vec::new());
+    reader
+        .decode()?
+        .write_to(&mut output, image::ImageFormat::Png)?;
+    let bytes = output.into_inner();
+    image_type(&bytes)?;
+    Ok(bytes)
+}
+
+fn asset_document(
+    project: gpui::Entity<project::Project>,
+    document: ProjectPath,
+    cx: &mut Context<MarkdownEditor>,
+) -> Task<Result<(ProjectPath, gpui::Entity<project::Worktree>)>> {
+    let Some(worktree) = project.read(cx).worktree_for_id(document.worktree_id, cx) else {
+        return Task::ready(Err(anyhow::anyhow!("Owning worktree is unavailable")));
+    };
+    if !worktree.read(cx).is_single_file() {
+        return Task::ready(Ok((document, worktree)));
+    }
+    let absolute = worktree.read(cx).abs_path().to_path_buf();
+    let Some(parent) = absolute.parent() else {
+        return Task::ready(Err(anyhow::anyhow!("Document parent is unavailable")));
+    };
+    let create = project.update(cx, |project, cx| {
+        project.find_or_create_worktree(parent, false, cx)
+    });
+    cx.spawn(async move |_, cx| {
+        let (worktree, _) = create.await?;
+        let path = worktree.read_with(cx, |worktree, _| {
+            let path = absolute.strip_prefix(worktree.abs_path().as_ref())?;
+            Ok::<_, anyhow::Error>(RelPath::new(path, worktree.path_style())?.into_owned())
+        })?;
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        Ok((
+            ProjectPath {
+                worktree_id,
+                path: path.into(),
+            },
+            worktree,
+        ))
+    })
+}
+
 fn normalize_path(base: &str, supplied: &str) -> Result<RelPathBuf> {
     if supplied.contains(':')
         || supplied.starts_with('/')
@@ -187,11 +245,22 @@ impl MarkdownEditor {
                 .file()
                 .map(|file| ProjectPath::from_file(file.as_ref(), cx))
                 .context("Save the document before loading relative images")?;
-            let path = image_resource_path(&document, &url, &project, cx)?;
-            let load = project.update(cx, |project, cx| {
-                project.load_binary_resource(path, MAX_IMAGE_BYTES, cx)
-            });
-            cx.background_spawn(async move {
+            let standalone = project
+                .read(cx)
+                .worktree_for_id(document.worktree_id, cx)
+                .is_some_and(|worktree| worktree.read(cx).is_single_file());
+            if !standalone {
+                image_resource_path(&document, &url, &project, cx)?;
+            }
+            let resolve = asset_document(project.clone(), document, cx);
+            cx.spawn(async move |_, cx| {
+                let (document, _worktree) = resolve.await?;
+                let path = project.read_with(cx, |_, cx| {
+                    image_resource_path(&document, &url, &project, cx)
+                })?;
+                let load = project.update(cx, |project, cx| {
+                    project.load_binary_resource(path, MAX_IMAGE_BYTES, cx)
+                });
                 let bytes = load.await?;
                 let (_, mime) = image_type(&bytes)?;
                 Ok((mime.into(), bytes))
@@ -318,11 +387,11 @@ impl MarkdownEditor {
                                     .clone(),
                             ))
                         })??;
-                        let worktree = project
-                            .read_with(cx, |project, cx| {
-                                project.worktree_for_id(document.worktree_id, cx)
-                            })
-                            .context("Owning worktree is unavailable")?;
+                        let original_document = document;
+                        let resolve = this.update(cx, |_, cx| {
+                            asset_document(project.clone(), original_document.clone(), cx)
+                        })?;
+                        let (document, worktree) = resolve.await?;
                         let folder = destination(&document, &folder)?;
                         let create = worktree.update(cx, |worktree, cx| {
                             worktree.create_entry(folder.clone().into(), true, None, cx)
@@ -362,9 +431,27 @@ impl MarkdownEditor {
                                 .file()
                                 .map(|file| ProjectPath::from_file(file.as_ref(), cx))
                                 .context("Document path is unavailable")?;
-                            if current.worktree_id != document.worktree_id {
+                            if current.worktree_id != original_document.worktree_id {
                                 bail!("Document moved to another worktree during image write");
                             }
+                            let current = if original_document.path.is_empty() {
+                                let owning = project
+                                    .read(cx)
+                                    .worktree_for_id(current.worktree_id, cx)
+                                    .context("Document worktree is unavailable")?;
+                                let absolute = owning.read(cx).abs_path();
+                                let relative =
+                                    absolute.strip_prefix(worktree.read(cx).abs_path().as_ref())
+                                        .context("Document moved outside the asset worktree during image write")?;
+                                ProjectPath {
+                                    worktree_id: document.worktree_id,
+                                    path: RelPath::new(relative, worktree.read(cx).path_style())?
+                                        .into_owned()
+                                        .into(),
+                                }
+                            } else {
+                                current
+                            };
                             let link =
                                 format!("![image]({})", relative_link(&current, &image_path));
                             let snapshot = this.buffer.read(cx).snapshot();
@@ -437,6 +524,14 @@ fn load_image_input(
                 }
             }
             cx.background_spawn(async move {
+                let mut images = images
+                    .into_iter()
+                    .map(|image: LoadedImage| {
+                        image.and_then(|(name, bytes)| {
+                            clipboard_image(&bytes).map(|bytes| (name, bytes))
+                        })
+                    })
+                    .collect::<Vec<_>>();
                 for path in paths {
                     images.push(load_image_path(&filesystem, path).await);
                 }
@@ -559,6 +654,232 @@ mod tests {
             .write_to(&mut output, image::ImageFormat::Png)
             .expect("encode fixture");
         output.into_inner()
+    }
+
+    #[gpui::test]
+    async fn native_bmp_clipboard_imports_as_validated_png(cx: &mut TestAppContext) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let mut encoded = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(2, 2)
+            .write_to(&mut encoded, image::ImageFormat::Bmp)
+            .expect("BMP clipboard fixture");
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_image(&gpui::Image::from_bytes(
+                gpui::ImageFormat::Bmp,
+                encoded.into_inner(),
+            )))
+        });
+        visual
+            .update(cx, |item, cx| {
+                item.import_images(0, 0, ImageInput::Clipboard, cx)
+            })
+            .expect("clipboard import");
+        cx.run_until_parked();
+        let source = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+        assert!(source.starts_with("![image](assets/clipboard-"), "{source}");
+        let files = filesystem
+            .read_dir(path!("/project/docs/assets").as_ref())
+            .await
+            .expect("assets")
+            .collect::<Vec<_>>()
+            .await;
+        let path = files
+            .into_iter()
+            .find_map(|entry| {
+                entry.ok().filter(|path| {
+                    path.file_name()
+                        .is_some_and(|name| name.to_string_lossy().starts_with("clipboard-"))
+                })
+            })
+            .expect("clipboard file");
+        let mut bytes = Vec::new();
+        filesystem
+            .open_sync(&path)
+            .await
+            .expect("image")
+            .read_to_end(&mut bytes)
+            .expect("read image");
+        assert_eq!(
+            image_type(&bytes).expect("validated PNG"),
+            ("png", "image/png")
+        );
+        assert_eq!(image::load_from_memory(&bytes).expect("decode").width(), 2);
+        visual.update(cx, |item, cx| {
+            item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+        });
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+            "Before\n\nTail"
+        );
+        assert!(filesystem.is_file(&path).await);
+    }
+
+    #[gpui::test]
+    async fn bounded_image_wire_batch_decodes_and_keeps_native_document_editable(
+        cx: &mut TestAppContext,
+    ) {
+        let (visual, _, cx) = fixture(cx).await;
+        let mut bytes = png();
+        bytes.resize(MAX_IMAGE_BYTES, 0);
+        image_type(&bytes).expect("valid padded PNG");
+        visual.update(cx, |item, cx| {
+            let message = protocol::ClientMessage::ImportImages {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                base_revision: item.protocol.revision,
+                position: 0,
+                images: (0..2)
+                    .map(|index| ImportedImage {
+                        name: format!("large-{index}.png"),
+                        bytes: STANDARD.encode(&bytes),
+                    })
+                    .collect(),
+            };
+            let encoded = serde_json::to_string(&message).expect("wire image batch");
+            assert!(encoded.len() <= protocol::MAX_MESSAGE_BYTES);
+            let message = protocol::decode(
+                &protocol::application_url(&item.protocol.session, item.protocol.document),
+                &encoded,
+                &item.protocol.session,
+                item.protocol.document,
+            )
+            .expect("actual bridge decoder");
+            item.receive(message, cx).expect("native import");
+        });
+        cx.run_until_parked();
+        visual.update(cx, |item, cx| {
+            assert_eq!(
+                item.buffer
+                    .read(cx)
+                    .snapshot()
+                    .text()
+                    .matches("![image]")
+                    .count(),
+                2
+            );
+            assert!(item.asset_active(cx));
+            item.buffer.update(cx, |buffer, cx| {
+                buffer.edit([(0..0, "Still editable ")], None, cx);
+            });
+            assert!(
+                item.buffer
+                    .read(cx)
+                    .snapshot()
+                    .text()
+                    .starts_with("Still editable ")
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn standalone_document_import_and_resource_use_its_parent_directory(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (first, filesystem, cx) = fixture(cx).await;
+        filesystem
+            .insert_tree(
+                path!("/standalone"),
+                serde_json::json!({"doc.md":"Standalone", "assets":{}}),
+            )
+            .await;
+        filesystem
+            .write(path!("/standalone/assets/existing.png").as_ref(), &png())
+            .await
+            .expect("existing image");
+        let project = first.read_with(cx, |item, cx| {
+            item.source.read(cx).project().expect("project").clone()
+        });
+        let (worktree, relative) = project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(path!("/standalone/doc.md"), true, cx)
+            })
+            .await
+            .expect("standalone worktree");
+        assert!(worktree.read_with(cx, |worktree, _| worktree.is_single_file()));
+        assert!(relative.is_empty());
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_buffer((worktree.read(cx).id(), relative), cx)
+            })
+            .await
+            .expect("standalone buffer");
+        let visual = cx.update(|window, cx| {
+            let source = cx.new(|cx| {
+                editor::Editor::for_buffer(buffer.clone(), Some(project.clone()), window, cx)
+            });
+            cx.new(|cx| MarkdownEditor::new(source, buffer.clone(), window, cx))
+        });
+        let messages = Rc::new(RefCell::new(Vec::new()));
+        visual
+            .update(cx, |item, cx| {
+                item.attach(Box::new(Recording(messages.clone())), cx)
+            })
+            .expect("attach");
+        visual
+            .update(cx, |item, cx| {
+                item.request_asset(55, "assets/existing.png".into(), false, cx)
+            })
+            .expect("request");
+        cx.run_until_parked();
+        assert!(messages.borrow().iter().any(|message| matches!(message, HostMessage::Resource{request:55, error:None, bytes, ..} if STANDARD.decode(bytes).expect("base64")==png())));
+        visual
+            .update(cx, |item, cx| {
+                item.request_asset(56, "../private.png".into(), false, cx)
+            })
+            .expect("confined standalone request");
+        cx.run_until_parked();
+        assert!(messages.borrow().iter().any(|message| matches!(
+            message,
+            HostMessage::Resource {
+                request: 56,
+                error: Some(_),
+                ..
+            }
+        )));
+        visual
+            .update(cx, |item, cx| {
+                item.import_images(
+                    0,
+                    5,
+                    ImageInput::Encoded(vec![ImportedImage {
+                        name: "new".into(),
+                        bytes: STANDARD.encode(png()),
+                    }]),
+                    cx,
+                )
+            })
+            .expect("import");
+        cx.run_until_parked();
+        let text = buffer.read_with(cx, |buffer, _| buffer.snapshot().text());
+        assert!(text.starts_with("Stand![image](assets/new-"), "{text}");
+        assert_eq!(
+            filesystem
+                .read_dir(path!("/standalone/assets").as_ref())
+                .await
+                .expect("assets")
+                .collect::<Vec<_>>()
+                .await
+                .len(),
+            2
+        );
+        project
+            .update(cx, |project, cx| project.save_buffer(buffer.clone(), cx))
+            .await
+            .expect("save image source");
+        assert_eq!(
+            filesystem
+                .load(path!("/standalone/doc.md").as_ref())
+                .await
+                .expect("saved source"),
+            text
+        );
+        buffer.update(cx, |buffer, cx| buffer.undo(cx));
+        assert_eq!(
+            buffer.read_with(cx, |buffer, _| buffer.snapshot().text()),
+            "Standalone"
+        );
     }
 
     async fn fixture(
@@ -750,9 +1071,31 @@ mod tests {
             })
             .expect("resource request");
         cx.run_until_parked();
-        let messages = messages.borrow();
-        assert!(messages.iter().any(|message|matches!(message,HostMessage::Resource{request:4,mime,bytes,error:None} if mime=="image/png" && STANDARD.decode(bytes).expect("base64")==png())));
-        drop(messages);
+        let recorded = messages.borrow();
+        assert!(recorded.iter().any(|message|matches!(message,HostMessage::Resource{request:4,mime,bytes,error:None} if mime=="image/png" && STANDARD.decode(bytes).expect("base64")==png())));
+        drop(recorded);
+        let absolute = visual.read_with(cx, |item, cx| {
+            let document =
+                ProjectPath::from_file(item.buffer.read(cx).file().expect("document").as_ref(), cx);
+            let project = item.source.read(cx).project().expect("project");
+            let worktree = project
+                .read(cx)
+                .worktree_for_id(document.worktree_id, cx)
+                .expect("worktree");
+            format!(
+                "{}/docs/assets/%E4%B8%AD%20%23.png",
+                worktree
+                    .read(cx)
+                    .abs_path()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            )
+        });
+        visual
+            .update(cx, |item, cx| item.request_asset(7, absolute, false, cx))
+            .expect("scoped native absolute image");
+        cx.run_until_parked();
+        assert!(messages.borrow().iter().any(|message|matches!(message,HostMessage::Resource{request:7,error:None,bytes,..} if STANDARD.decode(bytes).expect("base64")==png())));
         assert!(
             visual
                 .update(cx, |item, cx| item.request_asset(

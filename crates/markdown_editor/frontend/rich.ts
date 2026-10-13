@@ -29,13 +29,21 @@ let resourceRequest=0;
 let resourceGeneration=0;
 let readingGeneration=0;
 const forbiddenTags = ["script","style","iframe","object","embed","svg","math","template","form","input","button","select","textarea","audio","video","source","base","meta","link"];
+const imageSources=new WeakMap<Element,string>();
+DOMPurify.addHook("uponSanitizeElement",(node:Element)=>{
+    if(node.tagName==="IMG" && node.hasAttribute("src"))imageSources.set(node,node.getAttribute("src")!);
+});
 DOMPurify.addHook("uponSanitizeAttribute", (_node:Element, attribute:any,configuration:any) => {
+    if (_node.tagName==="IMG" && attribute.attrName==="src") {
+        attribute.keepAttr=false;
+    }
     if (attribute.attrName.startsWith("data-lathe-") && !configuration.LATHE_IMAGES) attribute.keepAttr=false;
+    if(configuration.LATHE_IMAGES && ["data-lathe-image","data-lathe-original"].includes(attribute.attrName))attribute.forceKeepAttr=true;
     if (attribute.attrName === "class") attribute.attrValue = attribute.attrValue.replace(/\blanguage-math\b/g,"lathe-math").replace(/\blanguage-(?:mermaid|graphviz|echarts|abc|flowchart|plantuml|markmap|mindmap|smiles)\b/g,"language-text");
 });
 DOMPurify.addHook("afterSanitizeAttributes", (node:Element, _data:any, configuration:any) => {
     if (node.tagName==="IMG") {
-        const source=node.getAttribute("src");
+        const source=imageSources.get(node);
         if (source) { node.removeAttribute("src"); node.removeAttribute("data-lathe-original"); node.setAttribute("data-lathe-image",source); }
     }
     if (node.tagName !== "INPUT") return;
@@ -115,8 +123,10 @@ function applyAppearance() {
     contentStyle.onload=codeStyle.onload=restore;
     const content=preferences.content_theme ?? appearance.content_theme ?? (appearance.dark?"dark":"light");
     const code=preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github");
+    if(editor)editor.vditor.options.preview.hljs.style=code;
     if (themes.content.includes(content)) contentStyle.href=`/vendor/dist/css/content-theme/${content}.css`;
-    if (themes.code.includes(code)) codeStyle.href=`/vendor/dist/js/highlight.js/styles/${code}.css`;
+    if (themes.code.includes(code)) codeStyle.href=`/vendor/dist/js/highlight.js/styles/${code}.min.css`;
+    document.head.append(codeStyle,customStyle);
     (get("content-theme") as HTMLSelectElement).value=preferences.content_theme ?? "";
     (get("code-theme") as HTMLSelectElement).value=preferences.code_theme ?? "";
     document.body.classList.toggle("app-theme",appearance.use_app_theme_colors);
@@ -204,6 +214,7 @@ function importAfterFlush(input:{kind:string;[key:string]:unknown},position?:num
 }
 async function importFiles(files:File[]) {
     if(files.length>16){status.textContent="Import at most 16 images.";return;}
+    if(files.reduce((total,file)=>total+file.size,0)>8*1024*1024){status.textContent="Image batch exceeds the 8 MiB total limit.";return;}
     commit();const position=insertionPosition(),source=latest,images=[];
     try {
         for(const file of files) {
@@ -456,7 +467,7 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
         toolbar:["emoji","headings","bold","italic","strike","link","|","list","ordered-list","check","outdent","indent","|","quote","line","code","inline-code","table","insert-before","insert-after","|",
             {name:"native-undo",tip:"Undo",icon:"Undo",click:() => bridge.history("undo")},
             {name:"native-redo",tip:"Redo",icon:"Redo",click:() => bridge.history("redo")}],
-        preview:{delay:0,mode:"both",actions:[],hljs:{enable:false,lineNumber:false},
+        preview:{delay:0,mode:"both",actions:[],hljs:{enable:false,lineNumber:false,style:preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github")},
             math:{engine:"KaTeX",inlineDigit:true},
             markdown:{sanitize:true,codeBlockPreview:false,mathBlockPreview:false,footnotes:true,toc:false},
             theme:{current:"",path:location.origin + "/vendor"},render:{media:{enable:false}},transform:(html:string) => sanitize(html,false,true),parse:() => { renderOutline();if(ready) { renderMath(editor.vditor.preview.previewElement);void loadImages(editor.vditor.preview.previewElement);void highlightCode(editor.vditor.preview.previewElement); } }},
@@ -475,8 +486,8 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
             container.hidden = preferences.mode === "preview"; viewer.hidden = preferences.mode !== "preview";
             document.body.classList.toggle("nowrap",!preferences.wrap); outline.hidden = !preferences.outline;
             renderViewer(); renderOutline(); renderSourceBlocks(); permissions();
-            applyAppearance(); void loadImages(renderedRoot());
             restoreSelection(selected,oldText); scrollElement().scrollTop = preferences.scroll;
+            applyAppearance(); void loadImages(renderedRoot());
             status.textContent = bridge.blocked ? "Visual draft retained; use Recover Draft." : "Markdown Editor";
             updateFind();
         },
@@ -514,9 +525,55 @@ async function plantuml(source:string):Promise<string> {
     const result=await requestResource("plantuml",source);
     return new TextDecoder().decode(Uint8Array.from(atob(result.bytes),character=>character.charCodeAt(0)));
 }
+function parsedFences(source:string):{language:string;content:string;marker:string}[] {
+    const tree=JSON.parse(editor.vditor.lute.RenderJSON(display(source))),result:{language:string;content:string;marker:string}[]=[];
+    const visit=(node:any)=>{
+        if(node.Type==="NodeCodeBlock" && node.IsFencedCodeBlock){
+            const language=new TextDecoder().decode(Uint8Array.from(atob(node.CodeBlockInfo??""),character=>character.charCodeAt(0))).trim().split(/\s+/)[0];
+            result.push({language,content:(node.Children?.find((child:any)=>child.Type==="NodeCodeBlockCode")?.Data??"").replace(/\n$/,""),marker:String.fromCharCode(node.CodeBlockFenceChar).repeat(node.CodeBlockFenceLen)});
+        }
+        for(const child of node.Children??[])visit(child);
+    };visit(tree);return result;
+}
+function dedentFence(source:string):string {
+    const indentation=source.match(/^[ \t]+/)?.[0]??"";
+    return source.split("\n").map(line=>line.startsWith(indentation)?line.slice(indentation.length):line).join("\n");
+}
+function fencedSourceSpans():{start:number;end:number;label:string}[] {
+    const result:{start:number;end:number;label:string}[]=[],fences=parsedFences(latest);
+    let cursor=0;
+    for(const fence of fences){
+        const marker=fence.marker[0],opening=new RegExp(`^[ \\t]*(?:>[ \\t]*)*(?:(?:[-+*]|\\d+[.)])[ \\t]+)?(${marker}{${fence.marker.length},})[^\\r\\n]*`,'gm');
+        opening.lastIndex=cursor;
+        for(let match=opening.exec(latest);match;match=opening.exec(latest)){
+            const closing=new RegExp(`^[ \\t]*(?:>[ \\t]*)*${marker}{${match[1].length},}[ \\t]*(?=\\r?$)`,'gm');closing.lastIndex=match.index+match[0].length+1;
+            const close=closing.exec(latest),end=close?close.index+close[0].length:latest.length;
+            const candidate=latest.slice(match.index,end),direct=parsedFences(candidate);
+            const parsed=direct.length?direct:parsedFences(dedentFence(candidate));
+            if(parsed.length!==1 || parsed[0].language!==fence.language || parsed[0].content!==fence.content)continue;
+            result.push({start:match.index,end,label:match[0].slice(0,80)});cursor=end;break;
+        }
+    }
+    return result;
+}
+function renderCode() {
+    if(preferences.mode==="sv" || preferences.mode==="preview")return;
+    for(const block of active().querySelectorAll<HTMLElement>('[data-type="code-block"]')){
+        const code=block.querySelector<HTMLElement>('pre code'),language=code?.className.match(/language-([^\s]+)/)?.[1];
+        if(!code || rendererLanguages.includes(language??""))continue;
+        let preview=block.querySelector<HTMLElement>(':scope > .vditor-ir__preview,:scope > .vditor-wysiwyg__preview');
+        if(!preview){preview=document.createElement('pre');preview.className=preferences.mode==="ir"?'vditor-ir__preview':'vditor-wysiwyg__preview';preview.dataset.render="1";block.append(preview);}
+        preview.contentEditable="false";
+        const source=code.textContent??"";
+        if(preview.dataset.codeSource===source)continue;
+        preview.dataset.codeSource=source;const rendered=document.createElement('code');rendered.className=code.className;rendered.textContent=source;preview.replaceChildren(rendered);
+        void highlightCode(preview);
+    }
+}
 function renderSourceFence(details:HTMLElement,span:{start:number;end:number}) {
     const source=latest.slice(span.start,span.end);
-    const fence=source.match(/^```(\S+)\s*\r?\n([\s\S]*?)\r?\n```/);
+    const parsed=parsedFences(source)[0]??parsedFences(dedentFence(source))[0];
+    const fence=parsed ? [source,parsed.language,parsed.content] : null;
     const match=fence ?? (source.startsWith("$") ? [source,"math",source.replace(/^\${1,2}|\${1,2}$/g,"").trim()] : null);
     if (!match || !rendererLanguages.includes(match[1])) return;
     let output=details.querySelector<HTMLElement>(".renderer-output");
@@ -552,11 +609,14 @@ function renderOutline() {
 }
 function sourceSpans(): {start:number;end:number;label:string}[] {
     const spans: {start:number;end:number;label:string}[] = [];
+    const fences=fencedSourceSpans();
     const frontmatter = latest.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
     if (frontmatter) spans.push({start:0,end:frontmatter[0].length,label:"Front matter"});
-    for (const match of latest.matchAll(/(?:^<[^\r\n]+(?:\r?\n(?!(?:\r?\n))[^\r\n]+)*)|(?:^#{1,6}[^\r\n]*\{#[^}]+\}[^\r\n]*)|(?:^```[^\r\n]*\r?\n[\s\S]*?^```[^\r\n]*)|(?:^ {0,3}\[[^\]]+\]:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]+)*)/gm)) {
+    for (const match of latest.matchAll(/(?:^<[^\r\n]+(?:\r?\n(?!(?:\r?\n))[^\r\n]+)*)|(?:^#{1,6}[^\r\n]*\{#[^}]+\}[^\r\n]*)|(?:^ {0,3}\[[^\]]+\]:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]+)*)/gm)) {
+        if(fences.some(span=>match.index<span.end && match.index+match[0].length>span.start))continue;
         spans.push({start:match.index,end:match.index+match[0].length,label:match[0].split(/\r?\n/)[0].slice(0,80)});
     }
+    spans.push(...fences);
     const parsed=document.createElement("template"); parsed.innerHTML=editor.vditor.lute.Md2HTML(display(latest));
     const math=[...parsed.content.querySelectorAll(".lathe-math")].map(element=>element.textContent?.trim());
     const inlineCode=[...latest.matchAll(/(`+)[^\r\n]*?\1/g)].map(match=>({start:match.index,end:match.index+match[0].length}));
@@ -592,7 +652,7 @@ function updateSourceControls(text:string, edited?:{field:HTMLTextAreaElement;st
     latest = text;
 }
 function renderSourceBlocks() {
-    if(ready && !bridge.composing && !sourceEditor)renderMath(renderedRoot());
+    if(ready && !bridge.composing && !sourceEditor){renderMath(renderedRoot());renderCode();}
     if (sourceEditor && document.activeElement === sourceEditor) return;
     const blocks = get("blocks"), retained = new Map(sourceControls); sourceEditor = null;
     let index = 0;
@@ -843,10 +903,16 @@ for(const [name,values] of [["content-theme",themes.content],["code-theme",theme
     for(const value of values){const option=document.createElement("option");option.value=value;option.textContent=value;select.append(option);}
     select.addEventListener("change",()=>{if(name==="content-theme")preferences.content_theme=select.value||null;else preferences.code_theme=select.value||null;persist();applyAppearance();});
 }
-get("insert-image").addEventListener("click",()=>importAfterFlush({kind:"pick_images",clipboard:false}));
+let pickerPosition:{position:number;source:string}|null=null;
+get("insert-image").addEventListener("mousedown",()=>{commit();pickerPosition={position:insertionPosition(),source:latest};});
+get("insert-image").addEventListener("click",()=>{const captured=pickerPosition;pickerPosition=null;importAfterFlush({kind:"pick_images",clipboard:false},captured?.position,captured?.source);});
 window.addEventListener("beforeunload",()=>{for(const url of imageUrls)URL.revokeObjectURL(url);});
 (window as any).latheRich = {openFind,mode,format,commit,projection,sanitize,
-    nativePaste:()=>importAfterFlush({kind:"pick_images",clipboard:true}), nativeDrop:()=>importAfterFlush({kind:"pick_images",clipboard:false,drop:true}),
+    nativePaste:(text="")=>{
+        const focused=document.activeElement;
+        if(active().contains(focused) || focused instanceof HTMLTextAreaElement && sourceControls.has(focused))importAfterFlush({kind:"pick_images",clipboard:true});
+        else if(focused instanceof HTMLInputElement && focused.selectionStart!==null || focused instanceof HTMLTextAreaElement){focused.setRangeText(text,focused.selectionStart??0,focused.selectionEnd??0,"end");focused.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertFromPaste",data:text}));}
+    }, nativeDrop:()=>importAfterFlush({kind:"pick_images",clipboard:false,drop:true}),
     get editor() {return editor;}, get ready() {return ready;},
     replaceText(before:string,after:string) {
         const node = textNodes(active()).find(node => node.data.includes(before));

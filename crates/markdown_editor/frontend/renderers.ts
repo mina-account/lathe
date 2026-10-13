@@ -25,6 +25,9 @@ export async function highlightCode(root:HTMLElement):Promise<void> {
 function script(path:string):Promise<void> {
     if (!loaded.has(path)) loaded.set(path,new Promise((resolve,reject)=>{
         const element=document.createElement("script"); element.src=`/vendor/dist/js/${path}`;
+        // Markmap embeds Prism, whose automatic pass would rewrite editor code
+        // and replace Highlight.js token spans even outside the rendered map.
+        if(path==="markmap/markmap.min.js")element.setAttribute("data-manual","");
         element.id=`lathe-renderer-${path.replace(/[^a-z0-9]/gi,"-")}`;
         element.onload=()=>{
             if(path==="katex/katex.min.js") pinnedMath=(window as any).katex;

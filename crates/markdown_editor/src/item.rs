@@ -997,7 +997,16 @@ impl MarkdownEditor {
                     })
                 })
             {
-                if let Err(error) = self.browser_script("window.latheRich?.nativePaste()") {
+                let text = cx
+                    .read_from_clipboard()
+                    .and_then(|item| item.text())
+                    .unwrap_or_default();
+                let script = serde_json::to_string(&text)
+                    .map(|text| format!("window.latheRich?.nativePaste({text})"));
+                if let Err(error) = script
+                    .map_err(Into::into)
+                    .and_then(|script| self.browser_script(&script))
+                {
                     self.asset_notice(error.to_string(), cx);
                 }
                 return;

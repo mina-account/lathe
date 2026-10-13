@@ -22,7 +22,7 @@ mod supported {
         time::{Duration, Instant},
     };
 
-    const RUNTIME_IDENTITY: &str = "window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({version:window.latheRich.editor.version,mode:window.latheRich.editor.getCurrentMode(),presentation:document.getElementById('mode').value,source:window.latheRich.projection.source,viewer:!document.getElementById('viewer').hidden,mathVersion:window.katex?.version,renderers:[...document.querySelectorAll('[data-renderer]')].map(element=>({language:element.dataset.renderer,state:element.dataset.state,text:element.textContent}))})})";
+    const RUNTIME_IDENTITY: &str = "window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({version:window.latheRich.editor.version,mode:window.latheRich.editor.getCurrentMode(),presentation:document.getElementById('mode').value,source:window.latheRich.projection.source,viewer:!document.getElementById('viewer').hidden,mathVersion:window.katex?.version,codeHighlighted:!!document.querySelector('#document pre code.hljs .hljs-keyword,#viewer pre code.hljs .hljs-keyword'),codeThemeLoaded:[...document.styleSheets].some(sheet=>sheet.href?.includes('/highlight.js/styles/')&&sheet.href.endsWith('.min.css')),renderers:[...document.querySelectorAll('[data-renderer]')].map(element=>({language:element.dataset.renderer,state:element.dataset.state,text:element.textContent}))})})";
     const RENDERER_FIXTURE: &str = r#"
 Inline $2x+1$ and $\ce{H2O}$.
 
@@ -73,6 +73,14 @@ x^2
 @startuml
 Alice -> Bob: Hello
 @enduml
+```
+
+~~~mermaid
+graph TD; C-->D
+~~~
+
+```rust
+fn main() { let answer = 42; }
 ```
 "#;
     const DOM_INPUT: &str = "window.latheSmokeInput=(before,after)=>{const editor=window.latheRich.editor,root=editor.vditor[editor.getCurrentMode()].element,walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);root.focus();while(walker.nextNode()){const node=walker.currentNode,start=node.data.indexOf(before);if(start<0)continue;window.getSelection().setBaseAndExtent(node,start,node,start+before.length);root.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));if(!document.execCommand('insertText',false,after))throw new Error('DOM input failed');return;}throw new Error('DOM input target unavailable');};";
@@ -125,6 +133,8 @@ Alice -> Bob: Hello
             }
         }
         if identity["mathVersion"] != "0.16.9"
+            || identity["codeHighlighted"] != true
+            || identity["codeThemeLoaded"] != true
             || !renderers.iter().any(|renderer| {
                 renderer["language"] == "plantuml"
                     && renderer["state"] == "error"
@@ -137,7 +147,7 @@ Alice -> Bob: Hello
         }
         println!(
             "{}",
-            serde_json::json!({"event":"phase4_renderers","mode":mode,"renderers":renderers,"math_version":identity["mathVersion"],"source_preserved":true})
+            serde_json::json!({"event":"phase4_renderers","mode":mode,"renderers":renderers,"math_version":identity["mathVersion"],"code_highlighted":true,"code_theme_loaded":true,"source_preserved":true})
         );
         println!(
             "{}",

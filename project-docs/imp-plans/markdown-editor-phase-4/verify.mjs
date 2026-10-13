@@ -13,6 +13,7 @@ for (const file of files) {
     assert.equal(renderers.length,5);
     for(const result of renderers) {
         assert.equal(result.math_version,"0.16.9");assert(result.source_preserved);
+        assert.equal(result.code_highlighted,true);assert.equal(result.code_theme_loaded,true);
         for(const language of ["mermaid","graphviz","echarts","abc","flowchart","markmap","mindmap","smiles","math"]) assert(result.renderers.some(renderer=>renderer.language===language&&renderer.state==="ready"));
         for(const language of ["markmap","mindmap"]) assert(result.renderers.some(renderer=>renderer.language===language&&/Root/.test(renderer.text)&&/Child/.test(renderer.text)));
         assert(result.renderers.some(renderer=>renderer.language==="plantuml"&&renderer.state==="error"&&/cannot render offline/.test(renderer.text)));
@@ -44,6 +45,7 @@ for (const file of files) {
     for (const entry of matching("resource")) {assert(entry.url.startsWith("https://lathe-markdown.invalid/")); assert.equal(entry.status,200);}
     assert(matching("resource").some(entry=>entry.url.endsWith("/vendor/vditor.js")));
     assert(matching("resource").some(entry=>entry.url.endsWith("/vendor/purify.js")));
+    assert(matching("resource").some(entry=>entry.url.includes("/highlight.js/styles/") && entry.url.endsWith(".min.css")));
     console.log(`Verified pinned rich modes, source/history/flush/recovery: ${one("gpui_backend").handle}`);
 }
 const runtime=JSON.parse(await readFile(new URL("runtime.json",import.meta.url),"utf8"));
@@ -51,11 +53,15 @@ for (const [file,hash] of Object.entries(runtime.assets)) {
     assert.equal(createHash("sha256").update(await readFile(new URL(`../../../${file}`,import.meta.url))).digest("hex"),hash,file);
 }
 console.log("Verified locked packaged core asset bytes");
+for(const [file,hash] of Object.entries(runtime.sourceHashesNormalizedLF)) {
+    const source=(await readFile(new URL(`../../../crates/markdown_editor/frontend/${file}`,import.meta.url),"utf8")).replaceAll("\r\n","\n");
+    assert.equal(createHash("sha256").update(source).digest("hex"),hash,file);
+}
 const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
 assert.equal(checks.frontendBridge,17);
-assert.equal(checks.frontendRealBrowser,44);
+assert.equal(checks.frontendRealBrowser,51);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
-assert.equal(checks.windowsNative,58);assert.equal(checks.linuxNative,58);
+assert.equal(checks.windowsNative,61);assert.equal(checks.linuxNative,61);
 assert.equal(checks.windowsWorkspaceSave,25);assert.equal(checks.linuxWorkspaceSave,26);
 console.log("Verified recorded Phase4 renderer, resource, preservation and final-asset checks");

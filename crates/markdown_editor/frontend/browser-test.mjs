@@ -230,7 +230,7 @@ test("resource failures, resets, hostile SVG and custom CSS leave source and doc
     await selectText(page,"Tail");await page.keyboard.insertText("Changed");await page.evaluate(()=>window.latheRich.commit());
     assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Tail","Changed"));await acknowledge(page);
     await page.evaluate(()=>window.latheMarkdown.receive({kind:"resources_reset"}));
-    await page.waitForFunction(()=>window.testMessages.filter(message=>message.kind==="resource").length>=2);
+    try{await page.waitForFunction(()=>window.testMessages.filter(message=>message.kind==="resource").length>=2,{},{timeout:2000});}catch(error){throw new Error(`${mode}: ${JSON.stringify(await page.evaluate(()=>({images:[...document.querySelectorAll("img")].map(image=>image.outerHTML),messages:window.testMessages})))}`,{cause:error});}
     await page.evaluate(()=>window.latheMarkdown.receive({kind:"appearance",dark:false,use_app_theme_colors:true,show_line_numbers:false,background:"#fff",foreground:"#222",accent:"blue",custom_css:'@import url("https://evil.invalid/steal.css"); .vditor-reset { background-image:url("file:///private"); }',plantuml_service:null}));
     assert.deepEqual(external,[]);assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Tail","Changed"));await context.close();
 });
@@ -896,5 +896,116 @@ test("Unicode case-insensitive Find highlights exact original text ranges",async
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
         assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['draft','edit','undo','redo'].includes(message.kind))),false);
         await context.close();
+    }
+});
+
+test("native image paste follows document focus and keeps Find text paste",async()=>{
+    const source="Before\n\n```rust\nfn main() {}\n```\n\nTail",{page,context}=await open(source);
+    await page.click("#find-open"); await page.fill("#query","Before");
+    await page.evaluate(()=>window.latheRich.nativePaste("needle"));
+    assert.equal(await page.inputValue("#query"),"Beforeneedle");
+    assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="pick_images").length),0);
+    for(const selector of ['#case','#code-theme','#mode','#outline-toggle']){
+        await page.focus(selector);await page.evaluate(()=>window.latheRich.nativePaste("text"));
+        assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="pick_images").length),0);
+    }
+    await page.locator('#source-blocks').evaluate(details=>details.open=true); await page.locator('#blocks details').first().evaluate(details=>details.open=true); await page.locator('#blocks textarea').focus(); await page.evaluate(()=>window.latheRich.nativePaste("text"));
+    assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="pick_images").length),1);
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);await context.close();
+});
+
+test("aggregate image imports stay below the protocol byte limit and leave editing live",async()=>{
+    const {page,context}=await open("Before\n\nTail","sv"); await selectText(page,"Before");
+    await page.evaluate(()=>{
+        const data=new DataTransfer();
+        const header=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg=='),character=>character.charCodeAt(0));
+        for(let index=0;index<4;index++){const bytes=new Uint8Array(4179323);bytes.set(header);data.items.add(new File([bytes],`image-${index}.png`,{type:"image/png"}));}
+        document.activeElement.dispatchEvent(new DragEvent("drop",{dataTransfer:data,bubbles:true,cancelable:true}));
+    });
+    await page.waitForFunction(()=>window.testMessages.some(message=>message.kind==="import_images")||/batch|limit/i.test(document.querySelector('#status').textContent));
+    const imports=await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="import_images"));
+    for(const message of imports)assert(Buffer.byteLength(JSON.stringify(message))<=16781312);
+    assert.equal(imports.length,0);assert.match(await page.locator('#status').textContent(),/batch.*limit|limit.*batch/i);
+    await selectText(page,"Before");await page.keyboard.insertText("Edited");await page.evaluate(()=>window.latheRich.commit());
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),"Edited\n\nTail");await context.close();
+});
+
+test("raw drive and UNC image destinations reach host validation without DOM fetch",async()=>{
+    for(const mode of ["ir","wysiwyg","sv","preview"]){
+        const destinations=['C:/project/assets/a.png','//server/share/project/assets/a.png','javascript:alert(1)','file:///private'];
+        const source=destinations.map(destination=>`![image](${destination})`).join('\n\n'),{page,context,external}=await open(source,mode);
+        await page.evaluate(()=>{
+            const bridge=window.latheMarkdown;
+            const reject=message=>bridge.receive({kind:"resource",request:message.request,mime:"",bytes:"",error:"Outside the owning worktree"});
+            bridge.send=message=>{window.testMessages.push(message);if(message.kind==="resource")queueMicrotask(()=>reject(message));};
+            for(const message of window.testMessages.filter(message=>message.kind==="resource"))reject(message);
+        });
+        try{await page.waitForFunction(()=>window.testMessages.filter(message=>message.kind==="resource").length>=2,undefined,{timeout:2000});}
+        catch(error){throw new Error(`${mode}: ${JSON.stringify(await page.evaluate(()=>({images:[...document.querySelectorAll("img")].map(image=>image.outerHTML),messages:window.testMessages,html:window.latheRich.editor.vditor.lute.Md2HTML(window.latheMarkdown.draft),sanitized:window.latheRich.sanitize('<img data-lathe-image="C:/project/assets/a.png">',false,true)})))}`,{cause:error});}
+        const requested=await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="resource").map(message=>message.url));
+        for(const destination of destinations.slice(0,2))assert(requested.includes(destination),`${mode} ${destination}`);
+        assert.equal(await page.locator('img[src]').count(),0);assert.deepEqual(external,[]);
+        await page.evaluate(()=>window.latheRich.commit());assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);await context.close();
+    }
+});
+
+test("CommonMark renderer fences render every presentation while source stays exact",async()=>{
+    for(const mode of ["ir","wysiwyg","sv","preview"])for(const fence of ['~~~mermaid\ngraph TD; A-->B\n~~~','````mermaid\ngraph TD; A-->B\n````','  ```mermaid\n  graph TD; A-->B\n  ```','> ```mermaid\n> graph TD; A-->B\n> ```','- Parent\n  - Child\n\n    ~~~mermaid\n    graph TD; A-->B\n    ~~~']){
+        const source=`Before\r\n\r\n${fence.replaceAll('\n','\r\n')}\r\n\r\nTail`,{page,context}=await open(source,mode);
+        await page.waitForSelector('[data-renderer="mermaid"][data-state="ready"]',{timeout:10000});
+        const expected=fence.startsWith('- Parent')?fence.slice(fence.indexOf('    ~~~')):fence;
+        assert.equal(await page.locator('#blocks textarea').first().inputValue(),expected);
+        await page.evaluate(()=>window.latheRich.commit());assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        if(mode!=="preview"){await selectText(page,"Before");await page.keyboard.insertText("Edited");await page.evaluate(()=>window.latheRich.commit());assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Before","Edited"));}
+        await context.close();
+    }
+});
+
+test("picker click retains the source textarea caret through flush",async()=>{
+    const source="Before\r\n\r\n```rust\r\nfn main() {}\r\n```\r\n\r\nTail",{page,context}=await open(source);
+    await page.locator('#source-blocks').evaluate(details=>details.open=true); await page.locator('#blocks details').first().evaluate(details=>details.open=true);
+    await page.locator('#blocks textarea').first().evaluate(field=>{field.focus();field.setSelectionRange(field.value.indexOf('main')+2,field.value.indexOf('main')+2);});
+    await page.click('#insert-image');
+    const message=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="pick_images"));
+    assert.equal(message.position,source.indexOf('main')+2);assert.equal(message.base_revision,0);assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);await context.close();
+});
+
+test("packaged code themes load and style code in every presentation",async()=>{
+    for(const mode of ["ir","wysiwyg","sv","preview"]){
+        const source=(await readFile(new URL('../src/smoke.rs',import.meta.url),'utf8')).match(/const RENDERER_FIXTURE: &str = r#"([\s\S]*?)"#;/)[1],{page,context}=await open(source,mode),responses=[];
+        page.on('response',response=>{if(response.url().includes('/highlight.js/styles/'))responses.push({url:response.url(),status:response.status()});});
+        const code=mode==='sv'?'.vditor-preview pre code.hljs':mode==='preview'?'#viewer pre code.hljs':'#document pre code.hljs';
+        await page.waitForFunction(()=>[...document.querySelectorAll('[data-renderer]')].every(element=>element.dataset.state!=='pending'));
+        try{await page.waitForSelector(`${code} .hljs-keyword`,{timeout:10000});}
+        catch(error){throw new Error(`${mode}: ${JSON.stringify(await page.locator('#document code').evaluateAll(elements=>elements.filter(element=>element.textContent.includes('fn main')).map(element=>element.outerHTML)))}`,{cause:error});}
+        const colors=[];
+        for(const theme of ['github','github-dark']){
+            await page.selectOption('#code-theme',theme);
+            await page.waitForFunction(theme=>[...document.styleSheets].some(sheet=>sheet.href?.endsWith(`/${theme}.min.css`)),theme);
+            colors.push(await page.locator(`${code} .hljs-keyword`).first().evaluate(element=>getComputedStyle(element).color));
+        }
+        assert.notEqual(colors[0],colors[1]);assert(responses.every(response=>response.status===200));
+        await page.evaluate(()=>window.latheRich.commit());assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        if(mode!=="sv"){
+            await page.selectOption('#mode','sv');await page.waitForSelector('.vditor-preview pre code.hljs .hljs-keyword');
+            await page.waitForFunction(()=>document.getElementById('vditorHljsStyle')?.getAttribute('href')?.endsWith('/github-dark.min.css'));
+            assert.equal(await page.locator('.vditor-preview pre code.hljs .hljs-keyword').first().evaluate(element=>getComputedStyle(element).color),colors[1]);
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        }
+        await context.close();
+    }
+});
+
+test("every offered content and code stylesheet loads in every presentation",async()=>{
+    for(const mode of ["ir","wysiwyg","sv","preview"]){
+        const source='Before\n\n```rust\nfn main() {}\n```\n\nTail',{page,context}=await open(source,mode),requests=[];
+        page.on('response',response=>{if(response.url().includes('/content-theme/')||response.url().includes('/highlight.js/styles/'))requests.push({url:response.url(),status:response.status()});});
+        for(const selector of ['#content-theme','#code-theme'])for(const value of await page.locator(`${selector} option`).evaluateAll(options=>options.map(option=>option.value).filter(Boolean))){
+            await page.selectOption(selector,value);
+            const suffix=selector==='#code-theme'?`/highlight.js/styles/${value}.min.css`:`/content-theme/${value}.css`;
+            await page.waitForFunction(suffix=>[...document.styleSheets].some(sheet=>sheet.href?.endsWith(suffix)),suffix,{timeout:3000});
+        }
+        assert(requests.length>=250);assert(requests.every(request=>request.status===200));
+        await page.evaluate(()=>window.latheRich.commit());assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);await context.close();
     }
 });

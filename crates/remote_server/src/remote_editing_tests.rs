@@ -125,6 +125,68 @@ async fn test_project_binary_resources_complete_remote_chunks_and_preserve_exclu
             .await
             .is_err()
     );
+    filesystem
+        .insert_tree(
+            path!("/standalone"),
+            json!({"doc.md":"standalone", "assets":{"existing.png":"image bytes"}}),
+        )
+        .await;
+    let (standalone, relative) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/standalone/doc.md"), true, cx)
+        })
+        .await
+        .expect("SSH standalone document");
+    assert!(relative.is_empty());
+    assert!(standalone.read_with(cx, |worktree, _| worktree.is_single_file()));
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((standalone.read(cx).id(), relative), cx)
+        })
+        .await
+        .expect("standalone buffer");
+    let (parent, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/standalone"), false, cx)
+        })
+        .await
+        .expect("SSH parent resource worktree");
+    let parent_id = parent.read_with(cx, |worktree, _| worktree.id());
+    assert_eq!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                (parent_id, rel_path("assets/existing.png")).into(),
+                4096,
+                cx
+            ))
+            .await
+            .expect("standalone relative resource"),
+        b"image bytes"
+    );
+    parent
+        .update(cx, |worktree, cx| {
+            worktree.create_entry_exclusive(
+                rel_path("assets/import.png").into(),
+                b"imported image".to_vec(),
+                cx,
+            )
+        })
+        .await
+        .expect("standalone remote import");
+    assert_eq!(
+        filesystem
+            .load_bytes(path!("/standalone/assets/import.png").as_ref())
+            .await
+            .expect("remote sibling image"),
+        b"imported image"
+    );
+    assert_eq!(
+        buffer.read_with(cx, |buffer, cx| buffer
+            .file()
+            .expect("file")
+            .worktree_id(cx)),
+        standalone.read_with(cx, |worktree, _| worktree.id())
+    );
     let empty: ProjectPath = (worktree_id, rel_path("assets/empty.bin")).into();
     assert!(
         project

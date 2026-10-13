@@ -1,9 +1,9 @@
 {
   "date": "2026-10-12",
   "frontendBridge": 17,
-  "frontendRealBrowser": 44,
-  "windowsNative": 58,
-  "linuxNative": 58,
+  "frontendRealBrowser": 51,
+  "windowsNative": 61,
+  "linuxNative": 61,
   "windowsProtocol": 13,
   "linuxProtocol": 13,
   "windowsRemoteProjectBytes": 1,
@@ -34,7 +34,11 @@
   "isolatedGeneratedAssetReproduction": 347,
   "pinnedDependencyHashes": 332,
   "npmAuditVulnerabilities": 0,
-  "nativeSmokeExit": {"windows": 0, "wayland": 0, "x11": 0},
+  "nativeSmokeExit": {
+    "windows": 0,
+    "wayland": 0,
+    "x11": 0
+  },
   "mathIdentityExpectedRed": "Markmap global KaTeX0.16.0 did not equal pinned0.16.9; green both load orders and later edited mhchem source",
   "inFlowMathExpectedRed": "IR had no in-flow KaTeX; green actual inline/block output in all presentations, consecutive neighboring edits and real Chromium IME/flush",
   "sharedSshExpectedRed": "DownloadFileByPath had no handler at the collab project ID on SSH; green retained SSH server ID on the second hop",
@@ -57,5 +61,37 @@
     "Automated actual CEF Win32/WSLg X11/Wayland traces and deterministic project/HTTP fixtures do not prove hardware clipboard/IME or full manual UI acceptance",
     "CEF no_sandbox=1 remains application/data confinement, not OS sandboxing",
     "Complete install/menu/default opening/documentation/redistribution packaging belongs to Phase5; full manual UI acceptance belongs to Phase6"
-  ]
+  ],
+  "windowsRemoteServerReleaseAllTargetAllFeatureWrapperLint": "passed",
+  "linuxRemoteServerReleaseAllTargetAllFeatureWrapperLint": "passed",
+  "reviewFixPass1": {
+    "reviewedHead": "c594be1240cf4a2c3c96139ef854a50fe3547938",
+    "findingsFixed": 9,
+    "frontendExpectedRed": {
+      "tests": 7,
+      "passed": 0,
+      "failed": 7
+    },
+    "nativeExpectedRed": {
+      "tests": 12,
+      "passed": 10,
+      "failed": 2
+    },
+    "nativeAssetGreen": 13,
+    "imageWireBatchBytes": 8388608,
+    "offeredCodeThemes": 249,
+    "offeredContentThemes": 4,
+    "themeOptionSelectionsAllPresentations": 1012,
+    "commonMarkPresentations": 4,
+    "sourcePickerExpectedOffset": 24,
+    "sourcePickerPriorOffset": 44,
+    "combinedRendererCodeExpectedRed": "Markmap bundled Prism highlightAllUnder replaced Highlight.js token spans after successful highlighting; manual script loading preserves both code and maps",
+    "actualCefCodeAndThemeAssertions": {
+      "windows": true,
+      "wayland": true,
+      "x11": true
+    },
+    "windowsDiskRecovery": "LLVM exhausted C: during cached workspace compilation; removed only verified regenerable target/debug/incremental cache, then final checks passed",
+    "runtimeSmokeDirectory": "Build-copied flat CEF beside executable; CEF_PATH SDK parent is not the flat LATHE_MARKDOWN_CEF_RUNTIME override"
+  }
 }
