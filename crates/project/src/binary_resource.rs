@@ -22,10 +22,43 @@ pub(crate) struct BinaryResourceDownload {
 }
 
 impl Project {
+    pub fn load_shared_binary_resource(
+        &mut self,
+        path: ProjectPath,
+        limit: usize,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<u8>>> {
+        let Some(worktree) = self.worktree_for_id(path.worktree_id, cx) else {
+            return Task::ready(Err(anyhow!("Resource worktree is unavailable")));
+        };
+        let private = match worktree.read(cx) {
+            worktree::Worktree::Local(worktree) => worktree.is_path_private(&path.path),
+            worktree::Worktree::Remote(_) => worktree
+                .read(cx)
+                .snapshot()
+                .entry_for_path(&path.path)
+                .is_some_and(|entry| entry.is_private),
+        };
+        if private {
+            return Task::ready(Err(anyhow!("Private project resources cannot be shared")));
+        }
+        self.load_binary_resource_with_privacy(path, limit, true, cx)
+    }
+
     pub fn load_binary_resource(
         &mut self,
         path: ProjectPath,
         limit: usize,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<u8>>> {
+        self.load_binary_resource_with_privacy(path, limit, false, cx)
+    }
+
+    fn load_binary_resource_with_privacy(
+        &mut self,
+        path: ProjectPath,
+        limit: usize,
+        reject_private: bool,
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<u8>>> {
         self.binary_resource_downloads.retain(|_, download| {
@@ -45,7 +78,11 @@ impl Project {
         };
         if worktree.read(cx).is_local() {
             let load = worktree.update(cx, |worktree, cx| {
-                worktree.load_binary_file_with_limit(&path.path, limit, cx)
+                if reject_private {
+                    worktree.load_shared_binary_file_with_limit(&path.path, limit, cx)
+                } else {
+                    worktree.load_binary_file_with_limit(&path.path, limit, cx)
+                }
             });
             return cx.spawn(async move |_, _| {
                 let content = load.await?.content;
@@ -98,6 +135,7 @@ impl Project {
                         path: path.path.as_unix_str().into(),
                         file_id,
                         byte_limit: Some(limit as u64),
+                        reject_private,
                     })
                     .await?;
                 if response.file_id != file_id {
@@ -137,20 +175,8 @@ impl Project {
             path: util::rel_path::RelPath::from_unix_str(&request.path)?.into(),
         };
         let load = this.update(&mut cx, |this, cx| {
-            let worktree = this
-                .worktree_for_id(path.worktree_id, cx)
-                .context("Resource worktree is unavailable")?;
-            let private = match worktree.read(cx) {
-                worktree::Worktree::Local(worktree) => worktree.is_path_private(&path.path),
-                worktree::Worktree::Remote(_) => worktree
-                    .read(cx)
-                    .snapshot()
-                    .entry_for_path(&path.path)
-                    .is_some_and(|entry| entry.is_private),
-            };
-            anyhow::ensure!(!private, "Private project resources cannot be shared");
-            Ok::<_, anyhow::Error>(this.load_binary_resource(path, limit, cx))
-        })?;
+            this.load_shared_binary_resource(path, limit, cx)
+        });
         let content = load.await?;
         let client = this.read_with(&cx, |this, _| this.collab_client.clone());
         use proto::create_file_for_peer::Variant;

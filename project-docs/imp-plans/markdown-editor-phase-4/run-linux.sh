@@ -22,7 +22,8 @@ case "${1:-native}" in
     lint_wrapper="$CARGO_TARGET_DIR/phase4-clippy"
     tr -d '\r' < script/clippy > "$lint_wrapper"
     bash "$lint_wrapper" -p markdown_editor -p workspace --locked
-    bash "$lint_wrapper" -p project -p worktree -p settings_content --locked ;;
+    bash "$lint_wrapper" -p project -p worktree -p settings_content --locked
+    bash "$lint_wrapper" -p remote_server --locked ;;
   wayland) unset DISPLAY; export XDG_SESSION_TYPE=wayland; "$CARGO_TARGET_DIR/debug/markdown_editor_smoke" ;;
   x11) export WAYLAND_DISPLAY='' DISPLAY=:0 XDG_SESSION_TYPE=x11; "$CARGO_TARGET_DIR/debug/markdown_editor_smoke" ;;
   *) echo "Unknown check: $1" >&2; exit 2 ;;

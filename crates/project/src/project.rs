@@ -3288,6 +3288,7 @@ impl Project {
                     path: path_str.clone(),
                     file_id,
                     byte_limit: None,
+                    reject_private: false,
                 })
                 .await?;
 

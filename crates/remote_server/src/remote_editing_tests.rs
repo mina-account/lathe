@@ -115,6 +115,28 @@ async fn test_project_binary_resources_complete_remote_chunks_and_preserve_exclu
     });
     assert_eq!(first.await.expect("all first chunks"), bytes);
     assert_eq!(second.await.expect("all concurrent chunks"), bytes);
+    assert_eq!(
+        project
+            .update(cx, |project, cx| project.load_shared_binary_resource(
+                path.clone(),
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .expect("benign authorized SSH resource"),
+        bytes
+    );
+    worktree
+        .update(cx, |worktree, cx| {
+            worktree.create_directory_confined(rel_path("assets/nested/safe").into(), cx)
+        })
+        .await
+        .expect("confined remote directories");
+    assert!(
+        filesystem
+            .is_dir(path!("/code/project/assets/nested/safe").as_ref())
+            .await
+    );
     assert!(
         project
             .update(cx, |project, cx| project.load_binary_resource(

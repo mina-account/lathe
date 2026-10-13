@@ -10,6 +10,7 @@ message DownloadFileByPath {
   string path = 3;
   uint64 file_id = 4;
   optional uint64 byte_limit = 5;
+  bool reject_private = 6;
 }
 
 message DownloadFileResponse {

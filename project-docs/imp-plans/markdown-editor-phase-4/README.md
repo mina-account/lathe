@@ -45,7 +45,7 @@ The exact native resource allowlist now includes the pinned fonts, styles, scrip
 | Behavior | Meaningful verification |
 | --- | --- |
 | Complete finite renderer inventory | Packaged Edge browser tests render all local handlers, assert semantic labels/nodes rather than SVG count alone, and cover every malformed handler plus the negative controls. Actual CEF smokes repeat inventory/math/service boundary in IR/WYSIWYG/split/viewer. |
-| Async renderer/source preservation | Full prior 36 browser groups retain exact source roundtrips, consecutive edits, controls, blank input/IME, Viewer selection, queued undo, save/flush cancellation, and recovery. The expanded suite totals 51 groups. |
+| Async renderer/source preservation | Full prior 36 browser groups retain exact source roundtrips, consecutive edits, controls, blank input/IME, Viewer selection, queued undo, save/flush cancellation, and recovery. The expanded suite totals 52 groups. |
 | Math and dependency identity | Every-presentation chemistry/delimiter fixtures; distinct ABC/SMILES loader identities; exact KaTeX version in native traces; all local renderer assets served without external fetches. |
 | Images, import anchors and partial errors | Native `image_batch_writes_before_anchored_insertion_and_keeps_partial_failures_visible`, picker/clipboard/drop-path, read-only/close, untitled Save As/cancel, second-worktree root, resource read and rename/reset fixtures. Browser real neighboring edits preserve original escaped image destinations in every presentation. |
 | Completion-aware remote resources | Remote-server `test_project_binary_resources_complete_remote_chunks_and_preserve_exclusive_writes`: concurrent same-file 2 MiB+17 transfers, zero-byte files, size rejection, missing-file failure, exclusive collision preservation, binary import/readback. |
@@ -78,6 +78,7 @@ cargo check --locked -p zed --all-targets --features visual-tests
 cargo check --locked -p zed --all-targets --features visual-tests,markdown-browser
 ./script/clippy.ps1 -p markdown_editor -p workspace --locked
 ./script/clippy.ps1 -p project -p worktree -p settings_content --locked
+./script/clippy.ps1 -p remote_server --locked
 ./script/clippy.ps1 -p zed --locked
 ./script/clippy.ps1 -p collab --locked
 node project-docs/imp-plans/markdown-editor-phase-4/verify.mjs
@@ -108,3 +109,15 @@ All nine findings from reviewed commit `c594be1240cf4a2c3c96139ef854a50fe3547938
 Successful code stylesheet loading initially exposed an existing restoration order problem: the stylesheet callback captured zero before the mode's saved scroll was restored. Appearance now captures the restored position; the original selection/scroll/IME regression and all source/history tests pass. Lute AST fence payloads retain the previous delimiter behavior, including SMILES' rejection of a trailing parser newline.
 
 These corrections do not establish hardware/manual UI acceptance. The Windows drive-less portable-workspace fixture, root-format, feature/mock exceptions and explicit PlantUML network-service requirement remain as documented above. Runtime smoke launches use the build-copied flat CEF directory beside the executable; `CEF_PATH` points to the SDK/runtime parent and must not be mistaken for that flat runtime directory.
+
+## Independent review pass 2 corrections
+
+The three findings from reviewed commit `51dddc6ecd43795ab9be9cfacb4a57b27ab2a67a` have harmless deterministic regressions. The actual browser test first submitted a temporary blob URL after a same-paragraph WYSIWYG edit. Native tests first allowed a public alias to a benign private fixture and created an outside destination directory before rejecting the image write. Each focused test now passes.
+
+Shared-resource reads authorize both the requested path and the canonical target before opening bytes. The owning worktree applies its existing private-file settings and sharing policy to the canonical relative path. The additive `reject_private` RPC field carries that restriction through the existing SSH bounded-reader adapter; ordinary owner reads retain their policy. Native fixtures cover every default private pattern, custom extension and private-directory patterns, public aliases, private lexical aliases, and permitted owner reads. Existing benign local/shared-SSH collaborative fixtures remain the transport coverage. The stopped deeper collaborative-path probe was not retried, and no confidential-file transport proof is claimed.
+
+Rich HTML spins restore retained image destinations before Lute transforms loaded images; the sanitizer also prefers the retained destination for trusted image metadata. Split-source spins retain their original input boundary. The browser regression loads real PNG bytes in all four presentations, keeps destination and title through two ordinary same-paragraph edits, acknowledges native history, and completes flush. Only the durable project destination is requested, with no outside DOM fetch. Full neighboring-edit coverage caught an initial split-source normalization interaction; restricting restoration to rich HTML spin methods fixed it before the final suite.
+
+Image imports use confined directory creation before the existing exclusive file write. The writer finds the nearest existing lexical ancestor, canonicalizes it, and requires it beneath the canonical owning root before creating any directory. This also rejects broken symlink ancestors. The same exclusive-entry RPC route carries the check to remote worktrees. Native fixtures require visible failure, unchanged source, and an empty outside fixture for relative and `${projectRoot}` escapes; nested ordinary and in-root alias destinations still import and undo normally. The existing SSH fixture also creates a confined nested directory and reads a benign authorized shared resource.
+
+Final pass 2 counts are 52 packaged-browser groups, 17 bridge cases, 63 native cases and 13 protocol cases on both platforms. Scoped Rust formatting uses `rustfmt --edition 2024 --config skip_children=true --check` on the modified Rust files: traversing `project.rs` without that scope reaches the documented unchanged child-format exceptions. Linux `lint` runs the Markdown/Workspace, Project/Worktree/Settings, and Remote Server groups through the repository wrapper. The existing Windows portable-workspace exception and remaining packaging/manual obligations are unchanged.

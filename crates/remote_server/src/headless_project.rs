@@ -882,12 +882,24 @@ impl HeadlessProject {
 
         let download_task = worktree.update(&mut cx, |worktree: &mut Worktree, cx| {
             if let Some(limit) = message.payload.byte_limit {
+                if message.payload.reject_private {
+                    return worktree.load_shared_binary_file_with_limit(
+                        path.as_ref(),
+                        limit.min(4 * 1024 * 1024) as usize,
+                        cx,
+                    );
+                }
                 worktree.load_binary_file_with_limit(
                     path.as_ref(),
                     limit.min(4 * 1024 * 1024) as usize,
                     cx,
                 )
             } else {
+                if message.payload.reject_private {
+                    return gpui::Task::ready(Err(anyhow::anyhow!(
+                        "Shared project resources require a byte limit"
+                    )));
+                }
                 worktree.load_binary_file(path.as_ref(), cx)
             }
         });

@@ -30,8 +30,9 @@ let resourceGeneration=0;
 let readingGeneration=0;
 const forbiddenTags = ["script","style","iframe","object","embed","svg","math","template","form","input","button","select","textarea","audio","video","source","base","meta","link"];
 const imageSources=new WeakMap                ();
-DOMPurify.addHook("uponSanitizeElement",(node        )=>{
-    if(node.tagName==="IMG" && node.hasAttribute("src"))imageSources.set(node,node.getAttribute("src") );
+DOMPurify.addHook("uponSanitizeElement",(node        ,_data    ,configuration    )=>{
+    if(node.tagName==="IMG" && node.hasAttribute("src"))imageSources.set(node,
+        (configuration.LATHE_IMAGES ? node.getAttribute("data-lathe-original") : null) ?? node.getAttribute("src") );
 });
 DOMPurify.addHook("uponSanitizeAttribute", (_node        , attribute    ,configuration    ) => {
     if (_node.tagName==="IMG" && attribute.attrName==="src") {
@@ -64,12 +65,24 @@ export function sanitize(html        , editing = false, images = false)         
 // Lute returns HTML before Vditor assigns it to live DOM. Sanitize at that boundary,
 // including transformations during typing, rather than trying to clean after insertion.
 const newLute = Lute.New;
+function durableImageSources(html       )        {
+    if(!/\bdata-lathe-(?:original|image)=/.test(html))return html;
+    const template=document.createElement("template");template.innerHTML=html;
+    for(const image of template.content.querySelectorAll("img[data-lathe-original],img[data-lathe-image]")) {
+        image.setAttribute("src",image.getAttribute("data-lathe-original") ?? image.getAttribute("data-lathe-image") ?? "");
+        image.removeAttribute("data-lathe-original");image.removeAttribute("data-lathe-image");
+    }
+    return template.innerHTML;
+}
 Lute.New = (...arguments_       ) => {
     const lute = newLute(...arguments_);
     for (const method of ["Md2VditorIRDOM","Md2VditorDOM","SpinVditorIRDOM","SpinVditorDOM","SpinVditorSVDOM","HTML2VditorDOM","HTML2VditorIRDOM","Md2HTML","VditorDOM2HTML","VditorIRDOM2HTML"]) {
         if (typeof lute[method] !== "function") continue;
         const original = lute[method];
-        lute[method] = (...parameters       ) => sanitize(original(...parameters), !method.endsWith("HTML"), !method.startsWith("Md2") && !method.startsWith("HTML2"));
+        lute[method] = (...parameters       ) => {
+            if(["SpinVditorDOM","SpinVditorIRDOM"].includes(method) && typeof parameters[0]==="string")parameters[0]=durableImageSources(parameters[0]);
+            return sanitize(original(...parameters), !method.endsWith("HTML"), !method.startsWith("Md2") && !method.startsWith("HTML2"));
+        };
     }
     for(const method of ["VditorDOM2Md","VditorIRDOM2Md","VditorDOM2HTML","VditorIRDOM2HTML"]) {
         const original=lute[method];
@@ -77,11 +90,7 @@ Lute.New = (...arguments_       ) => {
         lute[method]=(html       ,...parameters      )=>{
             const template=document.createElement("template"); template.innerHTML=html;
             for(const preview of template.content.querySelectorAll('.vditor-ir__preview,.vditor-wysiwyg__preview')) preview.remove();
-            for(const image of template.content.querySelectorAll("img[data-lathe-original],img[data-lathe-image]")) {
-                image.setAttribute("src",image.getAttribute("data-lathe-original") ?? image.getAttribute("data-lathe-image") ?? "");
-                image.removeAttribute("data-lathe-original"); image.removeAttribute("data-lathe-image");
-            }
-            return original(template.innerHTML,...parameters);
+            return original(durableImageSources(template.innerHTML),...parameters);
         };
     }
     return lute;

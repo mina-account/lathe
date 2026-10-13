@@ -59,9 +59,11 @@ for(const [file,hash] of Object.entries(runtime.sourceHashesNormalizedLF)) {
 }
 const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
 assert.equal(checks.frontendBridge,17);
-assert.equal(checks.frontendRealBrowser,51);
+assert.equal(checks.frontendRealBrowser,52);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
-assert.equal(checks.windowsNative,61);assert.equal(checks.linuxNative,61);
+assert.equal(checks.windowsNative,63);assert.equal(checks.linuxNative,63);
+assert.equal(checks.reviewFixPass2.findingsFixed,3);assert.equal(checks.reviewFixPass2.nativeAssetGreen,15);
+assert.equal(checks.reviewFixPass2.loadedImageHistoryAndFlush,true);
 assert.equal(checks.windowsWorkspaceSave,25);assert.equal(checks.linuxWorkspaceSave,26);
 console.log("Verified recorded Phase4 renderer, resource, preservation and final-asset checks");

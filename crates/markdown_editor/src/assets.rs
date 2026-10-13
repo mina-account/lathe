@@ -394,7 +394,7 @@ impl MarkdownEditor {
                         let (document, worktree) = resolve.await?;
                         let folder = destination(&document, &folder)?;
                         let create = worktree.update(cx, |worktree, cx| {
-                            worktree.create_entry(folder.clone().into(), true, None, cx)
+                            worktree.create_directory_confined(folder.clone().into(), cx)
                         });
                         create.await?;
                         let stem = name
@@ -654,6 +654,244 @@ mod tests {
             .write_to(&mut output, image::ImageFormat::Png)
             .expect("encode fixture");
         output.into_inner()
+    }
+
+    #[gpui::test]
+    async fn shared_resources_authorize_requested_and_resolved_private_paths(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let project = visual.read_with(cx, |item, cx| {
+            item.source.read(cx).project().expect("project").clone()
+        });
+        let worktree_id = visual.read_with(cx, |item, cx| {
+            item.buffer.read(cx).file().expect("file").worktree_id(cx)
+        });
+        let defaults = [
+            ".env",
+            ".env.test",
+            "fixture.pem",
+            "fixture.key",
+            "fixture.cert",
+            "fixture.crt",
+            "secrets.yml",
+        ];
+        for (index, target) in defaults
+            .into_iter()
+            .chain(["confidential/fixture.txt", "fixtures/custom.conf"])
+            .enumerate()
+        {
+            let custom = index >= defaults.len();
+            if custom {
+                cx.update(|_, cx| {
+                    settings::SettingsStore::update_global(cx, |store, cx| {
+                        store
+                            .set_user_settings(
+                                r#"{"private_files":["confidential","**/*.conf"]}"#,
+                                cx,
+                            )
+                            .result()
+                            .expect("custom private patterns");
+                    })
+                });
+            }
+            let absolute = std::path::Path::new(path!("/project")).join(target);
+            filesystem
+                .create_dir(absolute.parent().expect("parent"))
+                .await
+                .expect("fixture directory");
+            filesystem
+                .write(&absolute, b"harmless fixture")
+                .await
+                .expect("fixture bytes");
+            let alias = format!("alias-{index}.bin");
+            filesystem
+                .insert_symlink(
+                    std::path::Path::new(path!("/project")).join(&alias),
+                    std::path::PathBuf::from(target),
+                )
+                .await;
+            for requested in [target.to_owned(), alias] {
+                let result = project
+                    .update(cx, |project, cx| {
+                        project.load_shared_binary_resource(
+                            (worktree_id, rel_path(&requested)).into(),
+                            1024,
+                            cx,
+                        )
+                    })
+                    .await;
+                assert!(
+                    result.is_err(),
+                    "private request must be denied: {requested}"
+                );
+            }
+            assert_eq!(
+                project
+                    .update(cx, |project, cx| project.load_binary_resource(
+                        (worktree_id, rel_path(target)).into(),
+                        1024,
+                        cx
+                    ))
+                    .await
+                    .expect("owner may read private fixture"),
+                b"harmless fixture"
+            );
+        }
+        filesystem
+            .write(path!("/project/public.bin").as_ref(), b"public fixture")
+            .await
+            .expect("public fixture");
+        filesystem
+            .insert_symlink(
+                path!("/project/public-alias.bin"),
+                std::path::PathBuf::from("public.bin"),
+            )
+            .await;
+        filesystem
+            .insert_symlink(
+                path!("/project/private-alias.conf"),
+                std::path::PathBuf::from("public.bin"),
+            )
+            .await;
+        for requested in ["public.bin", "public-alias.bin"] {
+            assert_eq!(
+                project
+                    .update(cx, |project, cx| project.load_shared_binary_resource(
+                        (worktree_id, rel_path(requested)).into(),
+                        1024,
+                        cx
+                    ))
+                    .await
+                    .expect("permitted shared fixture"),
+                b"public fixture"
+            );
+        }
+        assert!(
+            project
+                .update(cx, |project, cx| project.load_shared_binary_resource(
+                    (worktree_id, rel_path("private-alias.conf")).into(),
+                    1024,
+                    cx
+                ))
+                .await
+                .is_err()
+        );
+    }
+
+    #[gpui::test]
+    async fn image_import_rejects_escaped_directories_before_any_outside_write(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        filesystem
+            .insert_tree(path!("/outside"), serde_json::json!({}))
+            .await;
+        filesystem
+            .insert_symlink(path!("/project/docs/escape"), path!("/outside").into())
+            .await;
+        for folder in [
+            "escape/nested/deeper",
+            "${projectRoot}/docs/escape/root-nested",
+        ] {
+            cx.update(|_, cx| {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(
+                            &serde_json::json!({"markdown_editor":{"image_save_folder":folder}})
+                                .to_string(),
+                            cx,
+                        )
+                        .result()
+                        .expect("destination setting");
+                })
+            });
+            visual
+                .update(cx, |item, cx| {
+                    item.import_images(
+                        0,
+                        0,
+                        ImageInput::Encoded(vec![ImportedImage {
+                            name: "fixture.png".into(),
+                            bytes: STANDARD.encode(png()),
+                        }]),
+                        cx,
+                    )
+                })
+                .expect("import request");
+            cx.run_until_parked();
+            assert_eq!(
+                filesystem
+                    .read_dir(path!("/outside").as_ref())
+                    .await
+                    .expect("outside fixture")
+                    .collect::<Vec<_>>()
+                    .await
+                    .len(),
+                0,
+                "no outside directory or file may be created"
+            );
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                "Before\n\nTail"
+            );
+            assert!(visual.read_with(cx, |item, _| item.error().is_some()));
+        }
+        filesystem
+            .insert_symlink(
+                path!("/project/docs/safe-alias"),
+                std::path::PathBuf::from("assets"),
+            )
+            .await;
+        for folder in [
+            "new/nested",
+            "safe-alias/nested",
+            "${projectRoot}/root/nested",
+        ] {
+            cx.update(|_, cx| {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(
+                            &serde_json::json!({"markdown_editor":{"image_save_folder":folder}})
+                                .to_string(),
+                            cx,
+                        )
+                        .result()
+                        .expect("safe destination setting");
+                })
+            });
+            visual
+                .update(cx, |item, cx| {
+                    item.import_images(
+                        item.protocol.revision,
+                        0,
+                        ImageInput::Encoded(vec![ImportedImage {
+                            name: "fixture.png".into(),
+                            bytes: STANDARD.encode(png()),
+                        }]),
+                        cx,
+                    )
+                })
+                .expect("safe import request");
+            cx.run_until_parked();
+            assert!(visual.read_with(cx, |item, cx| {
+                item.buffer
+                    .read(cx)
+                    .snapshot()
+                    .text()
+                    .starts_with("![image](")
+            }));
+            visual.update(cx, |item, cx| {
+                item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+            });
+            cx.run_until_parked();
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                "Before\n\nTail"
+            );
+        }
     }
 
     #[gpui::test]

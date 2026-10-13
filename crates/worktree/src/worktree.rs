@@ -984,11 +984,33 @@ impl Worktree {
         cx: &Context<Worktree>,
     ) -> Task<Result<LoadedBinaryFile>> {
         match self {
-            Worktree::Local(this) => this.load_binary_file_with_limit(path, Some(limit), cx),
+            Worktree::Local(this) => this.load_binary_file_with_limit(path, Some(limit), false, cx),
             Worktree::Remote(_) => Task::ready(Err(anyhow!(
                 "Remote binary reads require the project byte adapter"
             ))),
         }
+    }
+
+    pub fn load_shared_binary_file_with_limit(
+        &self,
+        path: &RelPath,
+        limit: usize,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<LoadedBinaryFile>> {
+        match self {
+            Worktree::Local(this) => this.load_binary_file_with_limit(path, Some(limit), true, cx),
+            Worktree::Remote(_) => Task::ready(Err(anyhow!(
+                "Shared binary reads require the project byte adapter"
+            ))),
+        }
+    }
+
+    pub fn create_directory_confined(
+        &mut self,
+        path: Arc<RelPath>,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<CreatedEntry>> {
+        self.create_entry_with_options(path, true, None, true, cx)
     }
 
     pub fn create_entry_exclusive(
@@ -1705,13 +1727,14 @@ impl LocalWorktree {
         path: &RelPath,
         cx: &Context<Worktree>,
     ) -> Task<Result<LoadedBinaryFile>> {
-        self.load_binary_file_with_limit(path, None, cx)
+        self.load_binary_file_with_limit(path, None, false, cx)
     }
 
     fn load_binary_file_with_limit(
         &self,
         path: &RelPath,
         limit: Option<usize>,
+        reject_private: bool,
         cx: &Context<Worktree>,
     ) -> Task<Result<LoadedBinaryFile>> {
         let root = self.abs_path.clone();
@@ -1720,6 +1743,9 @@ impl LocalWorktree {
         let fs = self.fs.clone();
         let entry = self.refresh_entry(path.clone(), None, cx);
         let is_private = self.is_path_private(&path);
+        let settings = self.settings.clone();
+        let share_private_files = self.share_private_files;
+        let path_style = self.path_style;
 
         let worktree = cx.weak_entity();
         cx.background_spawn(async move {
@@ -1729,6 +1755,13 @@ impl LocalWorktree {
                 anyhow::ensure!(
                     canonical.starts_with(&root),
                     "Binary resource resolves outside its owning worktree"
+                );
+                let resolved_path = RelPath::new(canonical.strip_prefix(&root)?, path_style)?;
+                let resolved_private =
+                    !share_private_files && settings.is_path_private(&resolved_path);
+                anyhow::ensure!(
+                    !reject_private || !(is_private || resolved_private),
+                    "Private project resources cannot be shared"
                 );
                 let mut content = Vec::new();
                 fs.open_sync(&canonical)
@@ -1878,6 +1911,20 @@ impl LocalWorktree {
         let task_abs_path = abs_path.clone();
         let write = cx.background_spawn(async move {
             if is_dir {
+                if exclusive {
+                    let root = fs.canonicalize(root.as_path()).await?;
+                    let mut ancestor = task_abs_path.as_path();
+                    while !fs.path_exists(ancestor) {
+                        ancestor = ancestor
+                            .parent()
+                            .context("Asset destination has no existing ancestor")?;
+                    }
+                    let canonical = fs.canonicalize(ancestor).await?;
+                    anyhow::ensure!(
+                        canonical.starts_with(&root),
+                        "Asset directory resolves outside its owning worktree"
+                    );
+                }
                 fs.create_dir(&task_abs_path)
                     .await
                     .with_context(|| format!("creating directory {task_abs_path:?}"))

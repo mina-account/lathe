@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-12",
+  "date": "2026-10-13",
   "frontendBridge": 17,
-  "frontendRealBrowser": 51,
-  "windowsNative": 61,
-  "linuxNative": 61,
+  "frontendRealBrowser": 52,
+  "windowsNative": 63,
+  "linuxNative": 63,
   "windowsProtocol": 13,
   "linuxProtocol": 13,
   "windowsRemoteProjectBytes": 1,
@@ -93,5 +93,36 @@
     },
     "windowsDiskRecovery": "LLVM exhausted C: during cached workspace compilation; removed only verified regenerable target/debug/incremental cache, then final checks passed",
     "runtimeSmokeDirectory": "Build-copied flat CEF beside executable; CEF_PATH SDK parent is not the flat LATHE_MARKDOWN_CEF_RUNTIME override"
+  },
+  "reviewFixPass2": {
+    "reviewedHead": "51dddc6ecd43795ab9be9cfacb4a57b27ab2a67a",
+    "findingsFixed": 3,
+    "frontendExpectedRed": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "nativeExpectedRed": {
+      "tests": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "nativeAssetGreen": 15,
+    "defaultPrivatePatterns": 6,
+    "defaultPrivateTargetFixtures": 7,
+    "customPrivatePatterns": 2,
+    "loadedImagePresentations": 4,
+    "loadedImageTitleVariants": 2,
+    "loadedImageOrdinaryEditsPerEditingMode": 2,
+    "loadedImageHistoryAndFlush": true,
+    "privateAuthorization": "Requested and canonical target paths checked before opening shared bytes; owning-worktree patterns and sharing policy retained; restriction carried to SSH bounded adapter",
+    "confinedDirectories": "Existing ancestor canonical confinement checked before mkdir; relative/root escapes create no outside directory or file; safe nested and in-root aliases still import",
+    "collaborativePrivacyProof": "Harmless local shared-loader authorization fixtures and existing benign transport fixtures only; stopped deeper collaborative-path probe was not retried; no confidential-file transport proof claimed",
+    "freshBackendSmokeExits": {
+      "windows": 0,
+      "wayland": 0,
+      "x11": 0
+    },
+    "additionalCacheCleanup": false
   }
 }

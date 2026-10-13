@@ -193,6 +193,36 @@ test("image resources use project byte messages and preserve source through real
     }
 });
 
+test("loaded inline images keep durable destinations and titles through paragraph edits and history",async()=>{
+    const png="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6rQAAAABJRU5ErkJggg==";
+    for(const mode of ["wysiwyg","ir","sv","preview"]) for(const title of ["",' "Retained title"']) {
+        const source=`Before ![image](assets/a.png${title}) target after`,{page,context,external}=await open(source,mode);
+        await page.evaluate(png=>{
+            const bridge=window.latheMarkdown;
+            const respond=message=>bridge.receive({kind:"resource",request:message.request,mime:"image/png",bytes:png,error:null});
+            for(const message of window.testMessages.filter(message=>message.kind==="resource"))respond(message);
+            bridge.send=message=>{window.testMessages.push(message);if(message.kind==="resource")respond(message);};
+        },png);
+        await page.waitForFunction(()=>[...document.querySelectorAll('img')].some(image=>image.src.startsWith("blob:")&&image.naturalWidth===1));
+        if(mode!=="preview") {
+            for(const [before,after] of [["target","CHANGED"],["CHANGED","SECOND"]]) {
+                await selectText(page,before);await page.keyboard.insertText(after);await page.evaluate(()=>window.latheRich.commit());
+                assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+                assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("target",after),mode+title);
+                await acknowledge(page);
+            }
+            await page.keyboard.press("Control+z");
+            assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="undo")),true);
+            await page.evaluate(source=>window.latheMarkdown.receive({kind:"history_accepted",request:window.latheMarkdown.historyPending,revision:3,text:source,writable:true}),source.replace("target","CHANGED"));
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("target","CHANGED"));
+        } else assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:995}));
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed"&&message.request===995)),true);
+        assert.deepEqual(await page.evaluate(()=>[...new Set(window.testMessages.filter(message=>message.kind==="resource").map(message=>message.url))]),["assets/a.png"]);
+        assert.deepEqual(external,[]);await context.close();
+    }
+});
+
 test("PlantUML is explicitly service backed and sanitizes configured service output",async()=>{
     const source="```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```",{page,context,external}=await open(source,"preview");
     await page.waitForSelector('[data-renderer="plantuml"][data-state="error"]');
