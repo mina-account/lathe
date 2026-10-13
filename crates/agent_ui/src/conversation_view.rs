@@ -4947,6 +4947,338 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_response_model_provisional_chunks_in_existing_entry(cx: &mut TestAppContext) {
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let thread_view = active_thread(&conversation_view, cx);
+        let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
+        for index in 0..2 {
+            let finish_receipt = connection.defer_next_receipt_response();
+            message_editor(&conversation_view, cx).update_in(cx, |editor, window, cx| {
+                editor.set_text(&format!("prompt-{index}"), window, cx);
+            });
+            thread_view.update_in(cx, |view, window, cx| view.send(window, cx));
+            cx.run_until_parked();
+            finish_receipt
+                .send(Ok(acp_v2::PromptResponse::new(format!("prompt-{index}"))))
+                .expect("receipt pending");
+            cx.run_until_parked();
+            if index == 0 {
+                thread.update(cx, |thread, cx| {
+                    thread
+                        .upsert_user_message(acp_v2::UserMessage::new("prompt-0"), cx)
+                        .expect("first echo");
+                });
+                cx.run_until_parked();
+            }
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                        cx,
+                    )
+                    .expect("running");
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new(format!("answer-{index}"))
+                            .content(vec![format!("Answer {index}").into()]),
+                        cx,
+                    )
+                    .expect("answer");
+            });
+            cx.run_until_parked();
+            if index == 1 {
+                thread_view.read_with(cx, |view, _| {
+                    assert_eq!(view.response_model.turns.len(), 2);
+                    assert_eq!(
+                        view.response_model
+                            .turns
+                            .first()
+                            .expect("first")
+                            .response
+                            .len(),
+                        1
+                    );
+                    let live = view.response_model.turns.last().expect("live");
+                    assert_eq!(live.lifecycle, TurnLifecycle::Running);
+                    assert_eq!(live.activity.len(), 1);
+                    assert_eq!(
+                        live.activity.first().expect("new chunk").chunk_index,
+                        Some(1)
+                    );
+                });
+            }
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Idle(
+                            acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                        ),
+                        cx,
+                    )
+                    .expect("stop");
+                if index == 1 {
+                    thread
+                        .upsert_user_message(acp_v2::UserMessage::new("prompt-1"), cx)
+                        .expect("delayed echo");
+                }
+            });
+            cx.run_until_parked();
+        }
+        thread_view.read_with(cx, |view, _| {
+            assert_eq!(view.response_model.turns.len(), 2);
+            let first = view.response_model.turns.first().expect("first");
+            let second = view.response_model.turns.last().expect("second");
+            assert_eq!(
+                first.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(first.response.len(), 1);
+            assert_eq!(
+                second.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(second.response.len(), 1);
+            assert_eq!(
+                second.response.first().expect("new answer").chunk_index,
+                Some(1)
+            );
+            assert_eq!(second.predecessor.as_ref(), Some(&first.identity));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_response_model_older_echo_after_new_submission(cx: &mut TestAppContext) {
+        use super::response_model::{TurnIdentity, TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let thread_view = active_thread(&conversation_view, cx);
+        let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
+        let finish_first = connection.defer_next_receipt_response();
+        message_editor(&conversation_view, cx).update_in(cx, |editor, window, cx| {
+            editor.set_text("first", window, cx);
+        });
+        thread_view.update_in(cx, |view, window, cx| view.send(window, cx));
+        cx.run_until_parked();
+        let first_id = thread.read_with(cx, |thread, _| {
+            thread.latest_submission_id().expect("first")
+        });
+        finish_first
+            .send(Ok(acp_v2::PromptResponse::new("first")))
+            .expect("first receipt");
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("first-answer").content(vec!["First answer".into()]),
+                    cx,
+                )
+                .expect("answer");
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("stop");
+        });
+        cx.run_until_parked();
+        let finish_second = connection.defer_next_receipt_response();
+        message_editor(&conversation_view, cx).update_in(cx, |editor, window, cx| {
+            editor.set_text("second", window, cx);
+        });
+        thread_view.update_in(cx, |view, window, cx| view.send(window, cx));
+        cx.run_until_parked();
+        let second_id = thread.read_with(cx, |thread, _| {
+            thread.latest_submission_id().expect("second")
+        });
+        assert_ne!(first_id, second_id);
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(acp_v2::UserMessage::new("first"), cx)
+                .expect("older echo");
+        });
+        cx.run_until_parked();
+        thread_view.read_with(cx, |view, _| {
+            assert_eq!(view.response_model.turns.len(), 2);
+            let first = view.response_model.turns.first().expect("first");
+            let second = view.response_model.turns.last().expect("second");
+            assert_eq!(first.identity, TurnIdentity::Submission(first_id.as_u64()));
+            assert_eq!(
+                first.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(first.response.len(), 1);
+            assert!(first.prompt.is_some());
+            assert_eq!(
+                second.identity,
+                TurnIdentity::Submission(second_id.as_u64())
+            );
+            assert_eq!(second.lifecycle, TurnLifecycle::Submitting);
+            assert!(second.prompt.is_none());
+            assert!(second.response.is_empty());
+        });
+        finish_second
+            .send(Ok(acp_v2::PromptResponse::new("second")))
+            .expect("second receipt");
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn test_response_model_older_pending_receipt_updates_by_id(cx: &mut TestAppContext) {
+        use super::response_model::{TurnIdentity, TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let thread_view = active_thread(&conversation_view, cx);
+        let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
+        let finish_first = connection.defer_next_receipt_response();
+        let first_submission =
+            thread.update(cx, |thread, cx| thread.send(vec!["first".into()], cx));
+        let first_id = first_submission.id;
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("first-answer").content(vec!["First answer".into()]),
+                    cx,
+                )
+                .expect("answer");
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("stop");
+        });
+        cx.run_until_parked();
+        let finish_second = connection.defer_next_receipt_response();
+        let second_submission =
+            thread.update(cx, |thread, cx| thread.send(vec!["second".into()], cx));
+        let second_id = second_submission.id;
+        cx.run_until_parked();
+        finish_first
+            .send(Ok(acp_v2::PromptResponse::new("first")))
+            .expect("older receipt");
+        cx.run_until_parked();
+        first_submission.await.expect("older receipt accepted");
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(acp_v2::UserMessage::new("first"), cx)
+                .expect("older echo");
+        });
+        cx.run_until_parked();
+        thread_view.read_with(cx, |view, _| {
+            assert_eq!(view.response_model.turns.len(), 2);
+            let first = view.response_model.turns.first().expect("first");
+            let second = view.response_model.turns.last().expect("second");
+            assert_eq!(first.identity, TurnIdentity::Submission(first_id.as_u64()));
+            assert_eq!(
+                first.lifecycle,
+                TurnLifecycle::Settled(TurnOutcome::Success)
+            );
+            assert_eq!(first.response.len(), 1);
+            assert!(first.prompt.is_some());
+            assert_eq!(
+                second.identity,
+                TurnIdentity::Submission(second_id.as_u64())
+            );
+            assert_eq!(second.lifecycle, TurnLifecycle::Submitting);
+            assert!(second.prompt.is_none());
+        });
+        finish_second
+            .send(Ok(acp_v2::PromptResponse::new("second")))
+            .expect("second receipt");
+        cx.run_until_parked();
+        second_submission.await.expect("second receipt accepted");
+    }
+
+    #[gpui::test]
+    async fn test_response_model_batched_external_stop(cx: &mut TestAppContext) {
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let thread_view = active_thread(&conversation_view, cx);
+        let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
+        for (index, (reason, outcome)) in [
+            (acp_v2::StopReason::EndTurn, TurnOutcome::Success),
+            (acp_v2::StopReason::Cancelled, TurnOutcome::Interrupted),
+            (acp_v2::StopReason::MaxTokens, TurnOutcome::Failed),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            thread.update(cx, |thread, cx| {
+                thread
+                    .upsert_user_message(acp_v2::UserMessage::new(format!("external-{index}")), cx)
+                    .expect("prompt");
+            });
+            cx.run_until_parked();
+            thread.update(cx, |thread, cx| {
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                        cx,
+                    )
+                    .expect("running");
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new(format!("external-answer-{index}"))
+                            .content(vec!["Answer".into()]),
+                        cx,
+                    )
+                    .expect("answer");
+                thread
+                    .update_session_state(
+                        acp_v2::StateUpdate::Idle(
+                            acp_v2::IdleStateUpdate::new().stop_reason(reason),
+                        ),
+                        cx,
+                    )
+                    .expect("stop");
+            });
+            cx.run_until_parked();
+            thread_view.read_with(cx, |view, _| {
+                assert_eq!(view.response_model.turns.len(), index + 1);
+                let turn = view.response_model.turns.last().expect("external turn");
+                assert_eq!(turn.lifecycle, TurnLifecycle::Settled(outcome));
+                assert_eq!(turn.response.len(), 1);
+            });
+        }
+    }
+
+    #[gpui::test]
     async fn test_receipt_submission_waits_for_echo_and_reported_idle(cx: &mut TestAppContext) {
         init_test(cx);
 

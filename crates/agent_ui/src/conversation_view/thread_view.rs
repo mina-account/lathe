@@ -1632,28 +1632,40 @@ impl ThreadView {
                 failed,
             });
         }
-        let submission = thread.latest_submission_id().and_then(|id| {
-            let record = thread.submission(id)?;
-            let phase = match &record.state {
-                SubmissionState::Pending => SubmissionPhase::Pending,
-                SubmissionState::Accepted { receipt, echoed } => SubmissionPhase::Accepted {
-                    prompt: ProviderIdentity::Keyed(receipt.message_id.0.clone()),
-                    echoed: *echoed,
-                },
-                SubmissionState::Completed => SubmissionPhase::Completed,
-                SubmissionState::Failed(_) => SubmissionPhase::Failed,
-                SubmissionState::Cancelled => SubmissionPhase::Cancelled,
+        let submission_observation =
+            |id: acp_thread::SubmissionId, record: &acp_thread::SubmissionRecord| {
+                let phase = match &record.state {
+                    SubmissionState::Pending => SubmissionPhase::Pending,
+                    SubmissionState::Accepted { receipt, echoed } => SubmissionPhase::Accepted {
+                        prompt: ProviderIdentity::Keyed(receipt.message_id.0.clone()),
+                        echoed: *echoed,
+                    },
+                    SubmissionState::Completed => SubmissionPhase::Completed,
+                    SubmissionState::Failed(_) => SubmissionPhase::Failed,
+                    SubmissionState::Cancelled => SubmissionPhase::Cancelled,
+                };
+                SubmissionObservation {
+                    id: id.as_u64(),
+                    phase,
+                }
             };
-            Some(SubmissionObservation {
-                id: id.as_u64(),
-                phase,
-            })
+        let latest_submission = thread.latest_submission_id();
+        let submission = latest_submission.and_then(|id| {
+            thread
+                .submission(id)
+                .map(|record| submission_observation(id, record))
         });
+        let submission_updates = thread
+            .recoverable_submissions()
+            .filter(|(id, _)| Some(*id) != latest_submission)
+            .map(|(id, record)| submission_observation(id, record))
+            .collect();
         self.response_model.observe(
             &ThreadObservation {
                 contents,
                 entry_count: thread.entries().len(),
                 submission,
+                submission_updates,
                 reported_activity: thread.uses_reported_activity(),
                 activity: match thread.foreground_activity() {
                     ForegroundActivity::Idle => ActivityPhase::Idle,
