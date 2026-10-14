@@ -70,9 +70,12 @@ Write-Output "  Arch:    $Architecture"
 Write-Output "  Channel: $channel"
 
 # --- Verify binaries ---
-$cargoOut = "target/$Target/release"
+$cargoRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { 'target' }
+$cargoOut = Join-Path $cargoRoot "$Target/release"
 $zedExe = "$cargoOut/zed.exe"
 $cliExe = "$cargoOut/cli.exe"
+$helperExe = "$cargoOut/auto_update_helper.exe"
+if (-not (Test-Path $helperExe)) { throw "Missing auto_update_helper.exe; run the full Windows build." }
 
 if (-not (Test-Path $zedExe)) {
     Write-Error "zed.exe not found at $zedExe. Run 'script/build-fork-windows.ps1' first."
@@ -91,6 +94,10 @@ try {
     New-Item -ItemType Directory -Path "$appDir/bin"     -Force | Out-Null
     New-Item -ItemType Directory -Path "$appDir/libexec" -Force | Out-Null
     New-Item -ItemType Directory -Path "$appDir/share"   -Force | Out-Null
+
+    New-Item -ItemType Directory -Path "$appDir/tools" -Force | Out-Null
+    Copy-Item $helperExe "$appDir/tools/auto_update_helper.exe" -Force
+    Set-Content -LiteralPath "$appDir/release.txt" -Value "lathe-update-v1`n$version`n$channel`n$Architecture" -Encoding ASCII
 
     Copy-Item $zedExe "$appDir/libexec/lathe-editor.exe" -Force
     Copy-Item $cliExe "$appDir/bin/lathe.exe"            -Force
@@ -145,12 +152,12 @@ try {
 
     # --- Code signing ---
     # Sign before archiving so the zip and the installer both carry signed
-    # binaries. Only the two Lathe executables are signed; conpty.dll,
+    # binaries. The Lathe editor, CLI and update helper are signed; conpty.dll,
     # OpenConsole.exe and amd_ags_x64.dll already ship signed by Microsoft
     # and AMD, and re-signing them would strip those signatures.
     Write-Output ""
     Write-Output "--- Code signing ---"
-    & "$PSScriptRoot/sign-windows.ps1" "$appDir/libexec/lathe-editor.exe" "$appDir/bin/lathe.exe"
+    & "$PSScriptRoot/sign-windows.ps1" "$appDir/libexec/lathe-editor.exe" "$appDir/bin/lathe.exe" "$appDir/tools/auto_update_helper.exe"
 
     # --- Archive ---
     $outDir = 'target/release'
@@ -266,5 +273,8 @@ exit /b %ERRORLEVEL%
     Write-Output "To install locally from the zip: script/install-fork-windows.ps1"
 }
 finally {
-    Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    $resolvedTemp = [System.IO.Path]::GetFullPath($tempDir)
+    $expectedTemp = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (-not $resolvedTemp.StartsWith($expectedTemp, [StringComparison]::OrdinalIgnoreCase)) { throw 'Package cleanup escaped temporary directory.' }
+    Remove-Item -LiteralPath $resolvedTemp -Recurse -Force
 }

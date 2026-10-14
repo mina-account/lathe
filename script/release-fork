@@ -33,8 +33,13 @@ esac
 
 zip_path="target/release/Lathe-${version}-${arch}-macos.zip"
 dmg_path="target/release/Lathe-${version}-${arch}-macos.dmg"
-tag="v${version}"
-repo="paterschris/lathe"
+channel=$(<crates/zed/RELEASE_CHANNEL)
+case "$channel" in
+    stable) tag="v${version}" ;;
+    beta|preview|nightly) tag="v${version}-${channel}" ;;
+    *) echo "Unsupported release channel: $channel"; exit 1 ;;
+esac
+repo="mina-account/lathe"
 
 assets=("$zip_path")
 if [ -f "$dmg_path" ]; then
@@ -43,8 +48,8 @@ fi
 
 # Mark beta/preview tags as GitHub prereleases
 prerelease_args=()
-case "$version" in
-    *-beta*|*-pre*|*-rc*)
+case "$channel" in
+    beta|preview|nightly)
         prerelease_args=(--prerelease)
         ;;
 esac
@@ -54,8 +59,8 @@ echo "=== Step 3: Release ==="
 
 # Check if release already exists
 if gh release view "$tag" --repo "$repo" &>/dev/null; then
-    echo "Release ${tag} already exists. Uploading assets to it..."
-    gh release upload "$tag" "${assets[@]}" --clobber --repo "$repo"
+    echo "Release ${tag} already exists; choose a new version instead of replacing public artifacts."
+    exit 1
 else
     echo "Creating release ${tag}..."
     # ${array[@]+...} guards the expansion: macOS bash 3.2 treats an empty

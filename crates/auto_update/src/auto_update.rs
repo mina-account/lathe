@@ -1,8 +1,13 @@
+#[cfg(target_os = "windows")]
+#[path = "../../auto_update_helper/src/lathe_layout.rs"]
+mod lathe_layout;
 mod lathe_update;
 
 use anyhow::{Context as _, Result};
 use client::Client;
 use db::kvp::KeyValueStore;
+#[cfg(target_os = "windows")]
+use futures::{FutureExt as _, future::Shared};
 use futures_lite::StreamExt;
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Global,
@@ -185,6 +190,10 @@ pub struct AutoUpdater {
     current_version: Version,
     client: Arc<Client>,
     pending_poll: Option<Task<Option<()>>>,
+    #[cfg(target_os = "windows")]
+    windows_startup: Shared<Task<Result<(), Arc<anyhow::Error>>>>,
+    #[cfg(target_os = "windows")]
+    pending_windows_update: Option<PendingWindowsUpdate>,
     quit_subscription: Option<gpui::Subscription>,
     update_check_type: UpdateCheckType,
     _wake_subscription: gpui::Subscription,
@@ -476,11 +485,21 @@ struct InstallerDir(PathBuf);
 #[cfg(target_os = "windows")]
 impl InstallerDir {
     async fn new() -> Result<Self> {
-        let installer_dir = std::env::current_exe()?
-            .parent()
-            .context("No parent dir for Zed.exe")?
-            .join("updates");
-        if smol::fs::metadata(&installer_dir).await.is_ok() {
+        let (root, lathe) = windows_installation_root()?;
+        Self::new_at(&root, lathe).await
+    }
+
+    async fn new_at(root: &Path, lathe: bool) -> Result<Self> {
+        if lathe {
+            let install = lathe_layout::validate_tree(root, Path::new("install"))?;
+            anyhow::ensure!(
+                !install.join("release.txt").exists(),
+                "A Lathe update is already staged; restart before downloading another update"
+            );
+        }
+        let installer_dir = root.join("updates");
+        lathe_layout::validate_tree(root, Path::new("updates"))?;
+        if installer_dir.exists() {
             smol::fs::remove_dir_all(&installer_dir).await?;
         }
         smol::fs::create_dir(&installer_dir).await?;
@@ -539,16 +558,65 @@ impl AutoUpdater {
             }
         });
 
+        #[cfg(all(target_os = "windows", not(test)))]
+        let windows_startup = {
+            let channel = ReleaseChannel::try_global(cx)
+                .unwrap_or(ReleaseChannel::Stable)
+                .dev_name();
+            let startup = cx.background_spawn(cleanup_windows(channel));
+            Self::start_windows_startup(startup, cx)
+        };
+        #[cfg(all(target_os = "windows", test))]
+        let windows_startup = Task::ready(Ok(())).shared();
+
         Self {
             status: AutoUpdateStatus::Idle,
             current_version,
             client,
             pending_poll: None,
+            #[cfg(target_os = "windows")]
+            windows_startup,
+            #[cfg(target_os = "windows")]
+            pending_windows_update: None,
             quit_subscription,
             update_check_type: UpdateCheckType::Automatic,
             _wake_subscription: wake_subscription,
             dismissed_status: None,
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn start_windows_startup(
+        startup: Task<Result<Option<PendingWindowsUpdate>>>,
+        cx: &mut Context<Self>,
+    ) -> Shared<Task<Result<(), Arc<anyhow::Error>>>> {
+        cx.spawn(async move |this, cx| {
+            let result = startup.await.map_err(Arc::new);
+            this.update(cx, |this, cx| match &result {
+                Ok(Some(pending)) => this.restore_windows_update(pending.clone(), cx),
+                Ok(None) => {}
+                Err(error) => {
+                    log::error!("Cannot initialize Windows updates: {error:#}");
+                    this.status = AutoUpdateStatus::Errored {
+                        error: error.clone(),
+                    };
+                    cx.notify();
+                }
+            })
+            .map_err(Arc::new)?;
+            result.map(|_| ())
+        })
+        .shared()
+    }
+
+    #[cfg(target_os = "windows")]
+    fn restore_windows_update(&mut self, pending: PendingWindowsUpdate, cx: &mut Context<Self>) {
+        cx.set_restart_path(pending.helper.clone());
+        self.status = AutoUpdateStatus::Updated {
+            version: pending.version.clone(),
+        };
+        self.pending_windows_update = Some(pending);
+        cx.notify();
     }
 
     fn restart_after_wake(&mut self, cx: &mut Context<Self>) {
@@ -575,15 +643,6 @@ impl AutoUpdater {
             });
 
         cx.spawn(async move |this, cx| {
-            if cfg!(target_os = "windows") {
-                use util::ResultExt;
-
-                cleanup_windows()
-                    .await
-                    .context("failed to cleanup old directories")
-                    .log_err();
-            }
-
             #[cfg(all(not(target_os = "windows"), not(test)))]
             cx.background_spawn(cleanup_stale_installer_dirs()).detach();
 
@@ -620,8 +679,20 @@ impl AutoUpdater {
                 if let Err(error) = result {
                     let is_missing_dependency =
                         error.downcast_ref::<MissingDependencyError>().is_some();
+                    #[cfg(target_os = "windows")]
+                    let startup_failed = this.windows_startup.peek().is_some_and(Result::is_err);
+                    #[cfg(not(target_os = "windows"))]
+                    let startup_failed = false;
                     this.status = match check_type {
-                        UpdateCheckType::Automatic if is_missing_dependency => {
+                        UpdateCheckType::Automatic
+                            if is_missing_dependency
+                                || startup_failed
+                                || lathe_update_base_url(
+                                    ReleaseChannel::try_global(cx)
+                                        .unwrap_or(ReleaseChannel::Stable),
+                                )
+                                .is_some() =>
+                        {
                             log::warn!("auto-update: {}", error);
                             AutoUpdateStatus::Errored {
                                 error: Arc::new(error),
@@ -773,6 +844,7 @@ impl AutoUpdater {
         let client = this.read_with(cx, |this, _| this.client.clone());
 
         if let Some(api_url) = lathe_update_base_url(release_channel) {
+            lathe_update::ensure_desktop_artifact(asset, version.as_ref())?;
             return lathe_update::get_release_asset(
                 client.http_client(),
                 &api_url,
@@ -836,6 +908,25 @@ impl AutoUpdater {
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            // Retain the shared task on the updater so canceling a check cannot cancel cleanup.
+            this.read_with(cx, |this, _| this.windows_startup.clone())
+                .await
+                .map_err(|error| {
+                    anyhow::anyhow!("Windows update initialization failed: {error:#}")
+                })?;
+            if this.update(cx, |this, cx| {
+                if let Some(pending) = this.pending_windows_update.clone() {
+                    this.restore_windows_update(pending, cx);
+                    true
+                } else {
+                    this.status.is_updated()
+                }
+            }) {
+                return Ok(());
+            }
+        }
         let (client, installed_version, previous_status, release_channel) =
             this.read_with(cx, |this, cx| {
                 (
@@ -943,16 +1034,26 @@ impl AutoUpdater {
                 running_app_path,
                 channel,
                 background_executor,
+                newer_version.to_string(),
             ))
             .await
         };
         let new_binary_path = install_result
             .with_context(|| format!("Failed to install update at: {}", target_path.display()))?;
+        #[cfg(target_os = "windows")]
+        let pending_windows_update = new_binary_path.as_ref().map(|helper| PendingWindowsUpdate {
+            version: newer_version.clone(),
+            helper: helper.clone(),
+        });
         if let Some(new_binary_path) = new_binary_path {
             cx.update(|cx| cx.set_restart_path(new_binary_path));
         }
 
         this.update(cx, |this, cx| {
+            #[cfg(target_os = "windows")]
+            {
+                this.pending_windows_update = pending_windows_update;
+            }
             this.set_should_show_update_notification(true, cx)
                 .detach_and_log_err(cx);
             this.status = AutoUpdateStatus::Updated {
@@ -1048,6 +1149,7 @@ impl AutoUpdater {
         running_app_path: PathBuf,
         channel: &str,
         background_executor: BackgroundExecutor,
+        _target_version: String,
     ) -> Result<Option<PathBuf>> {
         match OS {
             "macos" => {
@@ -1062,7 +1164,7 @@ impl AutoUpdater {
             "linux" => {
                 install_release_linux(&installer_dir, &target_path, channel, running_app_path).await
             }
-            "windows" => install_release_windows(&target_path).await,
+            "windows" => install_release_windows(&target_path, &_target_version, channel).await,
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         }
     }
@@ -1483,63 +1585,175 @@ async fn cleanup_stale_installer_dirs() {
     }
 }
 
-async fn cleanup_windows() -> Result<()> {
-    let parent = std::env::current_exe()?
-        .parent()
-        .context("No parent dir for Zed.exe")?
-        .to_owned();
-
-    // keep in sync with crates/auto_update_helper/src/updater.rs
-    _ = smol::fs::remove_dir(parent.join("updates")).await;
-    _ = smol::fs::remove_dir(parent.join("install")).await;
-    _ = smol::fs::remove_dir(parent.join("old")).await;
-
-    Ok(())
+#[cfg(target_os = "windows")]
+fn windows_installation_root() -> Result<(PathBuf, bool)> {
+    let editor = std::env::current_exe()?;
+    if let Some(root) = lathe_layout::installation_root(&editor)? {
+        Ok((root, true))
+    } else {
+        Ok((
+            editor
+                .parent()
+                .context("No parent directory for editor")?
+                .to_path_buf(),
+            false,
+        ))
+    }
 }
 
-async fn install_release_windows(downloaded_installer: &Path) -> Result<Option<PathBuf>> {
-    let mut cmd = new_command(downloaded_installer);
-    cmd.arg("/verysilent")
+#[cfg(target_os = "windows")]
+#[derive(Clone)]
+struct PendingWindowsUpdate {
+    version: Version,
+    helper: PathBuf,
+}
+
+#[cfg(target_os = "windows")]
+#[cfg_attr(test, allow(dead_code))]
+async fn cleanup_windows(channel: &str) -> Result<Option<PendingWindowsUpdate>> {
+    let (root, lathe) = windows_installation_root()?;
+    cleanup_windows_at(&root, lathe, channel).await
+}
+
+#[cfg(target_os = "windows")]
+async fn cleanup_windows_at(
+    root: &Path,
+    lathe: bool,
+    channel: &str,
+) -> Result<Option<PendingWindowsUpdate>> {
+    if !lathe {
+        if root.join("updates/versions.txt").exists() {
+            return Ok(None);
+        }
+        // Legacy transactions have no validated backup metadata, so retain nonempty directories.
+        for directory in ["old", "install", "updates"] {
+            let target = lathe_layout::validate_tree(root, Path::new(directory))?;
+            match smol::fs::remove_dir(target).await {
+                Ok(()) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+                    ) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        return Ok(None);
+    }
+    lathe_layout::validate_backup_cleanup(root)?;
+    let pending = if root.join("install/release.txt").exists()
+        && lathe_layout::validate_payload_version(root, None, Some(channel), ARCH)?.is_gt()
+    {
+        let marker = std::fs::read_to_string(root.join("install/release.txt"))?;
+        let version = Version::parse(marker.lines().nth(1).context("Missing staged version")?)?;
+        let helper =
+            lathe_layout::validate_tree(root, Path::new("updates/auto_update_helper.exe"))?;
+        if !helper.exists() {
+            let installed_helper =
+                lathe_layout::validate_tree(root, Path::new("tools/auto_update_helper.exe"))?;
+            anyhow::ensure!(
+                installed_helper.is_file() && std::fs::metadata(&installed_helper)?.len() > 0,
+                "Missing Lathe update helper; install the bootstrap manually"
+            );
+            smol::fs::create_dir_all(root.join("updates")).await?;
+            smol::fs::copy(installed_helper, &helper).await?;
+        }
+        anyhow::ensure!(
+            helper.is_file() && std::fs::metadata(&helper)?.len() > 0,
+            "Missing or empty staged Lathe update helper"
+        );
+        Some(PendingWindowsUpdate { version, helper })
+    } else {
+        None
+    };
+    let directories: &[&str] = if pending.is_some() {
+        &["old"]
+    } else {
+        &["old", "install", "updates"]
+    };
+    for directory in directories {
+        let target = lathe_layout::validate_tree(root, Path::new(directory))?;
+        if target.exists() {
+            smol::fs::remove_dir_all(target).await?;
+        }
+    }
+    Ok(pending)
+}
+
+async fn install_release_windows(
+    downloaded_installer: &Path,
+    _target_version: &str,
+    _channel: &str,
+) -> Result<Option<PathBuf>> {
+    let mut command = new_command(downloaded_installer);
+    command
+        .arg("/verysilent")
         .arg("/update=true")
         .arg("/MERGETASKS=!desktopicon");
-    let output = cmd.output().await?;
+    #[cfg(target_os = "windows")]
+    let (root, lathe) = windows_installation_root()?;
+    #[cfg(target_os = "windows")]
+    if lathe {
+        lathe_layout::validate_tree(&root, Path::new("install"))?;
+        let helper = lathe_layout::validate_tree(&root, Path::new("tools/auto_update_helper.exe"))?;
+        anyhow::ensure!(
+            helper.is_file(),
+            "Missing Lathe update helper; install the bootstrap manually"
+        );
+        command
+            .arg(format!("/DIR={}", root.display()))
+            .arg("/NOCLOSEAPPLICATIONS");
+    }
+    let output = command.output().await?;
     anyhow::ensure!(
         output.status.success(),
-        "failed to start installer: {:?}",
+        "installer staging failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    // We return the path to the update helper program, because it will
-    // perform the final steps of the update process, copying the new binary,
-    // deleting the old one, and launching the new binary.
+    #[cfg(target_os = "windows")]
+    if lathe {
+        let version = semver::Version::parse(_target_version)?;
+        let version = format!("{}.{}.{}", version.major, version.minor, version.patch);
+        lathe_layout::validate_payload(&root, Some(&version), Some(_channel), ARCH)?;
+        let helper =
+            lathe_layout::validate_tree(&root, Path::new("updates/auto_update_helper.exe"))?;
+        smol::fs::copy(root.join("tools/auto_update_helper.exe"), &helper).await?;
+        return Ok(Some(helper));
+    }
     let helper_path = std::env::current_exe()?
         .parent()
-        .context("No parent dir for Zed.exe")?
-        .join("tools")
-        .join("auto_update_helper.exe");
+        .context("No parent dir for editor")?
+        .join("tools/auto_update_helper.exe");
+    anyhow::ensure!(helper_path.is_file(), "Missing update helper");
     Ok(Some(helper_path))
 }
 
 pub async fn finalize_auto_update_on_quit() {
-    let Some(installer_path) = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.join("updates")))
-    else {
-        return;
-    };
-
-    // The installer will create a flag file after it finishes updating
-    let flag_file = installer_path.join("versions.txt");
-    if flag_file.exists()
-        && let Some(helper) = installer_path
-            .parent()
-            .map(|p| p.join("tools").join("auto_update_helper.exe"))
-    {
-        let mut command = util::command::new_command(helper);
-        command.arg("--launch");
-        command.arg("false");
-        if let Ok(mut cmd) = command.spawn() {
-            _ = cmd.status().await;
-        }
+    #[cfg(target_os = "windows")]
+    let result: Result<()> = (|| {
+        let (root, lathe) = windows_installation_root()?;
+        let helper = if lathe {
+            if !root.join("install/release.txt").exists() {
+                return Ok(());
+            }
+            lathe_layout::validate_payload(&root, None, None, ARCH)?;
+            lathe_layout::validate_tree(&root, Path::new("updates/auto_update_helper.exe"))?
+        } else {
+            if !root.join("updates/versions.txt").exists() {
+                return Ok(());
+            }
+            root.join("tools/auto_update_helper.exe")
+        };
+        anyhow::ensure!(helper.is_file(), "Missing staged update helper");
+        // The helper must wait for executable handles after the quit callback returns.
+        util::command::new_command(helper)
+            .args(["--launch", "false"])
+            .spawn()?;
+        Ok(())
+    })();
+    #[cfg(target_os = "windows")]
+    if let Err(error) = result {
+        log::error!("Cannot finalize pending update: {error:#}");
     }
 }
 
@@ -1569,6 +1783,530 @@ mod tests {
 
     pub(super) struct InstallOverride(pub Rc<dyn Fn(&Path, &AsyncApp) -> Result<Option<PathBuf>>>);
     impl Global for InstallOverride {}
+
+    #[cfg(target_os = "windows")]
+    fn windows_test_updater(
+        cx: &mut TestAppContext,
+    ) -> (Entity<AutoUpdater>, Arc<std::sync::atomic::AtomicUsize>) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let http_client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |_| {
+                requests.fetch_add(1, atomic::Ordering::SeqCst);
+                async move {
+                    Ok(Response::builder()
+                        .status(429)
+                        .body("rate limited".into())?)
+                }
+            }
+        });
+        let updater = cx.update(|cx| {
+            settings::init(cx);
+            release_channel::init_test(Version::new(1, 10, 2), ReleaseChannel::Beta, cx);
+            let client = Client::new(Arc::new(FakeSystemClock::new()), http_client, cx);
+            cx.new(|cx| AutoUpdater::new(Version::new(1, 10, 2), client, cx))
+        });
+        (updater, requests)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn windows_payload(root: &Path, version: &str) -> Result<()> {
+        let console = match ARCH {
+            "x86_64" => "libexec/x64/OpenConsole.exe",
+            "aarch64" => "libexec/arm64/OpenConsole.exe",
+            _ => anyhow::bail!("Unsupported test architecture"),
+        };
+        for relative in [
+            "bin/lathe.exe",
+            "libexec/lathe-editor.exe",
+            "libexec/conpty.dll",
+            "share/lathe.ico",
+            "tools/auto_update_helper.exe",
+            console,
+        ] {
+            let path = root.join(relative);
+            std::fs::create_dir_all(path.parent().context("Missing fixture parent")?)?;
+            std::fs::write(path, version)?;
+        }
+        std::fs::write(
+            root.join("release.txt"),
+            format!("lathe-update-v1\n{version}\nbeta\n{ARCH}\n"),
+        )?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_legacy_preserves_staged_update() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        for directory in ["install/bin", "updates", "old"] {
+            std::fs::create_dir_all(root.join(directory))?;
+        }
+        let files = [
+            ("Zed.exe", "running editor"),
+            ("install/Zed.exe", "staged editor"),
+            ("install/bin/Zed.exe", "staged CLI"),
+            ("updates/versions.txt", "1.10.2\n1.10.3\n"),
+            ("old/Zed.exe", "rollback editor"),
+        ];
+        for (relative, contents) in files {
+            std::fs::write(root.join(relative), contents)?;
+        }
+
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
+        for (relative, contents) in files {
+            assert_eq!(std::fs::read_to_string(root.join(relative))?, contents);
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_legacy_preserves_unvalidated_files() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        for directory in ["old", "install", "updates"] {
+            std::fs::create_dir(root.join(directory))?;
+            std::fs::write(root.join(directory).join("incomplete"), directory)?;
+        }
+
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
+        for directory in ["old", "install", "updates"] {
+            assert_eq!(
+                std::fs::read_to_string(root.join(directory).join("incomplete"))?,
+                directory
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_legacy_removes_only_empty_directories() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        for directory in ["old", "install", "updates"] {
+            std::fs::create_dir(root.join(directory))?;
+        }
+
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
+        for directory in ["old", "install", "updates"] {
+            assert!(!root.join(directory).exists());
+        }
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_preserves_and_repairs_staged_update() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        windows_payload(root, "1.10.2")?;
+        windows_payload(&root.join("old"), "1.10.1")?;
+        windows_payload(&root.join("install"), "1.10.3")?;
+        std::fs::create_dir(root.join("updates"))?;
+        let helper = root.join("updates/auto_update_helper.exe");
+        std::fs::write(&helper, "staged helper")?;
+        let pending = smol::block_on(cleanup_windows_at(root, true, "beta"))?
+            .context("Expected pending update")?;
+        assert_eq!(pending.version, Version::new(1, 10, 3));
+        assert_eq!(pending.helper, helper.canonicalize()?);
+        assert_eq!(std::fs::read_to_string(&helper)?, "staged helper");
+        assert!(!root.join("old").exists());
+        assert_eq!(
+            std::fs::read_to_string(root.join("install/bin/lathe.exe"))?,
+            "1.10.3"
+        );
+        assert!(smol::block_on(InstallerDir::new_at(root, true)).is_err());
+        assert_eq!(std::fs::read_to_string(&helper)?, "staged helper");
+        std::fs::remove_file(&helper)?;
+        let repaired = smol::block_on(cleanup_windows_at(root, true, "beta"))?
+            .context("Expected repaired pending update")?;
+        assert_eq!(std::fs::read_to_string(repaired.helper)?, "1.10.2");
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_discards_staging_after_manual_upgrade() -> Result<()> {
+        for installed_version in ["1.10.3", "1.10.4"] {
+            let folder = tempdir()?;
+            let root = folder.path();
+            windows_payload(root, installed_version)?;
+            windows_payload(&root.join("install"), "1.10.3")?;
+            std::fs::create_dir(root.join("updates"))?;
+            std::fs::write(root.join("updates/auto_update_helper.exe"), "staged helper")?;
+
+            assert!(lathe_layout::validate_payload(root, None, Some("beta"), ARCH).is_err());
+            assert!(smol::block_on(cleanup_windows_at(root, true, "beta"))?.is_none());
+            for directory in ["install", "updates"] {
+                assert!(!root.join(directory).exists());
+            }
+            assert_eq!(
+                std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+                installed_version
+            );
+            assert!(smol::block_on(InstallerDir::new_at(root, true)).is_ok());
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_preserves_invalid_superseded_staging() -> Result<()> {
+        for (relative, contents) in [
+            ("release.txt", "invalid marker".to_owned()),
+            ("install/release.txt", "invalid marker".to_owned()),
+            ("bin/lathe.exe", String::new()),
+            ("install/bin/lathe.exe", String::new()),
+            (
+                "release.txt",
+                format!("lathe-update-v1\n1.10.4\nstable\n{ARCH}\n"),
+            ),
+            (
+                "install/release.txt",
+                format!("lathe-update-v1\n1.10.3\nstable\n{ARCH}\n"),
+            ),
+            (
+                "release.txt",
+                "lathe-update-v1\n1.10.4\nbeta\nwrong-architecture\n".to_owned(),
+            ),
+            (
+                "install/release.txt",
+                "lathe-update-v1\n1.10.3\nbeta\nwrong-architecture\n".to_owned(),
+            ),
+        ] {
+            let folder = tempdir()?;
+            let root = folder.path();
+            windows_payload(root, "1.10.4")?;
+            windows_payload(&root.join("install"), "1.10.3")?;
+            std::fs::create_dir(root.join("updates"))?;
+            std::fs::write(root.join("updates/auto_update_helper.exe"), "staged helper")?;
+            std::fs::write(root.join(relative), contents)?;
+
+            assert!(
+                smol::block_on(cleanup_windows_at(root, true, "beta")).is_err(),
+                "Invalid {relative} must prevent cleanup"
+            );
+            assert!(root.join("install/release.txt").is_file());
+            assert_eq!(
+                std::fs::read_to_string(root.join("updates/auto_update_helper.exe"))?,
+                "staged helper"
+            );
+        }
+
+        let folder = tempdir()?;
+        let root = folder.path();
+        windows_payload(root, "1.10.4")?;
+        windows_payload(&root.join("install"), "1.10.3")?;
+        std::fs::create_dir(root.join("old"))?;
+        std::fs::write(root.join("old/recovery-file"), "preserve backup")?;
+        assert!(smol::block_on(cleanup_windows_at(root, true, "beta")).is_err());
+        assert!(root.join("install/release.txt").is_file());
+        assert_eq!(
+            std::fs::read_to_string(root.join("old/recovery-file"))?,
+            "preserve backup"
+        );
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_preserves_invalid_transactions() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        windows_payload(root, "1.10.2")?;
+        windows_payload(&root.join("install"), "1.10.3")?;
+        std::fs::create_dir(root.join("updates"))?;
+        let helper = root.join("updates/auto_update_helper.exe");
+        std::fs::write(&helper, "preserve helper")?;
+        assert!(smol::block_on(cleanup_windows_at(root, true, "stable")).is_err());
+        std::fs::remove_file(root.join("install/bin/lathe.exe"))?;
+        assert!(smol::block_on(cleanup_windows_at(root, true, "beta")).is_err());
+        assert_eq!(std::fs::read_to_string(&helper)?, "preserve helper");
+        assert!(root.join("install/release.txt").is_file());
+        windows_payload(&root.join("old"), "1.10.2")?;
+        assert!(smol::block_on(cleanup_windows_at(root, true, "beta")).is_err());
+        assert!(root.join("old/release.txt").is_file());
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_removes_completed_and_partial_transactions() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        windows_payload(root, "1.10.2")?;
+        windows_payload(&root.join("old"), "1.10.1")?;
+        std::fs::create_dir(root.join("install"))?;
+        std::fs::write(root.join("install/incomplete"), "partial payload")?;
+        std::fs::create_dir(root.join("updates"))?;
+        std::fs::write(root.join("updates/download.exe"), "partial download")?;
+        assert!(smol::block_on(cleanup_windows_at(root, true, "beta"))?.is_none());
+        for directory in ["old", "install", "updates"] {
+            assert!(!root.join(directory).exists());
+        }
+        assert_eq!(
+            std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+            "1.10.2"
+        );
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn windows_startup_restores_restart_without_polling(cx: &mut TestAppContext) {
+        let folder = tempdir().expect("fixture directory");
+        let root = folder.path();
+        windows_payload(root, "1.10.2").expect("installed payload");
+        windows_payload(&root.join("install"), "1.10.3").expect("staged payload");
+        let pending = smol::block_on(cleanup_windows_at(root, true, "beta"))
+            .expect("recover pending update")
+            .expect("pending update");
+        let helper = pending.helper.clone();
+        let (updater, requests) = windows_test_updater(cx);
+        updater.update(cx, |updater, cx| {
+            updater.windows_startup =
+                AutoUpdater::start_windows_startup(Task::ready(Ok(Some(pending))), cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Updated {
+                version: Version::new(1, 10, 3)
+            }
+        );
+        updater.update(cx, |updater, cx| {
+            updater.dismiss(cx);
+        });
+        updater.update(cx, |updater, cx| updater.poll(UpdateCheckType::Manual, cx));
+        cx.run_until_parked();
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+        assert_eq!(
+            updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Updated {
+                version: Version::new(1, 10, 3)
+            }
+        );
+        let restart = cx.expect_restart();
+        cx.update(|cx| cx.restart());
+        let (restart_path, _) = restart.await.expect("captured test restart");
+        assert_eq!(restart_path, Some(helper));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[gpui::test(iterations = 20)]
+    fn windows_startup_serializes_checks_even_after_cancellation(cx: &mut TestAppContext) {
+        let (updater, requests) = windows_test_updater(cx);
+        let (complete_cleanup, cleanup_completed) = oneshot::channel();
+        let startup = cx.background_spawn(async move {
+            cleanup_completed.await.context("cleanup completion")?;
+            Ok(None)
+        });
+        updater.update(cx, |updater, cx| {
+            updater.windows_startup = AutoUpdater::start_windows_startup(startup, cx);
+            updater.poll(UpdateCheckType::Automatic, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+        updater.update(cx, |updater, cx| {
+            updater.poll(UpdateCheckType::Manual, cx);
+            updater.pending_poll.take();
+            updater.poll(UpdateCheckType::Manual, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+        complete_cleanup.send(()).expect("finish cleanup");
+        cx.run_until_parked();
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 1);
+        assert!(!updater.read_with(cx, |updater, _| updater.is_polling()));
+        assert!(matches!(
+            updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Errored { .. }
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    fn windows_startup_failure_blocks_checks_and_stays_visible(cx: &mut TestAppContext) {
+        let (updater, requests) = windows_test_updater(cx);
+        cx.update(|cx| {
+            release_channel::init_test(Version::new(1, 10, 2), ReleaseChannel::Nightly, cx)
+        });
+        updater.update(cx, |updater, cx| {
+            updater.windows_startup = AutoUpdater::start_windows_startup(
+                Task::ready(Err(anyhow::anyhow!(
+                    "cleanup failed; preserving rollback backup"
+                ))),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        for check_type in [UpdateCheckType::Automatic, UpdateCheckType::Manual] {
+            updater.update(cx, |updater, cx| updater.poll(check_type, cx));
+            cx.run_until_parked();
+            assert!(
+                matches!(updater.read_with(cx, |updater, _| updater.status()), AutoUpdateStatus::Errored { error } if error.to_string().contains("cleanup failed"))
+            );
+        }
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    fn staged_update_blocks_newer_release_checks(cx: &mut TestAppContext) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let http_client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |_| {
+                requests.fetch_add(1, atomic::Ordering::SeqCst);
+                async move {
+                    Ok(Response::builder()
+                        .status(429)
+                        .body("unexpected fetch".into())?)
+                }
+            }
+        });
+        let updater = cx.update(|cx| {
+            settings::init(cx);
+            release_channel::init_test(Version::new(1, 10, 2), ReleaseChannel::Beta, cx);
+            let client = Client::new(Arc::new(FakeSystemClock::new()), http_client, cx);
+            cx.new(|cx| AutoUpdater::new(Version::new(1, 10, 2), client, cx))
+        });
+        updater.update(cx, |updater, _| {
+            updater.status = AutoUpdateStatus::Updated {
+                version: Version::new(1, 10, 3),
+            };
+        });
+        for check_type in [UpdateCheckType::Automatic, UpdateCheckType::Manual] {
+            updater.update(cx, |updater, cx| updater.poll(check_type, cx));
+            cx.run_until_parked();
+            assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+            assert_eq!(
+                updater.read_with(cx, |updater, _| updater.status()),
+                AutoUpdateStatus::Updated {
+                    version: Version::new(1, 10, 3)
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn beta_core_versions_do_not_repeat_or_downgrade() -> Result<()> {
+        let current = Version::parse("1.10.2+beta.source")?;
+        for (fetched, offered) in [
+            ("1.10.1-beta", false),
+            ("1.10.2-beta", false),
+            ("1.10.3-beta", true),
+        ] {
+            let result = AutoUpdater::check_if_fetched_version_is_newer(
+                ReleaseChannel::Beta,
+                Ok(None),
+                current.clone(),
+                fetched.to_string(),
+                AutoUpdateStatus::Idle,
+            )?;
+            assert_eq!(result.is_some(), offered);
+        }
+        Ok(())
+    }
+
+    #[gpui::test]
+    fn fork_api_failure_is_visible_without_fallback(cx: &mut TestAppContext) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let http_client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |request| {
+                requests.fetch_add(1, atomic::Ordering::SeqCst);
+                assert_eq!(request.uri().host(), Some("api.github.com"));
+                assert_eq!(request.uri().path(), "/repos/mina-account/lathe/releases");
+                async move {
+                    Ok(Response::builder()
+                        .status(429)
+                        .body("rate limited".into())?)
+                }
+            }
+        });
+        let updater = cx.update(|cx| {
+            settings::init(cx);
+            release_channel::init_test(Version::new(1, 10, 2), ReleaseChannel::Beta, cx);
+            let client = Client::new(Arc::new(FakeSystemClock::new()), http_client, cx);
+            cx.new(|cx| AutoUpdater::new(Version::new(1, 10, 2), client, cx))
+        });
+        updater.update(cx, |updater, cx| {
+            updater.poll(UpdateCheckType::Automatic, cx)
+        });
+        cx.run_until_parked();
+        assert!(matches!(
+            updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Errored { .. }
+        ));
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 1);
+    }
+
+    #[gpui::test]
+    async fn fork_remote_server_is_rejected_before_fetch_and_cloud_version_is_preserved(
+        cx: &mut TestAppContext,
+    ) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let http_client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |request| {
+                requests.fetch_add(1, atomic::Ordering::SeqCst);
+                assert_eq!(request.uri().path(), "/releases/nightly/1.10.1/asset");
+                assert!(
+                    request
+                        .uri()
+                        .query()
+                        .is_some_and(|query| query.contains("asset=zed-remote-server"))
+                );
+                async move {
+                    Ok(Response::builder().status(200).body(
+                        r#"{"version":"1.10.1","url":"https://test.example/server-A"}"#.into(),
+                    )?)
+                }
+            }
+        });
+        let updater = cx.update(|cx| {
+            settings::init(cx);
+            release_channel::init_test(Version::new(1, 10, 2), ReleaseChannel::Beta, cx);
+            let client = Client::new(Arc::new(FakeSystemClock::new()), http_client, cx);
+            cx.new(|cx| AutoUpdater::new(Version::new(1, 10, 2), client, cx))
+        });
+        let mut asynchronous = cx.to_async();
+        let rejected = AutoUpdater::get_release_asset(
+            &updater,
+            ReleaseChannel::Beta,
+            Some(Version::new(1, 10, 1)),
+            "zed-remote-server",
+            "linux",
+            "x86_64",
+            &mut asynchronous,
+        )
+        .await;
+        assert!(rejected.is_err_and(|error| {
+            error
+                .to_string()
+                .contains("unsupported Lathe fork artifact")
+        }));
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+        let server = AutoUpdater::get_release_asset(
+            &updater,
+            ReleaseChannel::Nightly,
+            Some(Version::new(1, 10, 1)),
+            "zed-remote-server",
+            "linux",
+            "x86_64",
+            &mut asynchronous,
+        )
+        .await
+        .expect("inherited cloud server route");
+        assert_eq!(server.version, "1.10.1");
+        assert_eq!(server.url, "https://test.example/server-A");
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 1);
+    }
 
     #[gpui::test]
     fn test_auto_update_defaults_to_true(cx: &mut TestAppContext) {
