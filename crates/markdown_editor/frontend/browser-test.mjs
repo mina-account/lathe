@@ -676,6 +676,32 @@ test("Find counts, previous/next wrapping, case and Escape preserve document and
     }
 });
 
+test("Find refreshes active ranges and navigation after asynchronous host math output",async()=>{
+    for(const mode of ["preview","sv","ir","wysiwyg"]) {
+        const source="Before $x$ after",{page,context}=await open(source,mode);
+        await page.waitForFunction(()=>[...document.querySelectorAll('[data-renderer="math"]')].some(element=>element.dataset.state==="ready"));
+        await page.click("#find-open");await page.fill("#query","z");
+        assert.equal(await page.locator("#count").innerText(),"0 matches");
+        const next="Before $z$ after\n\nAgain $z$";
+        await page.evaluate(next=>window.latheMarkdown.receive({kind:"document",revision:1,text:next,writable:true,draft:null}),next);
+        await page.waitForFunction(()=>{
+            const outputs=[...document.querySelectorAll('[data-renderer="math"]')].filter(element=>element.isConnected&&element.offsetParent!==null);
+            return outputs.length>=2&&outputs.every(element=>element.dataset.state==="ready"&&element.textContent.includes("z"));
+        });
+        const ranges=await page.evaluate(()=>[...CSS.highlights.get("find")??[]].map(range=>range.toString()));
+        assert.equal(ranges.length,["ir","wysiwyg"].includes(mode)?4:2,mode+": active math source and output ranges");
+        assert(ranges.every(value=>value==="z"));
+        assert.equal(await page.locator("#count").innerText(),`${ranges.length} matches`,mode);
+        await page.click("#next");assert.equal(await page.locator("#count").innerText(),`1 of ${ranges.length}`);
+        await page.click("#previous");assert.equal(await page.locator("#count").innerText(),`${ranges.length} of ${ranges.length}`);
+        assert.equal(await page.evaluate(()=>CSS.highlights.get("current-find")?.size),1);
+        assert.equal(await page.evaluate(()=>[...CSS.highlights.get("find")].every(range=>range.startContainer.isConnected&&range.endContainer.isConnected)),true);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),next);
+        assert.deepEqual(await page.evaluate(()=>window.testMessages.filter(message=>["draft","edit","undo","redo"].includes(message.kind))),[]);
+        await context.close();
+    }
+});
+
 test("editable source controls copy selections through the host and paste without changing CRLF",async () => {
     const source="---\r\ntitle: one\r\n---\r\n\r\nBody", {page,context}=await open(source);
     await page.locator('#source-blocks > summary').click(); await page.locator('#blocks details').first().locator('summary').click();

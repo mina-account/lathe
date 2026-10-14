@@ -55,3 +55,4 @@ required-features = ["browser", "test-support"]
 cef = { version = "=154.5.0", default-features = false, optional = true }
 
 [dev-dependencies]
+png = "=0.18.0"

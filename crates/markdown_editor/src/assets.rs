@@ -45,7 +45,13 @@ fn image_type(bytes: &[u8]) -> Result<(&'static str, &'static str)> {
         .decode()
         .context("Image data cannot be decoded within the 64 MiB limit")?;
     use image::{AnimationDecoder as _, ImageDecoder as _};
-    if format == image::ImageFormat::Gif {
+    if format == image::ImageFormat::Png {
+        let mut decoder = image::codecs::png::PngDecoder::new(Cursor::new(bytes))?;
+        decoder.set_limits(limits)?;
+        if decoder.is_apng()? {
+            validate_frames(decoder.apng()?.into_frames())?;
+        }
+    } else if format == image::ImageFormat::Gif {
         let mut decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
         decoder.set_limits(limits)?;
         validate_frames(decoder.into_frames())?;
@@ -605,10 +611,33 @@ fn image_resource_path(
         .replace('\\', "/");
     let decoded = decoded.replace('\\', "/");
     let relative = if decoded.starts_with('/') || decoded.as_bytes().get(1) == Some(&b':') {
-        let path = decoded
-            .strip_prefix(&(root.trim_end_matches('/').to_owned() + "/"))
-            .context("Absolute image is outside the owning worktree")?;
-        normalize_path("", path)?
+        let case_sensitive = match worktree.read(cx) {
+            project::Worktree::Local(local) => local.fs().is_path_case_sensitive(local.abs_path()),
+            project::Worktree::Remote(_) => worktree.read(cx).path_style().is_posix(),
+        };
+        let path_style = worktree.read(cx).path_style();
+        let mut supplied = decoded.split('/').peekable();
+        for (index, component) in root.trim_end_matches('/').split('/').enumerate() {
+            let candidate = supplied
+                .next()
+                .context("Absolute image is outside the owning worktree")?;
+            // Drive letters and UNC addresses retain their casing rules when directory entries are sensitive.
+            let windows_prefix = path_style.is_windows()
+                && (index == 0 && component.ends_with(':') || root.starts_with("//") && index < 4);
+            anyhow::ensure!(
+                if case_sensitive && !windows_prefix {
+                    candidate == component
+                } else {
+                    candidate.to_lowercase() == component.to_lowercase()
+                },
+                "Absolute image is outside the owning worktree"
+            );
+        }
+        anyhow::ensure!(
+            supplied.peek().is_some(),
+            "Absolute image is outside the owning worktree"
+        );
+        normalize_path("", &supplied.collect::<Vec<_>>().join("/"))?
     } else {
         normalize_path(
             document
@@ -654,6 +683,330 @@ mod tests {
             .write_to(&mut output, image::ImageFormat::Png)
             .expect("encode fixture");
         output.into_inner()
+    }
+
+    fn apng(width: u32, height: u32, frames: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, width, height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.set_compression(png::Compression::Fast);
+            encoder.set_animated(frames, 0).expect("animation header");
+            let mut writer = encoder.write_header().expect("PNG header");
+            for index in 0..frames {
+                let pixels = vec![index as u8; width as usize * height as usize * 4];
+                writer.write_image_data(&pixels).expect("animation frame");
+            }
+            writer.finish().expect("complete APNG");
+        }
+        bytes
+    }
+
+    #[test]
+    fn apng_frame_limit_rejects_a_valid_101_frame_animation() {
+        use image::AnimationDecoder as _;
+        let accepted = apng(1, 1, 100);
+        assert_eq!(
+            image_type(&accepted).expect("100-frame PNG"),
+            ("png", "image/png")
+        );
+        let excessive = apng(1, 1, 101);
+        let frames = image::codecs::png::PngDecoder::new(Cursor::new(&excessive))
+            .expect("PNG")
+            .apng()
+            .expect("APNG")
+            .into_frames()
+            .collect_frames()
+            .expect("valid animation");
+        assert_eq!(frames.len(), 101);
+        assert!(
+            image_type(&excessive).is_err(),
+            "APNG must obey the 100-frame cap"
+        );
+    }
+
+    #[test]
+    fn apng_total_decoded_limit_rejects_a_small_encoded_animation() {
+        let accepted = apng(1024, 1024, 16);
+        assert!(accepted.len() < MAX_IMAGE_BYTES);
+        image_type(&accepted).expect("64 MiB animation boundary");
+        let excessive = apng(1024, 1024, 17);
+        assert!(excessive.len() < MAX_IMAGE_BYTES);
+        assert!(
+            image_type(&excessive).is_err(),
+            "APNG must obey the cumulative 64 MiB cap"
+        );
+    }
+
+    #[gpui::test]
+    async fn apng_import_and_resource_validation_surface_errors_without_broken_links(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let messages = Rc::new(RefCell::new(Vec::new()));
+        visual
+            .update(cx, |item, cx| {
+                item.attach(Box::new(Recording(messages.clone())), cx)
+            })
+            .expect("recording surface");
+        let excessive = apng(1, 1, 101);
+        filesystem
+            .write(
+                path!("/project/docs/assets/excessive.png").as_ref(),
+                &excessive,
+            )
+            .await
+            .expect("harmless APNG fixture");
+        visual
+            .update(cx, |item, cx| {
+                item.request_asset(90, "assets/excessive.png".into(), false, cx)
+            })
+            .expect("resource request");
+        cx.run_until_parked();
+        assert!(messages.borrow().iter().any(|message| matches!(message, HostMessage::Resource{request:90,bytes,error:Some(error),..} if bytes.is_empty() && error.contains("100 decoded frames"))));
+        visual
+            .update(cx, |item, cx| {
+                item.import_images(
+                    0,
+                    0,
+                    ImageInput::Encoded(vec![ImportedImage {
+                        name: "excessive.png".into(),
+                        bytes: STANDARD.encode(excessive),
+                    }]),
+                    cx,
+                )
+            })
+            .expect("import request");
+        cx.run_until_parked();
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+            "Before\n\nTail"
+        );
+        assert!(visual.read_with(cx, |item, _| {
+            item.error()
+                .is_some_and(|error| error.contains("100 decoded frames"))
+        }));
+        assert_eq!(
+            filesystem
+                .read_dir(path!("/project/docs/assets").as_ref())
+                .await
+                .expect("asset directory")
+                .collect::<Vec<_>>()
+                .await
+                .len(),
+            2
+        );
+        let accepted = apng(2, 2, 2);
+        filesystem
+            .write(
+                path!("/project/docs/assets/accepted.png").as_ref(),
+                &accepted,
+            )
+            .await
+            .expect("bounded APNG");
+        visual
+            .update(cx, |item, cx| {
+                item.request_asset(91, "assets/accepted.png".into(), false, cx)
+            })
+            .expect("bounded resource");
+        cx.run_until_parked();
+        assert!(messages.borrow().iter().any(|message|matches!(message,HostMessage::Resource{request:91,mime,bytes,error:None} if mime=="image/png" && STANDARD.decode(bytes).expect("response bytes")==accepted)));
+        visual
+            .update(cx, |item, cx| {
+                item.import_images(
+                    0,
+                    0,
+                    ImageInput::Encoded(vec![ImportedImage {
+                        name: "accepted.png".into(),
+                        bytes: STANDARD.encode(accepted),
+                    }]),
+                    cx,
+                )
+            })
+            .expect("bounded import");
+        cx.run_until_parked();
+        assert!(visual.read_with(cx, |item, cx| {
+            item.buffer
+                .read(cx)
+                .snapshot()
+                .text()
+                .starts_with("![image](assets/accepted-")
+        }));
+        visual.update(cx, |item, cx| {
+            item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+        });
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+            "Before\n\nTail"
+        );
+    }
+
+    #[gpui::test]
+    async fn absolute_image_roots_follow_the_local_filesystem_sensitivity(cx: &mut TestAppContext) {
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (project, document, root) = visual.read_with(cx, |item, cx| {
+            let document =
+                ProjectPath::from_file(item.buffer.read(cx).file().expect("file").as_ref(), cx);
+            let project = item.source.read(cx).project().expect("project").clone();
+            let root = project
+                .read(cx)
+                .worktree_for_id(document.worktree_id, cx)
+                .expect("root")
+                .read(cx)
+                .abs_path()
+                .to_string_lossy()
+                .replace('\\', "/");
+            (project, document, root)
+        });
+        let supplied = format!("{}/docs/assets/same.png", root.to_uppercase());
+        assert!(
+            cx.read(|cx| image_resource_path(&document, &supplied, &project, cx))
+                .is_err()
+        );
+        filesystem.set_case_sensitive(false);
+        let path = cx
+            .read(|cx| image_resource_path(&document, &supplied, &project, cx))
+            .expect("case-insensitive owning filesystem");
+        assert_eq!(path.path.as_unix_str(), "docs/assets/same.png");
+        assert!(
+            cx.read(|cx| image_resource_path(
+                &document,
+                &format!("{root}-sibling/image.png"),
+                &project,
+                cx
+            ))
+            .is_err()
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn windows_absolute_image_roots_follow_the_owning_filesystem_case_rules(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        filesystem.set_case_sensitive(false);
+        let project = visual.read_with(cx, |item, cx| {
+            item.source.read(cx).project().expect("project").clone()
+        });
+        for root in [
+            "C:/MixedProject",
+            "//Server/Share/MixedProject",
+            "C:/Prójéct",
+            "//Sérver/Share/Prójéct",
+        ] {
+            filesystem
+                .insert_tree(root, serde_json::json!({"doc.md":"Image", "assets":{}}))
+                .await;
+            filesystem
+                .write(&std::path::Path::new(root).join("assets/image.png"), &png())
+                .await
+                .expect("case fixture");
+            let (worktree, _) = project
+                .update(cx, |project, cx| {
+                    project.find_or_create_worktree(root, true, cx)
+                })
+                .await
+                .expect("Windows root");
+            let document = ProjectPath {
+                worktree_id: worktree.read_with(cx, |worktree, _| worktree.id()),
+                path: rel_path("doc.md").into(),
+            };
+            for supplied in [
+                format!("{root}/assets/image.png"),
+                format!("{}/assets/image.png", root.to_lowercase()),
+                format!(
+                    "{}\\assets\\image.png",
+                    root.to_uppercase().replace('/', "\\")
+                ),
+            ] {
+                let path = cx
+                    .read(|cx| image_resource_path(&document, &supplied, &project, cx))
+                    .expect("in-root Windows case variant");
+                assert_eq!(path.path.as_unix_str(), "assets/image.png");
+                assert_eq!(
+                    project
+                        .update(cx, |project, cx| project.load_binary_resource(
+                            path,
+                            MAX_IMAGE_BYTES,
+                            cx
+                        ))
+                        .await
+                        .expect("canonical bytes"),
+                    png()
+                );
+            }
+            for supplied in [
+                format!("{root}-sibling/assets/image.png"),
+                format!("{root}/../outside.png"),
+            ] {
+                assert!(
+                    cx.read(|cx| image_resource_path(&document, &supplied, &project, cx))
+                        .is_err(),
+                    "outside or sibling root"
+                );
+            }
+            filesystem
+                .insert_tree("C:/outside-case", serde_json::json!({}))
+                .await;
+            filesystem
+                .write(std::path::Path::new("C:/outside-case/image.png"), &png())
+                .await
+                .expect("outside fixture");
+            filesystem
+                .insert_symlink(
+                    std::path::Path::new(root).join("assets/escape.png"),
+                    std::path::PathBuf::from("C:/outside-case/image.png"),
+                )
+                .await;
+            let supplied = format!("{}/assets/escape.png", root.to_lowercase());
+            let path = cx
+                .read(|cx| image_resource_path(&document, &supplied, &project, cx))
+                .expect("lexically in-root alias");
+            assert!(
+                project
+                    .update(cx, |project, cx| project.load_binary_resource(
+                        path,
+                        MAX_IMAGE_BYTES,
+                        cx
+                    ))
+                    .await
+                    .is_err(),
+                "canonical escape remains denied"
+            );
+            filesystem.set_case_sensitive(true);
+            let prefix_variant = if root.starts_with("C:") {
+                root.replacen("C:", "c:", 1)
+            } else {
+                root.replace("Server", "SERVER")
+                    .replace("Sérver", "SÉRVER")
+                    .replace("Share", "SHARE")
+            };
+            assert!(
+                cx.read(|cx| image_resource_path(
+                    &document,
+                    &format!("{prefix_variant}/assets/image.png"),
+                    &project,
+                    cx
+                ))
+                .is_ok(),
+                "drive or UNC address case remains independent of directory case"
+            );
+            assert!(
+                cx.read(|cx| image_resource_path(
+                    &document,
+                    &format!("{}/assets/image.png", root.to_lowercase()),
+                    &project,
+                    cx
+                ))
+                .is_err(),
+                "case-sensitive owning filesystem"
+            );
+            filesystem.set_case_sensitive(false);
+        }
     }
 
     #[gpui::test]

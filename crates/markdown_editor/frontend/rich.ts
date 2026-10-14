@@ -515,7 +515,7 @@ function renderMath(root:HTMLElement) {
         for(const math of root.querySelectorAll<HTMLElement>('span.lathe-math,div.lathe-math')) {
             const source=math.dataset.source ?? math.textContent ?? "";
             if(math.dataset.source===source && math.dataset.renderer==="math")continue;
-            math.dataset.source=source;void renderFence(math,"math",source,plantuml);
+            math.dataset.source=source;void renderFence(math,"math",source,plantuml).then(()=>refreshRenderedFind(math));
         }
         return;
     }
@@ -526,8 +526,11 @@ function renderMath(root:HTMLElement) {
         if(!preview){preview=document.createElement(code.dataset.type==="math-inline"?"span":"div");preview.className=preferences.mode==="ir"?"vditor-ir__preview":"vditor-wysiwyg__preview";preview.dataset.render="1";parent.append(preview);}
         const source=(code.textContent ?? "").replace(/\u200b/g,"");
         if(preview.dataset.source===source && preview.dataset.renderer==="math")continue;
-        preview.dataset.source=source;void renderFence(preview,"math",source,plantuml);
+        preview.dataset.source=source;void renderFence(preview,"math",source,plantuml).then(()=>refreshRenderedFind(preview!));
     }
+}
+function refreshRenderedFind(element:HTMLElement) {
+    if(element.isConnected && active().contains(element))updateFind();
 }
 async function plantuml(source:string):Promise<string> {
     if (!appearance.plantuml_service) throw new Error("PlantUML requires an explicitly configured network service; it cannot render offline.");
@@ -591,7 +594,7 @@ function renderSourceFence(details:HTMLElement,span:{start:number;end:number}) {
     output.dataset.source=source; details.open=true; get("source-blocks").setAttribute("open","");
     output.dataset.service=appearance.plantuml_service ?? "";
     document.body.classList.add("has-renderers");
-    void renderFence(output,match[1],match[2],plantuml);
+    void renderFence(output,match[1],match[2],plantuml).then(()=>refreshRenderedFind(output!));
 }
 function headingElements() { return [...(preferences.mode === "sv" ? editor.vditor.preview.previewElement : active()).querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")]; }
 function renderOutline() {

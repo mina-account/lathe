@@ -1,9 +1,9 @@
 {
   "date": "2026-10-13",
   "frontendBridge": 17,
-  "frontendRealBrowser": 52,
-  "windowsNative": 63,
-  "linuxNative": 63,
+  "frontendRealBrowser": 53,
+  "windowsNative": 68,
+  "linuxNative": 67,
   "windowsProtocol": 13,
   "linuxProtocol": 13,
   "windowsRemoteProjectBytes": 1,
@@ -124,5 +124,51 @@
       "x11": 0
     },
     "additionalCacheCleanup": false
+  },
+  "reviewFixPass3": {
+    "reviewedHead": "a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d",
+    "findingsFixed": 3,
+    "nativeExpectedRed": {
+      "tests": 3,
+      "passed": 0,
+      "failed": 3
+    },
+    "frontendExpectedRed": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "windowsAssetGreen": 20,
+    "linuxAssetGreen": 19,
+    "apng": "Supported through pinned PNG animation decoder with existing100-frame/64MiB cumulative and allocation limits; malformed/unsupported animation errors remain visible",
+    "apngFixtureEncoder": "Dev-only PNG0.18.0 already present in the locked graph; no resolved version added",
+    "windowsAbsoluteRoots": "Owning local per-path filesystem sensitivity, server path style for remote roots, Unicode component comparison, drive/UNC address rules independent of directory casing, canonical read confinement retained",
+    "find": "Completion refresh for connected output within the active document; exact counts, connected ranges, next/previous, unchanged source/history tested in all4 presentations",
+    "nativeFinalRustRefinement": "Component comparison extends byte/ASCII prefix handling to Unicode roots and independent Windows address casing; native/app/lint/smokes rerun after this change; frontend remains unchanged",
+    "transientFileLock": "Early frontend regeneration overlapped a Windows include_bytes read; separated regeneration from Rust compiles, reran Windows expected-red and all final checks with checked exits",
+    "freshBackendSmokeExits": {
+      "windows": 0,
+      "wayland": 0,
+      "x11": 0
+    },
+    "reusedVerification": {
+      "sourceCommit": "a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d",
+      "report": "C:/tmp/lathe-phase4-fixes-2.md",
+      "windowsLog": "C:/tmp/lathe-phase4-fixes2-windows-final.log",
+      "linuxLog": "C:/tmp/lathe-phase4-fixes2-linux-final.log",
+      "checks": [
+        "direct SSH resource/import1 each",
+        "Windows collaborative local/shared-SSH1 each",
+        "preview32 each",
+        "saveWindows25/Linux26",
+        "close49 each",
+        "routingWorkspace1/terminal15 each",
+        "Project/Worktree/Settings and RemoteServer wrapper lints each",
+        "Windows Zed/Collab wrapper lints"
+      ],
+      "reason": "No project/worktree/protocol/server/workspace/preview/routing source changed; current native asset pipelines, application checks, Markdown/Workspace lint, frontend and fresh smokes exercise the changed asset/frontend behavior"
+    },
+    "additionalCacheCleanup": false,
+    "confidentialTransportProbes": false
   }
 }

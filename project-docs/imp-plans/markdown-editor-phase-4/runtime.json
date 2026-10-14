@@ -17,14 +17,14 @@
     "package-lock.json": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
     "build.mjs": "3bcd0bdf8cbcaa1e7304987c4dce37d7e260ffe766c1082974ea0500d09707ed",
     "application.ts": "ea9badf9952e598ce124ac2b61cbc6f220baadb546ac2315c11ea4c2257c0344",
-    "rich.ts": "99ac30fdea4fe55edad19f2b1bcbcda15d80c1e10d70feae5c4be89c0555c10d",
+    "rich.ts": "861f8bb35f62826c96f6eb2376acb1b6fca54993a4a58cf7687884e5cfbf1f6e",
     "renderers.ts": "455439b13564b2e90a8a174435b3919b33ad87ce09a3bb8f640efb26a7814b9a",
     "index.html": "d6b8bfa0b72d3ddcd911c84ee734412224da33bbbe3f98f5b5c01e916232bf86",
     "application.css": "2f0e792395427d47b86ea351a0a9e19b1c3f8d3b2e733968b16942c522e61279"
   },
   "assets": {
     "crates/markdown_editor/frontend/application.js": "af2968282ab1e91d7e2e4525b078b8291e4d7a2b4c006e732d9fb1ef803a6248",
-    "crates/markdown_editor/frontend/rich.js": "745b1b2b819b3cda56ae067569b9181eaaae80ecba8644ae3f4d31ca09a98d45",
+    "crates/markdown_editor/frontend/rich.js": "c2cc755ed20f0b8bf1c21655196f2e11a3035a5608009a8f708c79a11c003035",
     "crates/markdown_editor/frontend/renderers.js": "d8ec89545b009df0d93db0357a16a7041fb19976eea24c5004b3b5dd9fc9e563",
     "crates/markdown_editor/frontend/themes.js": "3e961c73eeacc4b70e4984441aadbfe4a8d867be08a61bc2389c1f1d625be63b",
     "crates/markdown_editor/frontend/vendor/DIFF-MATCH-PATCH-LICENSE": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
