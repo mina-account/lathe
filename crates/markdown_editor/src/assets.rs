@@ -15,12 +15,20 @@ use std::io::Read as _;
 use std::{io::Cursor, path::PathBuf};
 
 const MAX_IMAGE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_IMAGE_COUNT: usize = 16;
+const MAX_IMAGE_BATCH_BYTES: usize = 8 * 1024 * 1024;
 type LoadedImage = Result<(String, Vec<u8>)>;
 pub(crate) enum ImageInput {
     Encoded(Vec<ImportedImage>),
     Picker,
     Clipboard,
     Paths(Vec<PathBuf>),
+}
+
+enum ImageSource {
+    Encoded(ImportedImage),
+    Clipboard(gpui::Image),
+    Path(PathBuf),
 }
 
 fn image_type(bytes: &[u8]) -> Result<(&'static str, &'static str)> {
@@ -364,9 +372,6 @@ impl MarkdownEditor {
                     Ok::<_, anyhow::Error>(load_image_input(input, filesystem, cx))
                 })??;
                 let images = load.await?;
-                if images.len() > 16 {
-                    bail!("Import at most 16 images in one batch");
-                }
                 for image in images {
                     let result: Result<()> = async {
                         let (name, bytes) = image?;
@@ -502,54 +507,57 @@ fn load_image_input(
     cx: &mut Context<MarkdownEditor>,
 ) -> Task<Result<Vec<LoadedImage>>> {
     match input {
-        ImageInput::Encoded(images) => Task::ready(Ok(images
-            .into_iter()
-            .map(|image| {
-                STANDARD
-                    .decode(image.bytes)
-                    .map(|bytes| (image.name, bytes))
-                    .map_err(Into::into)
-            })
-            .collect())),
+        ImageInput::Encoded(images) => cx.background_spawn(async move {
+            check_image_count(images.len())?;
+            collect_images(images.into_iter().map(ImageSource::Encoded), &filesystem).await
+        }),
         ImageInput::Clipboard => {
-            let mut images = Vec::new();
-            let mut paths = Vec::new();
-            for entry in cx
+            let entries = cx
                 .read_from_clipboard()
                 .map(|item| item.entries)
-                .unwrap_or_default()
-            {
+                .unwrap_or_default();
+            let preflight: Result<()> = (|| {
+                let mut count = 0usize;
+                let mut raw_bytes = 0usize;
+                for entry in &entries {
+                    count = count
+                        .checked_add(match entry {
+                            ClipboardEntry::Image(image) => {
+                                raw_bytes = raw_bytes
+                                    .checked_add(image.bytes().len())
+                                    .context("Clipboard image size overflow")?;
+                                anyhow::ensure!(
+                                    raw_bytes <= 64 * 1024 * 1024,
+                                    "Clipboard image batch exceeds the 64 MiB raw limit"
+                                );
+                                1
+                            }
+                            ClipboardEntry::ExternalPaths(paths) => paths.paths().len(),
+                            _ => 0,
+                        })
+                        .context("Image count overflow")?;
+                    check_image_count(count)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = preflight {
+                return Task::ready(Err(error));
+            }
+            let mut sources = Vec::new();
+            for entry in entries {
                 match entry {
-                    ClipboardEntry::Image(image) => {
-                        images.push(Ok(("clipboard".into(), image.bytes().to_vec())))
-                    }
-                    ClipboardEntry::ExternalPaths(external) => {
-                        paths.extend(external.paths().iter().cloned())
+                    ClipboardEntry::Image(image) => sources.push(ImageSource::Clipboard(image)),
+                    ClipboardEntry::ExternalPaths(paths) => {
+                        sources.extend(paths.0.into_iter().map(ImageSource::Path))
                     }
                     _ => {}
                 }
             }
-            cx.background_spawn(async move {
-                let mut images = images
-                    .into_iter()
-                    .map(|image: LoadedImage| {
-                        image.and_then(|(name, bytes)| {
-                            clipboard_image(&bytes).map(|bytes| (name, bytes))
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                for path in paths {
-                    images.push(load_image_path(&filesystem, path).await);
-                }
-                Ok(images)
-            })
+            cx.background_spawn(async move { collect_images(sources, &filesystem).await })
         }
         ImageInput::Paths(paths) => cx.background_spawn(async move {
-            let mut images = Vec::new();
-            for path in paths {
-                images.push(load_image_path(&filesystem, path).await);
-            }
-            Ok(images)
+            check_image_count(paths.len())?;
+            collect_images(paths.into_iter().map(ImageSource::Path), &filesystem).await
         }),
         ImageInput::Picker => {
             let prompt = cx.prompt_for_paths(PathPromptOptions {
@@ -559,37 +567,101 @@ fn load_image_input(
                 prompt: Some("Select images".into()),
             });
             cx.background_spawn(async move {
-                let mut images = Vec::new();
                 if let Some(paths) = prompt.await?? {
-                    for path in paths {
-                        images.push(load_image_path(&filesystem, path).await);
-                    }
+                    check_image_count(paths.len())?;
+                    collect_images(paths.into_iter().map(ImageSource::Path), &filesystem).await
+                } else {
+                    Ok(Vec::new())
                 }
-                Ok(images)
             })
         }
     }
 }
 
+fn check_image_count(count: usize) -> Result<()> {
+    anyhow::ensure!(
+        count <= MAX_IMAGE_COUNT,
+        "Import at most 16 images in one batch"
+    );
+    Ok(())
+}
+
+async fn collect_images(
+    sources: impl IntoIterator<Item = ImageSource>,
+    filesystem: &std::sync::Arc<dyn project::Fs>,
+) -> Result<Vec<LoadedImage>> {
+    let mut images = Vec::new();
+    let mut total_bytes = 0usize;
+    for source in sources {
+        let remaining = MAX_IMAGE_BATCH_BYTES - total_bytes;
+        let image = match source {
+            ImageSource::Path(path) => load_image_path(filesystem, path, remaining).await?,
+            ImageSource::Clipboard(image) => {
+                let bytes = image.bytes();
+                if image::guess_format(bytes).ok() != Some(image::ImageFormat::Bmp)
+                    && bytes.len() <= MAX_IMAGE_BYTES
+                {
+                    anyhow::ensure!(
+                        bytes.len() <= remaining,
+                        "Image batch exceeds the 8 MiB encoded limit"
+                    );
+                }
+                clipboard_image(bytes).map(|bytes| ("clipboard".into(), bytes))
+            }
+            ImageSource::Encoded(image) => STANDARD
+                .decode(image.bytes)
+                .map(|bytes| (image.name, bytes))
+                .map_err(Into::into),
+        };
+        let image = image.and_then(|(name, bytes)| {
+            anyhow::ensure!(
+                bytes.len() <= MAX_IMAGE_BYTES,
+                "Image exceeds the 4 MiB encoded limit"
+            );
+            Ok((name, bytes))
+        });
+        if let Ok((_, bytes)) = &image {
+            anyhow::ensure!(
+                bytes.len() <= remaining,
+                "Image batch exceeds the 8 MiB encoded limit"
+            );
+            total_bytes += bytes.len();
+        }
+        images.push(image);
+    }
+    Ok(images)
+}
+
 async fn load_image_path(
     filesystem: &std::sync::Arc<dyn project::Fs>,
     path: PathBuf,
-) -> LoadedImage {
+    remaining: usize,
+) -> Result<LoadedImage> {
+    let reader = match filesystem.open_sync(&path).await {
+        Ok(reader) => reader,
+        Err(error) => return Ok(Err(error)),
+    };
     let mut bytes = Vec::new();
-    std::io::Read::take(
-        filesystem.open_sync(&path).await?,
-        MAX_IMAGE_BYTES as u64 + 1,
-    )
-    .read_to_end(&mut bytes)?;
-    if bytes.len() > MAX_IMAGE_BYTES {
-        bail!("Image exceeds the 4 MiB encoded limit");
+    if let Err(error) = std::io::Read::take(reader, MAX_IMAGE_BYTES.min(remaining) as u64 + 1)
+        .read_to_end(&mut bytes)
+    {
+        return Ok(Err(error.into()));
     }
-    Ok((
+    anyhow::ensure!(
+        bytes.len() <= remaining,
+        "Image batch exceeds the 8 MiB encoded limit"
+    );
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Ok(Err(anyhow::anyhow!(
+            "Image exceeds the 4 MiB encoded limit"
+        )));
+    }
+    Ok(Ok((
         path.file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "image".into()),
         bytes,
-    ))
+    )))
 }
 
 fn image_resource_path(
@@ -683,6 +755,532 @@ mod tests {
             .write_to(&mut output, image::ImageFormat::Png)
             .expect("encode fixture");
         output.into_inner()
+    }
+
+    struct PumpSurface {
+        incoming: Rc<RefCell<Vec<protocol::ClientMessage>>>,
+        sent: Rc<RefCell<Vec<HostMessage>>>,
+        session: String,
+        document: u64,
+        sequence: u64,
+    }
+
+    impl BrowserSurface for PumpSurface {
+        fn send(&mut self, message: &HostMessage) -> Result<()> {
+            self.sent.borrow_mut().push(message.clone());
+            if let HostMessage::Accepted { sequence, .. } = message {
+                self.sequence = *sequence;
+            }
+            if let HostMessage::Flush { request } = message {
+                self.incoming
+                    .borrow_mut()
+                    .push(protocol::ClientMessage::Flushed {
+                        session: self.session.clone(),
+                        document: self.document,
+                        request: *request,
+                        sequence: self.sequence,
+                    });
+            }
+            Ok(())
+        }
+        fn poll(&mut self) -> Result<Vec<protocol::ClientMessage>> {
+            Ok(std::mem::take(&mut *self.incoming.borrow_mut()))
+        }
+        fn script(&mut self, _: &str) -> Result<()> {
+            Ok(())
+        }
+        fn dispose(&mut self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn attach_pump(
+        visual: &gpui::Entity<MarkdownEditor>,
+        cx: &mut VisualTestContext,
+    ) -> (
+        Rc<RefCell<Vec<protocol::ClientMessage>>>,
+        Rc<RefCell<Vec<HostMessage>>>,
+    ) {
+        let incoming = Rc::new(RefCell::new(Vec::new()));
+        let sent = Rc::new(RefCell::new(Vec::new()));
+        visual
+            .update(cx, |item, cx| {
+                item.attach(
+                    Box::new(PumpSurface {
+                        incoming: incoming.clone(),
+                        sent: sent.clone(),
+                        session: item.protocol.session.clone(),
+                        document: item.protocol.document,
+                        sequence: 0,
+                    }),
+                    cx,
+                )
+            })
+            .expect("pump surface");
+        (incoming, sent)
+    }
+
+    fn pick(item: &MarkdownEditor, clipboard: bool, drop: bool) -> protocol::ClientMessage {
+        protocol::ClientMessage::PickImages {
+            session: item.protocol.session.clone(),
+            document: item.protocol.document,
+            base_revision: item.protocol.revision,
+            position: 8,
+            clipboard,
+            drop,
+        }
+    }
+
+    #[gpui::test(iterations = 20)]
+    async fn overlapping_image_requests_and_revision_races_keep_the_pump_editable(
+        cx: &mut TestAppContext,
+    ) {
+        use workspace::item::Item as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{"ensure_final_newline_on_save":false,"format_on_save":"off"}"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("source-preserving save settings");
+            })
+        });
+        let (incoming, sent) = attach_pump(&visual, cx);
+        filesystem.set_create_file_delay(std::time::Duration::from_secs(1));
+        incoming.borrow_mut().push(visual.read_with(cx, |item, _| {
+            protocol::ClientMessage::ImportImages {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                base_revision: item.protocol.revision,
+                position: 8,
+                images: vec![ImportedImage {
+                    name: "first.png".into(),
+                    bytes: STANDARD.encode(png()),
+                }],
+            }
+        }));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        cx.run_until_parked();
+        assert_eq!(
+            filesystem.pending_file_creations(),
+            1,
+            "first import awaits its actual file write"
+        );
+        let second = visual.read_with(cx, |item, _| pick(item, false, false));
+        incoming.borrow_mut().push(second);
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        assert!(
+            visual.read_with(cx, |item, cx| item.asset_active(cx)),
+            "ordinary overlap must not retire the pump"
+        );
+        incoming.borrow_mut().push(visual.read_with(cx, |item, _| {
+            protocol::ClientMessage::ImportImages {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                base_revision: item.protocol.revision,
+                position: 8,
+                images: vec![ImportedImage {
+                    name: "overlap.png".into(),
+                    bytes: STANDARD.encode(png()),
+                }],
+            }
+        }));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        assert!(
+            visual.read_with(cx, |item, cx| item.asset_active(cx)),
+            "encoded overlap remains recoverable"
+        );
+        assert!(
+            sent.borrow().iter().any(
+                |message| matches!(message,HostMessage::Notice{text} if text.contains("import"))
+            )
+        );
+        visual.update(cx, |item, cx| {
+            item.buffer.update(cx, |buffer, cx| {
+                buffer.finalize_last_transaction();
+                buffer.edit([(0..0, "Native prefix\n")], None, cx);
+                buffer.finalize_last_transaction();
+            })
+        });
+        let stale = visual.read_with(cx, |item, _| protocol::ClientMessage::ImportImages {
+            session: item.protocol.session.clone(),
+            document: item.protocol.document,
+            base_revision: 0,
+            position: 8,
+            images: vec![ImportedImage {
+                name: "stale.png".into(),
+                bytes: STANDARD.encode(png()),
+            }],
+        });
+        incoming.borrow_mut().push(stale);
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        assert!(
+            visual.read_with(cx, |item, cx| item.asset_active(cx)),
+            "revision race must remain recoverable"
+        );
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        cx.run_until_parked();
+        let imported = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+        assert!(
+            imported.starts_with("Native prefix\nBefore\n\n![image](assets/first-"),
+            "{imported}"
+        );
+        assert_eq!(imported.matches("![image]").count(), 1);
+        assert!(imported.ends_with("Tail"));
+        let stale = visual.read_with(cx, |item, _| pick(item, true, false));
+        let stale_encoded = visual.read_with(cx, |item, _| protocol::ClientMessage::ImportImages {
+            session: item.protocol.session.clone(),
+            document: item.protocol.document,
+            base_revision: item.protocol.revision,
+            position: 8,
+            images: vec![ImportedImage {
+                name: "stale-after.png".into(),
+                bytes: STANDARD.encode(png()),
+            }],
+        });
+        visual.update(cx, |item, cx| {
+            item.buffer
+                .update(cx, |buffer, cx| buffer.edit([(0..0, "Race\n")], None, cx))
+        });
+        incoming.borrow_mut().push(stale);
+        incoming.borrow_mut().push(stale_encoded);
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        assert!(visual.read_with(cx, |item, cx| item.asset_active(cx)));
+        let edit = visual.read_with(cx, |item, cx| {
+            let length = item
+                .buffer
+                .read(cx)
+                .snapshot()
+                .text()
+                .encode_utf16()
+                .count();
+            protocol::ClientMessage::Edit {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                request: 1,
+                sequence: 1,
+                base_revision: item.protocol.revision,
+                change: protocol::Change {
+                    start: length,
+                    end: length,
+                    text: " edited".into(),
+                },
+            }
+        });
+        incoming.borrow_mut().push(visual.read_with(cx, |item, cx| {
+            protocol::ClientMessage::Draft {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                sequence: 1,
+                base_revision: item.protocol.revision,
+                text: item.buffer.read(cx).snapshot().text() + " edited",
+            }
+        }));
+        incoming.borrow_mut().push(edit);
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        let edited = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+        assert!(edited.ends_with("Tail edited"));
+        let project = visual.read_with(cx, |item, cx| {
+            item.source.read(cx).project().expect("project").clone()
+        });
+        let save = visual.update_in(cx, |item, window, cx| {
+            item.save(Default::default(), project, window, cx)
+        });
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        save.await.expect("save after recoverable import rejection");
+        assert_eq!(
+            filesystem
+                .read_file_sync(path!("/project/docs/doc.md"))
+                .expect("saved source"),
+            edited.as_bytes()
+        );
+        visual.update(cx, |item, cx| {
+            item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+        });
+        assert!(
+            !visual
+                .read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text())
+                .ends_with(" edited")
+        );
+        visual.update(cx, |item, cx| {
+            item.buffer.update(cx, |buffer, cx| buffer.redo(cx))
+        });
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+            edited
+        );
+        let close = visual.update_in(cx, |item, window, cx| item.prepare_to_save(window, cx));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        close
+            .await
+            .expect("close preparation after recoverable import rejection");
+    }
+
+    #[gpui::test]
+    async fn native_image_count_limits_reject_before_opening_picker_clipboard_and_drop_paths(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (incoming, _) = attach_pump(&visual, cx);
+        for route in ["picker", "clipboard", "drop"] {
+            let paths = (0..17)
+                .map(|index| PathBuf::from(path!("/project")).join(format!("{route}-{index}.png")))
+                .collect::<Vec<_>>();
+            for path in &paths {
+                filesystem.write(path, &png()).await.expect("input fixture");
+            }
+            if route == "clipboard" {
+                cx.update(|_, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem {
+                        entries: vec![ClipboardEntry::ExternalPaths(gpui::ExternalPaths(
+                            paths.clone().into(),
+                        ))],
+                    })
+                });
+            }
+            if route == "drop" {
+                visual.update(cx, |item, cx| {
+                    item.native_image_drop(&gpui::ExternalPaths(paths.clone().into()), cx)
+                });
+            }
+            incoming.borrow_mut().push(visual.read_with(cx, |item, _| {
+                pick(item, route == "clipboard", route == "drop")
+            }));
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            cx.run_until_parked();
+            if route == "picker" {
+                cx.simulate_path_prompt_response(|_| Some(paths.clone()));
+                cx.run_until_parked();
+            }
+            assert!(
+                visual.read_with(cx, |item, _| item
+                    .error()
+                    .is_some_and(|error| error.contains("16 images"))),
+                "{route}: visible count limit"
+            );
+            assert_eq!(
+                paths
+                    .iter()
+                    .map(|path| filesystem.open_count_for_path(path))
+                    .sum::<usize>(),
+                0,
+                "{route}: rejected before opening files"
+            );
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                "Before\n\nTail"
+            );
+            assert!(visual.read_with(cx, |item, cx| item.asset_active(cx)));
+        }
+    }
+
+    #[gpui::test]
+    async fn native_image_aggregate_limits_stop_reads_with_bounded_collection(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (incoming, _) = attach_pump(&visual, cx);
+        for route in ["picker", "clipboard", "drop"] {
+            let paths = (0..4)
+                .map(|index| {
+                    PathBuf::from(path!("/project")).join(format!("{route}-large-{index}.png"))
+                })
+                .collect::<Vec<_>>();
+            let mut bytes = png();
+            bytes.resize(MAX_IMAGE_BYTES, 0);
+            for path in &paths {
+                filesystem.write(path, &bytes).await.expect("input fixture");
+            }
+            if route == "clipboard" {
+                cx.update(|_, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem {
+                        entries: vec![ClipboardEntry::ExternalPaths(gpui::ExternalPaths(
+                            paths.clone().into(),
+                        ))],
+                    })
+                });
+            }
+            if route == "drop" {
+                visual.update(cx, |item, cx| {
+                    item.native_image_drop(&gpui::ExternalPaths(paths.clone().into()), cx)
+                });
+            }
+            incoming.borrow_mut().push(visual.read_with(cx, |item, _| {
+                pick(item, route == "clipboard", route == "drop")
+            }));
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            cx.run_until_parked();
+            if route == "picker" {
+                cx.simulate_path_prompt_response(|_| Some(paths.clone()));
+                cx.run_until_parked();
+            }
+            assert!(
+                visual.read_with(cx, |item, _| item
+                    .error()
+                    .is_some_and(|error| error.contains("8 MiB"))),
+                "{route}: visible aggregate limit"
+            );
+            assert!(
+                paths
+                    .iter()
+                    .map(|path| filesystem.bytes_read_for_path(path))
+                    .sum::<usize>()
+                    <= 8 * 1024 * 1024 + 1,
+                "{route}: bounded reads including one overflow sentinel"
+            );
+            assert_eq!(
+                filesystem.open_count_for_path(paths.last().expect("last path")),
+                0,
+                "{route}: stops before remaining selections"
+            );
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                "Before\n\nTail"
+            );
+            assert!(visual.read_with(cx, |item, cx| item.asset_active(cx)));
+        }
+    }
+
+    #[gpui::test]
+    async fn native_clipboard_image_and_mixed_batches_obey_limits_and_accept_the_exact_boundary(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (incoming, _) = attach_pump(&visual, cx);
+        let small = gpui::Image::from_bytes(gpui::ImageFormat::Png, png());
+        let path = PathBuf::from(path!("/project/clipboard-count.png"));
+        filesystem
+            .write(&path, &png())
+            .await
+            .expect("clipboard path");
+        for mixed in [false, true] {
+            let mut entries = (0..if mixed { 16 } else { 17 })
+                .map(|_| ClipboardEntry::Image(small.clone()))
+                .collect::<Vec<_>>();
+            if mixed {
+                entries.push(ClipboardEntry::ExternalPaths(gpui::ExternalPaths(
+                    vec![path.clone()].into(),
+                )));
+            }
+            cx.update(|_, cx| cx.write_to_clipboard(gpui::ClipboardItem { entries }));
+            incoming
+                .borrow_mut()
+                .push(visual.read_with(cx, |item, _| pick(item, true, false)));
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            cx.run_until_parked();
+            assert!(visual.read_with(cx, |item, _| {
+                item.error()
+                    .is_some_and(|error| error.contains("16 images"))
+            }));
+            assert_eq!(filesystem.open_count_for_path(&path), 0);
+        }
+        let mut bitmap = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(2, 2)
+            .write_to(&mut bitmap, image::ImageFormat::Bmp)
+            .expect("native BMP fixture");
+        let mut excessive_raw = bitmap.get_ref().clone();
+        excessive_raw.resize(32 * 1024 * 1024 + 1, 0);
+        let excessive_raw = gpui::Image::from_bytes(gpui::ImageFormat::Bmp, excessive_raw);
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem {
+                entries: vec![ClipboardEntry::Image(excessive_raw); 2],
+            })
+        });
+        incoming
+            .borrow_mut()
+            .push(visual.read_with(cx, |item, _| pick(item, true, false)));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        cx.run_until_parked();
+        assert!(visual.read_with(cx, |item, _| {
+            item.error()
+                .is_some_and(|error| error.contains("64 MiB raw"))
+        }));
+        let mut bytes = png();
+        bytes.resize(MAX_IMAGE_BYTES, 0);
+        let large = gpui::Image::from_bytes(gpui::ImageFormat::Png, bytes);
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem {
+                entries: vec![ClipboardEntry::Image(large.clone()); 3],
+            })
+        });
+        incoming
+            .borrow_mut()
+            .push(visual.read_with(cx, |item, _| pick(item, true, false)));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        cx.run_until_parked();
+        assert!(visual.read_with(cx, |item, _| {
+            item.error().is_some_and(|error| error.contains("8 MiB"))
+        }));
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+            "Before\n\nTail"
+        );
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem {
+                entries: vec![ClipboardEntry::Image(large); 2],
+            })
+        });
+        incoming
+            .borrow_mut()
+            .push(visual.read_with(cx, |item, _| pick(item, true, false)));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        cx.run_until_parked();
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item
+                .buffer
+                .read(cx)
+                .snapshot()
+                .text()
+                .matches("![image]")
+                .count()),
+            2
+        );
+        assert!(visual.read_with(cx, |item, cx| item.asset_active(cx)));
+        let before = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+        let animation = apng(2, 2, 2);
+        cx.update(|_, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem {
+                entries: vec![
+                    ClipboardEntry::Image(gpui::Image::from_bytes(
+                        gpui::ImageFormat::Bmp,
+                        bitmap.into_inner(),
+                    )),
+                    ClipboardEntry::Image(gpui::Image::from_bytes(
+                        gpui::ImageFormat::Png,
+                        animation.clone(),
+                    )),
+                ],
+            })
+        });
+        incoming
+            .borrow_mut()
+            .push(visual.read_with(cx, |item, _| pick(item, true, false)));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        cx.run_until_parked();
+        let after = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+        assert_eq!(after.matches("![image]").count(), 4);
+        assert!(
+            filesystem
+                .files_with_contents(path!("/project/docs/assets").as_ref())
+                .iter()
+                .any(|(_, bytes)| *bytes == animation)
+        );
+        for _ in 0..2 {
+            visual.update(cx, |item, cx| {
+                item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+            });
+        }
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+            before
+        );
     }
 
     fn apng(width: u32, height: u32, frames: u32) -> Vec<u8> {

@@ -370,5 +370,10 @@
     "crates/markdown_editor/frontend/vendor/vditor.css": "0865fe88664d5a9628e8f09d9214506c5109456c9af04b24965abe4f20ec073c",
     "crates/markdown_editor/frontend/vendor/vditor.js": "8c5679db69c84ca06a61310b9737cdab967325fb4879de698b09802e254ad064",
     "crates/markdown_editor/src/packaged_resources.rs": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194"
+  },
+  "nativeSourceHashesNormalizedLF": {
+    "crates/markdown_editor/src/assets.rs": "db57fdbaf67afd66f94b03b80e6678ba8a3d6485d33611871f55b229941b11c8",
+    "crates/markdown_editor/src/item.rs": "347cb19a3bb797422682b8bb7a43dd6b1b6d2c090abbb791e5e3af5db3bd0705",
+    "crates/fs/src/fs.rs": "ca6d8b9adf16108e89ba4497b1dd0b93f236252eb4dd9507593c84d0ed4c56a0"
   }
 }

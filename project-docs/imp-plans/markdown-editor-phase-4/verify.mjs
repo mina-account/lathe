@@ -57,15 +57,24 @@ for(const [file,hash] of Object.entries(runtime.sourceHashesNormalizedLF)) {
     const source=(await readFile(new URL(`../../../crates/markdown_editor/frontend/${file}`,import.meta.url),"utf8")).replaceAll("\r\n","\n");
     assert.equal(createHash("sha256").update(source).digest("hex"),hash,file);
 }
+for(const [file,hash] of Object.entries(runtime.nativeSourceHashesNormalizedLF)) {
+    const source=(await readFile(new URL(`../../../${file}`,import.meta.url),"utf8")).replaceAll("\r\n","\n");
+    assert.equal(createHash("sha256").update(source).digest("hex"),hash,file);
+}
 const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
 assert.equal(checks.frontendBridge,17);
 assert.equal(checks.frontendRealBrowser,53);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
-assert.equal(checks.windowsNative,68);assert.equal(checks.linuxNative,67);
+assert.equal(checks.windowsNative,72);assert.equal(checks.linuxNative,71);
 assert.equal(checks.reviewFixPass2.findingsFixed,3);assert.equal(checks.reviewFixPass2.nativeAssetGreen,15);
 assert.equal(checks.reviewFixPass2.loadedImageHistoryAndFlush,true);
 assert.equal(checks.reviewFixPass3.findingsFixed,3);
 assert.equal(checks.reviewFixPass3.windowsAssetGreen,20);assert.equal(checks.reviewFixPass3.linuxAssetGreen,19);
+assert.equal(checks.reviewFixPass4.findingsFixed,2);
+assert.equal(checks.reviewFixPass4.windowsAssetGreen,24);assert.equal(checks.reviewFixPass4.linuxAssetGreen,23);
+assert.equal(checks.reviewFixPass4.raceSeeds,20);
+assert.equal(checks.reviewFixPass4.nativeCountRejectedBeforeOpen,true);
+assert.equal(checks.reviewFixPass4.nativeCollectionReadBytesBounded,true);
 assert.equal(checks.windowsWorkspaceSave,25);assert.equal(checks.linuxWorkspaceSave,26);
 console.log("Verified recorded Phase4 renderer, resource, preservation and final-asset checks");

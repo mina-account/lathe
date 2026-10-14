@@ -361,6 +361,46 @@ impl MarkdownEditor {
         Ok(())
     }
 
+    #[cfg(any(
+        test,
+        all(feature = "browser", any(target_os = "windows", target_os = "linux"))
+    ))]
+    pub(crate) fn pump_browser(&mut self, cx: &mut Context<Self>) {
+        let result = (|| {
+            let messages = self
+                .surface
+                .as_mut()
+                .map(|surface| surface.poll())
+                .transpose()?
+                .unwrap_or_default();
+            if !self.accepting_input {
+                self.retain_queued_recovery(messages, cx);
+                return anyhow::Ok(());
+            }
+            self.receive_batch(messages, cx)?;
+            if let Some(frame) = self
+                .surface
+                .as_mut()
+                .map(|surface| surface.frame())
+                .transpose()?
+                .flatten()
+            {
+                if let Some(previous) = self.image.replace(frame) {
+                    self.retired_images.push(previous);
+                }
+            }
+            cx.notify();
+            anyhow::Ok(())
+        })();
+        if let Err(error) = result {
+            if self.accepting_input {
+                self.failed(error, cx);
+            } else {
+                log::debug!("Markdown stopped session: {error:#}");
+            }
+        }
+    }
+
     pub fn new(
         source: Entity<Editor>,
         buffer: Entity<Buffer>,
@@ -562,12 +602,16 @@ impl MarkdownEditor {
                 images,
                 base_revision,
                 ..
-            } => self.import_images(
-                *base_revision,
-                *position,
-                crate::assets::ImageInput::Encoded(images.clone()),
-                cx,
-            )?,
+            } => {
+                if let Err(error) = self.import_images(
+                    *base_revision,
+                    *position,
+                    crate::assets::ImageInput::Encoded(images.clone()),
+                    cx,
+                ) {
+                    self.asset_notice(error.to_string(), cx);
+                }
+            }
             ClientMessage::PickImages {
                 position,
                 clipboard,
@@ -575,18 +619,23 @@ impl MarkdownEditor {
                 base_revision,
                 ..
             } => {
-                let input = if *drop {
-                    crate::assets::ImageInput::Paths(
-                        self.pending_drop_paths
-                            .take()
-                            .ok_or_else(|| anyhow::anyhow!("No native image drop is pending"))?,
-                    )
-                } else if *clipboard {
-                    crate::assets::ImageInput::Clipboard
-                } else {
-                    crate::assets::ImageInput::Picker
-                };
-                self.import_images(*base_revision, *position, input, cx)?;
+                let result = (|| {
+                    let input = if *drop {
+                        crate::assets::ImageInput::Paths(
+                            self.pending_drop_paths.take().ok_or_else(|| {
+                                anyhow::anyhow!("No native image drop is pending")
+                            })?,
+                        )
+                    } else if *clipboard {
+                        crate::assets::ImageInput::Clipboard
+                    } else {
+                        crate::assets::ImageInput::Picker
+                    };
+                    self.import_images(*base_revision, *position, input, cx)
+                })();
+                if let Err(error) = result {
+                    self.asset_notice(error.to_string(), cx);
+                }
             }
             ClientMessage::InputState {
                 text, start, end, ..
@@ -840,6 +889,19 @@ impl MarkdownEditor {
             self.asset_notice(error.to_string(), cx);
         }
         cx.notify();
+    }
+
+    pub(crate) fn native_image_drop(
+        &mut self,
+        paths: &gpui::ExternalPaths,
+        cx: &mut Context<Self>,
+    ) {
+        if self.writable(cx) {
+            self.pending_drop_paths = Some(paths.paths().to_vec());
+            if let Err(error) = self.browser_script("window.latheRich?.nativeDrop()") {
+                self.asset_notice(error.to_string(), cx);
+            }
+        }
     }
 
     fn retain_queued_recovery(&mut self, messages: Vec<ClientMessage>, cx: &mut Context<Self>) {
@@ -1109,46 +1171,8 @@ impl MarkdownEditor {
                     cx.background_executor()
                         .timer(Duration::from_millis(16))
                         .await;
-                    let result = this.update(cx, |this, cx| {
-                        let messages = this
-                            .surface
-                            .as_mut()
-                            .map(|surface| surface.poll())
-                            .transpose()?
-                            .unwrap_or_default();
-                        if !this.accepting_input {
-                            this.retain_queued_recovery(messages, cx);
-                            return anyhow::Ok(());
-                        }
-                        this.receive_batch(messages, cx)?;
-                        if let Some(frame) = this
-                            .surface
-                            .as_mut()
-                            .map(|surface| surface.frame())
-                            .transpose()?
-                            .flatten()
-                        {
-                            if let Some(previous) = this.image.replace(frame) {
-                                this.retired_images.push(previous);
-                            }
-                        }
-                        cx.notify();
-                        anyhow::Ok(())
-                    });
-                    match result {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => {
-                            if let Err(error) = this.update(cx, |this, cx| {
-                                if this.accepting_input {
-                                    this.failed(error, cx);
-                                } else {
-                                    log::debug!("Markdown stopped session: {error:#}");
-                                }
-                            }) {
-                                log::error!("{error:#}");
-                            }
-                        }
-                        Err(_) => break,
+                    if this.update(cx, |this, cx| this.pump_browser(cx)).is_err() {
+                        break;
                     }
                 }
             });
@@ -3836,12 +3860,7 @@ impl Render for MarkdownEditor {
                 this.input(&gpui::PlatformInput::KeyDown(event.clone()), cx)
             }))
             .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, _, cx| {
-                if this.writable(cx) {
-                    this.pending_drop_paths = Some(paths.paths().to_vec());
-                    if let Err(error) = this.browser_script("window.latheRich?.nativeDrop()") {
-                        this.asset_notice(error.to_string(), cx);
-                    }
-                }
+                this.native_image_drop(paths, cx);
             }))
             .on_key_up(cx.listener(|this, event: &gpui::KeyUpEvent, _, cx| {
                 this.input(&gpui::PlatformInput::KeyUp(event.clone()), cx)

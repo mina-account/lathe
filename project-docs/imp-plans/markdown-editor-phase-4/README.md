@@ -8,7 +8,7 @@ The Insert image button, native clipboard images/paths, browser clipboard files,
 
 `markdown_editor.image_save_folder` defaults to `assets` relative to the Markdown document. `${projectRoot}/assets` uses the file's owning worktree, including a second project root. Component-wise URL escaping retains spaces, Unicode, `#`, and Windows separators. Drive/UNC absolute paths must resolve beneath that owning root; canonical project reads/writes reject symlink escape. External image URLs and arbitrary filesystem URLs are rejected visibly. A successful project read returns encoded PNG/JPEG/WebP/GIF bytes through a typed bridge response, then the browser creates a bounded blob URL. The original Markdown destination survives editing and HTML copy.
 
-Images are limited to 4 MiB encoded, 8192 pixels per dimension, 64 MiB decoded allocation, and 100 animation frames/64 MiB total decoded animation. Unsupported SVG imports and corrupt or excessive images fail before a link is inserted. Picker/path reads are bounded before decoding. Browser messages have a 16-image batch limit and project resources a 16-request concurrency limit.
+Images are limited to 4 MiB encoded, 8192 pixels per dimension, 64 MiB decoded allocation, and 100 animation frames/64 MiB total decoded animation. Unsupported SVG imports and corrupt or excessive images fail before a link is inserted. Native/browser inputs have a 16-image/8 MiB encoded batch limit; native path reads stop at the remaining collection budget. Raw clipboard images have a 64 MiB aggregate cap before sequential BMP conversion. Project resources have a 16-request concurrency limit.
 
 `Project::load_binary_resource` is a narrow completion-aware adapter. Local reads use the owning worktree with canonical confinement and a bounded read. SSH and collaborative guest RPC downloads use unique request identities, validate declared file identity/size, and resolve only after all chunks arrive; the existing export ACK is not treated as persisted completion. Collaborative hosts serve bounded resources through an authenticated host-to-peer path and reject private files; a shared SSH host retains its SSH server project identity for the second transport hop. Missing/disconnected/oversized downloads produce errors and pending work has a 30-second deadline. The real remote-server fixture uses the actual project/headless worktree RPC and concurrent multi-chunk transfers, rather than a frontend-only resource mock. SQLite-backed collaborative local-host and shared-SSH fixtures cover guest reads, exclusive imports/readback, collision/privacy failures, and unshare/disconnection. This does not establish live SSH network or hardware UI acceptance.
 
@@ -71,12 +71,13 @@ cd ../../..
 node project-docs/imp-plans/markdown-editor-phase-4/verify-assets.mjs C:/tmp/phase4-fresh-assets
 cargo test --locked -p markdown_editor --features browser,test-support --lib
 cargo test --locked -p markdown_editor --no-default-features --lib
+cargo test --locked -p fs --features test-support --lib
 cargo test --locked -p remote_server --features test-support --lib test_project_binary_resources_complete_remote_chunks_and_preserve_exclusive_writes
 cargo test --locked -p collab --features test-support --test collab_tests test_shared_project_binary_resources_complete_and_import_exclusively
 cargo test --locked -p collab --features test-support --test collab_tests test_shared_ssh_project_binary_resources_read_and_import
 cargo check --locked -p zed --all-targets --features visual-tests
 cargo check --locked -p zed --all-targets --features visual-tests,markdown-browser
-./script/clippy.ps1 -p markdown_editor -p workspace --locked
+./script/clippy.ps1 -p markdown_editor -p workspace -p fs --locked
 ./script/clippy.ps1 -p project -p worktree -p settings_content --locked
 ./script/clippy.ps1 -p remote_server --locked
 ./script/clippy.ps1 -p zed --locked
@@ -135,3 +136,17 @@ Math/renderer completion refreshes Find only for connected output inside the cur
 Final current checks pass 53/53 browser groups, 17/17 bridge cases, 68/68 Windows native cases and 67/67 Linux cases (the drive/UNC fixture is Windows-only), plus 13/13 protocol cases each. Current application checks, Markdown/Workspace repository-wrapper lints, scoped formatting, 347-resource/332-dependency locked reconstruction and fresh Win32/Wayland/X11 smokes pass. The byte-prefix approach was refined to components for Unicode/address semantics, followed by fresh native/application/lint/smoke checks. Frontend regeneration and Rust resource embedding were serialized after an early transient Windows file lock.
 
 Unchanged project/worktree/server/workspace/preview/routing tests and their other lint groups retain explicit pass 2 provenance at the reviewed commit in `checks.json`, with the original logs/report and reason for reuse. No new adversarial or confidential transport probe was run. Existing baseline exceptions, Phase 5 packaging/opening and Phase 6 user hardware/manual acceptance remain unchanged.
+
+## Independent review pass 4 corrections
+
+Both findings from reviewed commit `6530c95413dc34d69f6cd2420dbb9d84d68e15bb` have actual request-path expected-red regressions. A second ordinary image request while the first awaited its actual file write stopped the production pump; 17 picker selections opened all 17 files before the late count rejection; four 4 MiB selections imported without an aggregate limit. These three focused cases failed against the previous guards before remediation.
+
+Validated image-request precondition failures now report recoverable asset notices. Protocol/session validation and actual surface failures retain their fatal handling. The poll/batch/frame/failure step and native drop adapter are shared between the real browser pump and deterministic fixtures. Twenty GPUI scheduler seeds cover both encoded and picker overlaps, both stale-revision branches, anchored first-import completion across a source change, continued Draft/Edit input, exact Item save, native undo/redo and close preparation. Save formatting is disabled in the fixture so its disk assertion checks exact source bytes.
+
+Native picker/path selections and clipboard images plus paths check the 16-entry limit before opening files. Collection retains at most 8 MiB of encoded image bytes, with the existing 4 MiB per-file limit. Reads use the remaining budget plus one overflow byte and stop before remaining selections; oversized batches reject before any asset writes. Ordinary per-file errors still preserve partial imports. Clipboard image handles move through sequential conversion instead of cloning all raw pixels into a collection. A 64 MiB aggregate raw clipboard-image preflight preserves bounded native BMP conversion; converted PNGs and APNGs use the common encoded and animation validation. Fixtures require zero opens for excess count, bounded measured reads for each native route, visible rejection, unchanged source, exact 8 MiB acceptance, and actual BMP/APNG clipboard imports with undo.
+
+FakeFs adds test-support-only open/read measurements and GPUI-timer-delayed file creation. These establish actual I/O and write-pending assertions rather than importer-helper-only behavior. Its zero-delay default retains filesystem behavior; all 23 filesystem tests pass on both platforms.
+
+Final current checks pass 53/53 real-browser groups, 17/17 bridge cases, 72/72 Windows native and 71/71 Linux native cases, and 13/13 protocol cases each. The native asset subset passes 24/24 Windows and 23/23 Linux. Current application checks, Markdown/Workspace/Fs repository-wrapper lints, scoped formatting, fresh actual Win32/Wayland/X11 smokes and locked 347-resource/332-hash reconstruction pass. The existing benign Linux direct-SSH fixture is also fresh. Native source hashes now accompany the unchanged frontend hashes and fresh backend traces.
+
+Unchanged broad suites retain explicit pass 2 provenance at `a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d`, carried through pass 3 at the reviewed commit, in `checks.json`. No project/worktree/protocol/server/workspace/preview/routing production source changed. No stopped or additional confidential transport probe was attempted. Baseline exceptions and Phase 5/6 obligations remain unchanged; completion status was not advanced.
