@@ -82,6 +82,17 @@ Up and down in the agent panel's composer walk back through prompts you've alrea
 
 Archived agent threads show up in Thread History for the current workspace, sorted chronologically. Restoring one puts it back in that workspace's thread list.
 
+### Attachments in restored prompts
+
+When you reopen an ACP conversation, supported serialized file references appear
+as mention chips in both normal and super compact mode. The prompt keeps your
+request in place and uses the captured attachment text, even if the file changed
+or disappeared. Opening a chip still navigates to its original target.
+
+Malformed attachment wrappers and code examples stay visible as text. An exact
+serialized attachment example outside code also appears as a chip; the original
+transcript remains available in exports.
+
 ### Super compact conversations
 
 Normal conversation display is the default. In the Settings Editor, enable

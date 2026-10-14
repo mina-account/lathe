@@ -220,6 +220,7 @@ pub struct MessageEditor {
     prompt_history_enabled: bool,
     prompt_history_scope: Option<PromptHistoryScope>,
     prompt_history_cursor: PromptHistoryCursor,
+    clean_transcript_text: Option<String>,
     _subscriptions: Vec<Subscription>,
     _parse_slash_command_task: Task<()>,
 }
@@ -626,6 +627,7 @@ impl MessageEditor {
             prompt_history_enabled: false,
             prompt_history_scope: None,
             prompt_history_cursor: PromptHistoryCursor::default(),
+            clean_transcript_text: None,
             _subscriptions: subscriptions,
             _parse_slash_command_task: Task::ready(()),
         }
@@ -1819,6 +1821,7 @@ impl MessageEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.clean_transcript_text = None;
         // This also replaces read-only transcript content; input actions such as
         // Editor::clear intentionally cannot modify those buffers.
         self.editor
@@ -1853,6 +1856,32 @@ impl MessageEditor {
             "\n[Unsupported message content — this message cannot be edited or resent]",
         )));
         self.set_message(visible, window, cx);
+    }
+
+    pub fn set_transcript_message(
+        &mut self,
+        source_blocks: Vec<acp_v2::ContentBlock>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let source_blocks = if source_blocks
+            .iter()
+            .all(acp_thread::content::can_convert_to_v1)
+            && let Some(workspace) = self.workspace.upgrade()
+        {
+            let path_style = workspace.read(cx).project().read(cx).path_style(cx);
+            normalize_transcript_message(&source_blocks, path_style)
+        } else {
+            source_blocks
+        };
+        self.set_source_message(source_blocks, window, cx);
+        self.clean_transcript_text = Some(self.text(cx));
+    }
+
+    pub fn transcript_is_unchanged(&self, cx: &App) -> bool {
+        self.clean_transcript_text
+            .as_ref()
+            .is_some_and(|text| *text == self.text(cx))
     }
 
     pub fn append_message(
@@ -2347,6 +2376,232 @@ fn mention_to_content_block(
     }
 }
 
+fn normalize_transcript_message(
+    source_blocks: &[acp_v2::ContentBlock],
+    path_style: PathStyle,
+) -> Vec<acp_v2::ContentBlock> {
+    if !source_blocks
+        .iter()
+        .all(acp_thread::content::can_convert_to_v1)
+    {
+        return source_blocks.to_vec();
+    }
+    let mut normalized = Vec::new();
+    let mut text = String::new();
+    for block in source_blocks {
+        if let acp_v2::ContentBlock::Text(content) = block {
+            text.push_str(&content.text);
+        } else {
+            normalize_transcript_text(&text, path_style, &mut normalized);
+            text.clear();
+            normalized.push(block.clone());
+        }
+    }
+    normalize_transcript_text(&text, path_style, &mut normalized);
+    normalized
+}
+
+fn normalize_transcript_text(
+    text: &str,
+    path_style: PathStyle,
+    normalized: &mut Vec<acp_v2::ContentBlock>,
+) {
+    let mut cursor = 0;
+    let mut plain_start = 0;
+    while cursor < text.len() {
+        let remaining = &text[cursor..];
+        if cursor == 0 || text.as_bytes().get(cursor - 1) == Some(&b'\n') {
+            let line_end = cursor + remaining.find('\n').unwrap_or(remaining.len());
+            let line = &text[cursor..line_end];
+            if let Some((marker, length, _)) = transcript_code_fence(line) {
+                cursor = (line_end + 1).min(text.len());
+                while cursor < text.len() {
+                    let remaining = &text[cursor..];
+                    let line_end = cursor + remaining.find('\n').unwrap_or(remaining.len());
+                    let line = &text[cursor..line_end];
+                    cursor = (line_end + 1).min(text.len());
+                    if transcript_code_fence(line).is_some_and(|(closing, count, empty_suffix)| {
+                        closing == marker && count >= length && empty_suffix
+                    }) {
+                        break;
+                    }
+                }
+                continue;
+            }
+            if line.starts_with("    ") || line.starts_with('\t') {
+                cursor = (line_end + 1).min(text.len());
+                continue;
+            }
+        }
+        if remaining.starts_with('\\') {
+            cursor += 1;
+            if let Some(character) = text[cursor..].chars().next() {
+                cursor += character.len_utf8();
+            }
+            continue;
+        }
+        if remaining.starts_with('`') {
+            let length = remaining.bytes().take_while(|byte| *byte == b'`').count();
+            let delimiter = &remaining[..length];
+            cursor += length;
+            cursor = text[cursor..]
+                .find(delimiter)
+                .map_or(text.len(), |closing| cursor + closing + length);
+            continue;
+        }
+        if remaining.starts_with("<context") {
+            if remaining.find("</context>").is_some_and(|closing| {
+                remaining
+                    .get(1..closing)
+                    .is_some_and(|body| body.contains("<context"))
+            }) {
+                break;
+            }
+            cursor = remaining
+                .find("</context>")
+                .map_or(text.len(), |closing| cursor + closing + "</context>".len());
+            continue;
+        }
+        if !remaining.starts_with("[@") {
+            cursor += remaining.chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+
+        // Bound delimiter lookahead so malformed repeated links cannot cause
+        // repeated scans of an entire history snapshot.
+        let mut limit = remaining.len().min(16 * 1024);
+        while !remaining.is_char_boundary(limit) {
+            limit -= 1;
+        }
+        let candidate = &remaining[..limit];
+        let Some(name_end) = find_matching_bracket(candidate, '[', ']') else {
+            cursor += 2;
+            continue;
+        };
+        if candidate.get(name_end + 1..name_end + 2) != Some("(") {
+            cursor += name_end + 1;
+            continue;
+        }
+        let uri_start = name_end + 2;
+        let Some(uri_length) = find_matching_bracket(&candidate[name_end + 1..], '(', ')') else {
+            cursor += uri_start;
+            continue;
+        };
+        let uri_end = name_end + 1 + uri_length;
+        let link_end = cursor + uri_end + 1;
+        let uri = &candidate[uri_start..uri_end];
+        let label = &candidate[2..name_end];
+        let following = &text[link_end..];
+        let context = following.trim_start_matches([' ', '\t', '\r', '\n']);
+        let (end, body) = if context.starts_with("<context")
+            || (!context.is_empty() && "<context".starts_with(context))
+        {
+            let Some(closing) = context.find("</context>") else {
+                break;
+            };
+            let end = text.len() - context.len() + closing + "</context>".len();
+            let after_closing = &context[closing + "</context>".len()..];
+            if after_closing
+                .find("</context>")
+                .is_some_and(|extra_closing| {
+                    after_closing
+                        .find("<context")
+                        .is_none_or(|opening| extra_closing < opening)
+                })
+            {
+                break;
+            }
+            let opening = format!("<context ref=\"{uri}\">");
+            let newline = if following.starts_with("\r\n") {
+                Some("\r\n")
+            } else if following.starts_with('\n') {
+                Some("\n")
+            } else {
+                None
+            };
+            let body = newline.and_then(|newline| {
+                following.strip_prefix(newline)?.strip_prefix(&opening)?;
+                context
+                    .get(..closing)?
+                    .strip_prefix(&opening)?
+                    .strip_prefix(newline)?
+                    .strip_suffix(newline)
+            });
+            if context
+                .get(1..closing)
+                .is_some_and(|body| body.contains("<context"))
+            {
+                break;
+            }
+            let Some(body) = body else {
+                cursor = end;
+                continue;
+            };
+            (end, Some(body))
+        } else {
+            (link_end, None)
+        };
+        if label.is_empty()
+            || uri
+                .chars()
+                .any(|character| character.is_control() || matches!(character, '"' | '<' | '>'))
+            || MentionUri::parse(uri, path_style).is_err()
+        {
+            cursor = end;
+            continue;
+        }
+        if plain_start < cursor {
+            normalized.push(text[plain_start..cursor].to_owned().into());
+        }
+        normalized.push(match body {
+            Some(body) => acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+                acp_v2::EmbeddedResourceResource::TextResourceContents(
+                    acp_v2::TextResourceContents::new(body, uri),
+                ),
+            )),
+            None => acp_v2::ContentBlock::ResourceLink(acp_v2::ResourceLink::new(label, uri)),
+        });
+        cursor = end;
+        plain_start = end;
+    }
+    if plain_start < text.len() {
+        normalized.push(text[plain_start..].to_owned().into());
+    }
+}
+
+fn transcript_code_fence(line: &str) -> Option<(u8, usize, bool)> {
+    let line = line.trim_start_matches([' ', '\t', '>']);
+    let line = line
+        .strip_prefix("- ")
+        .or_else(|| line.strip_prefix("* "))
+        .or_else(|| line.strip_prefix("+ "))
+        .or_else(|| {
+            let digits = line.bytes().take_while(u8::is_ascii_digit).count();
+            if digits == 0 {
+                return None;
+            }
+            let suffix = line.get(digits..)?;
+            suffix
+                .strip_prefix(". ")
+                .or_else(|| suffix.strip_prefix(") "))
+        })
+        .unwrap_or(line)
+        .trim_start();
+    let marker = *line.as_bytes().first()?;
+    if !matches!(marker, b'`' | b'~') {
+        return None;
+    }
+    let length = line.bytes().take_while(|byte| *byte == marker).count();
+    (length >= 3).then(|| {
+        (
+            marker,
+            length,
+            line.get(length..)
+                .is_some_and(|suffix| suffix.trim().is_empty()),
+        )
+    })
+}
+
 /// Parses markdown mention links in the format `[@name](uri)` from text.
 /// Returns a vector of (range, MentionUri) pairs where range is the byte range in the text.
 fn parse_mention_links(text: &str, path_style: PathStyle) -> Vec<(Range<usize>, MentionUri)> {
@@ -2446,12 +2701,169 @@ mod tests {
         conversation_view::tests::init_test,
         mention_set::insert_crease_for_mention,
         message_editor::{
-            Mention, MessageEditor, MessageEditorEvent, SessionCapabilities, parse_mention_links,
+            Mention, MessageEditor, MessageEditorEvent, SessionCapabilities,
+            normalize_transcript_message, parse_mention_links,
         },
         prompt_history::{self, PromptHistoryScope},
         thread_metadata_store::ThreadId,
     };
     use zed_actions::editor::{MoveDown, MoveUp};
+
+    fn transcript_attachment(uri: &str, body: &str, newline: &str) -> String {
+        format!(
+            "[@captured.txt]({uri}){newline}<context ref=\"{uri}\">{newline}{body}{newline}</context>"
+        )
+    }
+
+    fn captured_resources(blocks: &[acp_v2::ContentBlock]) -> Vec<&acp_v2::TextResourceContents> {
+        blocks
+            .iter()
+            .filter_map(|block| match block {
+                acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource {
+                    resource: acp_v2::EmbeddedResourceResource::TextResourceContents(resource),
+                    ..
+                }) => Some(resource),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_preserves_captured_body_and_order() {
+        let uri = "file:///D:/sample/folder%20space/guide(1).txt";
+        for newline in ["\n", "\r\n"] {
+            for body in ["", "雪", "\n雪\n", "\r\n雪\r\n", "\r", "雪\r"] {
+                let attachment = transcript_attachment(uri, body, newline);
+                let original: Vec<acp_v2::ContentBlock> =
+                    vec![format!("Before {attachment}, between {attachment}; after 雪").into()];
+                let normalized = normalize_transcript_message(&original, PathStyle::Windows);
+                assert_eq!(normalized.len(), 5);
+                assert_eq!(normalized.first(), Some(&"Before ".into()));
+                assert_eq!(normalized.get(2), Some(&", between ".into()));
+                assert_eq!(normalized.last(), Some(&"; after 雪".into()));
+                let resources = captured_resources(&normalized);
+                assert_eq!(resources.len(), 2);
+                for resource in resources {
+                    assert_eq!(resource.uri, uri);
+                    assert_eq!(resource.text, body);
+                }
+                assert_eq!(
+                    normalize_transcript_message(&normalized, PathStyle::Windows),
+                    normalized
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_chunk_boundaries_and_structured_barriers() {
+        let uri = "file:///D:/sample/captured.txt";
+        let attachment = transcript_attachment(uri, "captured", "\n");
+        let chunks = attachment
+            .chars()
+            .map(|character| character.to_string().into())
+            .collect::<Vec<_>>();
+        let normalized = normalize_transcript_message(&chunks, PathStyle::Windows);
+        assert_eq!(captured_resources(&normalized).len(), 1);
+        let structured = normalized.first().expect("resource").clone();
+        let split = attachment.find("<context").expect("context");
+        let mixed = vec![
+            attachment[..split].to_owned().into(),
+            structured.clone(),
+            attachment[split..].to_owned().into(),
+        ];
+        let normalized = normalize_transcript_message(&mixed, PathStyle::Windows);
+        assert_eq!(captured_resources(&normalized).len(), 1);
+        assert!(normalized.contains(&structured));
+        assert!(
+            matches!(normalized.last(), Some(acp_v2::ContentBlock::Text(content)) if content.text.contains("</context>"))
+        );
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_fails_open_for_literal_and_invalid_envelopes() {
+        let uri = "file:///D:/sample/captured.txt";
+        let valid = transcript_attachment(uri, "captured", "\n");
+        let invalid = [
+            valid.replace(uri, "unknown:///unsupported"),
+            valid.replacen(
+                "<context ref=\"file:///D:/sample/captured.txt\">",
+                "<context ref=\"file:///D:/other.txt\">",
+                1,
+            ),
+            valid.replace("</context>", ""),
+            transcript_attachment(uri, "\n</context>\nmore", "\n"),
+            format!("[@captured.txt]({uri})\n<con"),
+            valid.replace(
+                "captured\n</context>",
+                "<context ref=\"file:///nested.txt\">\nnested\n</context>\n</context>",
+            ),
+            valid.replace("<context ref=", "<context encoding=\"base64\" ref="),
+            valid.replace("<context ref=", "<context extra=\"attribute\" ref="),
+            transcript_attachment(
+                "file:///D:/sample/file.txt\" encoding=\"base64",
+                "captured",
+                "\n",
+            ),
+            valid.replace(")\n<context", ")\n\n<context"),
+            valid.replace(">\ncaptured", ">captured"),
+            format!("\\{valid}"),
+            format!("`{valid}`"),
+            format!("``{valid}``"),
+            format!("```xml\n{valid}\n```"),
+            format!("~~~xml\n{valid}\n~~~"),
+            format!("- ~~~xml\n{valid}\n~~~"),
+            format!("1. ~~~xml\n{valid}\n~~~"),
+            format!("> ```xml\n> {valid}\n> ```"),
+            format!("    {}", valid.replace('\n', "\n    ")),
+            format!("<context ref=\"{uri}\">\n{valid}\n</context>"),
+        ];
+        for text in invalid {
+            let source = vec![text.clone().into()];
+            assert_eq!(
+                normalize_transcript_message(&source, PathStyle::Windows),
+                source,
+                "must preserve {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_links_and_original_source_guards() {
+        let source = vec!["Before [@雪.txt](file:///D:/sample/%E9%9B%AA.txt) and [ordinary](https://example.com) after".into()];
+        let normalized = normalize_transcript_message(&source, PathStyle::Windows);
+        assert!(
+            matches!(normalized.get(1), Some(acp_v2::ContentBlock::ResourceLink(link)) if link.name == "雪.txt")
+        );
+        assert!(
+            matches!(normalized.last(), Some(acp_v2::ContentBlock::Text(content)) if content.text.contains("[ordinary]"))
+        );
+        let annotated = vec![acp_v2::ContentBlock::Text(
+            acp_v2::TextContent::new(transcript_attachment(
+                "file:///D:/sample/file.txt",
+                "captured",
+                "\n",
+            ))
+            .annotations(
+                acp_v2::Annotations::new().audience(vec![acp_v2::Role::Other("_future".into())]),
+            ),
+        )];
+        assert_eq!(
+            normalize_transcript_message(&annotated, PathStyle::Windows),
+            annotated
+        );
+        let unsupported = vec![
+            source.first().expect("fixture").clone(),
+            acp_v2::ContentBlock::Other(acp_v2::OtherContentBlock::new(
+                "_future",
+                Default::default(),
+            )),
+        ];
+        assert_eq!(
+            normalize_transcript_message(&unsupported, PathStyle::Windows),
+            unsupported
+        );
+    }
 
     #[test]
     fn test_session_capabilities_keep_commands_and_skills_separate() {
@@ -5723,6 +6135,153 @@ mod tests {
 
         cx.run_until_parked();
         (message_editor, cx)
+    }
+
+    #[gpui::test]
+    async fn test_transcript_prompt_hydration_roundtrip_copy_and_draft_opt_in(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (message_editor, cx) = setup_message_editor(cx).await;
+        let uri = "file:///D:/deleted/captured.txt";
+        let body = "\nCaptured historical content 雪\n";
+        let replay = format!(
+            "Before {}, request after",
+            transcript_attachment(uri, body, "\r\n")
+        );
+        let source = vec![acp_v2::ContentBlock::Text(
+            acp_v2::TextContent::new(replay.clone())
+                .meta(acp_v2::Meta::from_iter([("fixture".into(), json!(true))])),
+        )];
+        let filesystem = message_editor.read_with(cx, |editor, cx| {
+            editor
+                .workspace
+                .upgrade()
+                .expect("workspace")
+                .read(cx)
+                .project()
+                .read(cx)
+                .fs()
+                .clone()
+        });
+        let calls_before = filesystem.as_fake().metadata_call_count();
+        let restored_text = message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_source_message(source.clone(), window, cx);
+            assert_eq!(editor.text(cx), replay.replace("\r\n", "\n"));
+            assert!(
+                editor.mention_set.read(cx).is_empty(),
+                "composer and queued draft input stays literal"
+            );
+            editor.set_transcript_message(source.clone(), window, cx);
+            assert_eq!(editor.mention_set.read(cx).creases().len(), 1);
+            assert!(editor.transcript_is_unchanged(cx));
+            assert!(!editor.text(cx).contains("Captured historical"));
+            assert!(!editor.text(cx).contains("<context"));
+            let text_length = editor.text(cx).len();
+            editor.editor.update(cx, |editor, cx| {
+                editor.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
+                    selections
+                        .select_ranges([MultiBufferOffset(0)..MultiBufferOffset(text_length)]);
+                });
+            });
+            let (copied, _) = editor
+                .serialize_selection_with_mentions(false, cx)
+                .expect("copy with mentions");
+            assert!(copied.contains("[@captured.txt]"));
+            assert!(copied.ends_with(", request after"));
+            assert!(!copied.contains("<context"));
+            editor.text(cx)
+        });
+        for embedded in [true, false] {
+            message_editor.update(cx, |editor, _| {
+                editor
+                    .session_capabilities
+                    .write()
+                    .set_prompt_capabilities(if embedded {
+                        acp_v2::PromptCapabilities::new()
+                            .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new())
+                    } else {
+                        acp_v2::PromptCapabilities::default()
+                    });
+            });
+            let (serialized, tracked_buffers) = message_editor
+                .update(cx, |editor, cx| editor.contents(false, cx))
+                .await
+                .expect("serialize restored prompt");
+            assert!(tracked_buffers.is_empty());
+            if embedded {
+                let resources = captured_resources(&serialized);
+                assert_eq!(resources.len(), 1);
+                assert_eq!(resources.first().expect("historical resource").text, body);
+            } else {
+                assert!(captured_resources(&serialized).is_empty());
+                assert_eq!(
+                    serialized
+                        .iter()
+                        .filter(|block| matches!(block, acp_v2::ContentBlock::ResourceLink(_)))
+                        .count(),
+                    1
+                );
+            }
+        }
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_source_message(
+                vec![
+                    "Before ".into(),
+                    acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+                        acp_v2::EmbeddedResourceResource::TextResourceContents(
+                            acp_v2::TextResourceContents::new(body, uri),
+                        ),
+                    )),
+                    ", request after".into(),
+                ],
+                window,
+                cx,
+            );
+            assert_eq!(
+                editor.text(cx),
+                restored_text,
+                "restored and live structured resources use the same presentation"
+            );
+            assert_eq!(editor.mention_set.read(cx).creases().len(), 1);
+            editor.session_capabilities.write().set_prompt_capabilities(
+                acp_v2::PromptCapabilities::new()
+                    .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
+            );
+            editor.set_transcript_message(
+                vec![
+                    transcript_attachment("https://unreachable.invalid/captured.txt", body, "\n")
+                        .into(),
+                ],
+                window,
+                cx,
+            );
+        });
+        let (serialized, tracked_buffers) = message_editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .expect("captured unavailable URL");
+        assert_eq!(
+            captured_resources(&serialized)
+                .first()
+                .expect("URL snapshot")
+                .text,
+            body
+        );
+        assert!(tracked_buffers.is_empty());
+        assert_eq!(
+            filesystem.as_fake().metadata_call_count(),
+            calls_before,
+            "hydration and serialization must not resolve deleted files"
+        );
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_transcript_message(vec!["replacement".into()], window, cx);
+            assert!(editor.mention_set.read(cx).is_empty());
+            assert_eq!(editor.text(cx), "replacement");
+            editor.set_transcript_message(Vec::new(), window, cx);
+            assert_eq!(editor.text(cx), "");
+            assert!(editor.mention_set.read(cx).is_empty());
+        });
     }
 
     #[gpui::test]

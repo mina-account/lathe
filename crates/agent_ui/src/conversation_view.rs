@@ -17769,6 +17769,384 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_restored_prompt_fresh_view_hydrates_captured_attachment(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::default_response(), cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let thread_view = active_thread(&conversation_view, cx);
+        let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
+        let uri = "file:///D:/sample/raw-materials/01-overview.txt";
+        let captured = "Synthetic captured context.\n".repeat(40);
+        let replay = format!(
+            "I add [@01-overview.txt]({uri})\n<context ref=\"{uri}\">\n{captured}\n</context>, please create concise quizzes"
+        );
+        let split = replay.find("</context>").expect("fixture close tag") + 3;
+        let source = vec![
+            acp_v2::ContentBlock::Text(acp_v2::TextContent::new(&replay[..split])),
+            acp_v2::ContentBlock::Text(acp_v2::TextContent::new(&replay[split..])),
+        ];
+        thread.update(cx, |thread, cx| {
+            thread.push_user_content_block(None, source.first().expect("fixture").clone(), cx);
+        });
+        cx.run_until_parked();
+        let partial_editor = thread_view.read_with(cx, |view, cx| {
+            view.entry_view_state
+                .read(cx)
+                .entry(0)
+                .and_then(|entry| entry.message_editor())
+                .cloned()
+                .expect("partial replay editor")
+        });
+        assert!(partial_editor.read_with(cx, |editor, cx| editor.text(cx).contains("<context")));
+        thread.update(cx, |thread, cx| {
+            thread.push_user_content_block(None, source.get(1).expect("second chunk").clone(), cx);
+        });
+        cx.run_until_parked();
+        let editor = thread_view.read_with(cx, |view, cx| {
+            view.entry_view_state
+                .read(cx)
+                .entry(0)
+                .and_then(|entry| entry.message_editor())
+                .cloned()
+                .expect("restored editor")
+        });
+        editor.read_with(cx, |editor, cx| {
+            assert!(
+                !editor.text(cx).contains("<context"),
+                "fresh replay must hide the adapter envelope"
+            );
+            assert!(editor.text(cx).ends_with(", please create concise quizzes"));
+        });
+        thread.read_with(cx, |thread, _| {
+            assert_eq!(
+                thread
+                    .entries()
+                    .first()
+                    .and_then(|entry| entry.user_message())
+                    .expect("restored source")
+                    .content
+                    .source_blocks(),
+                source
+            );
+        });
+        let (content, tracked_buffers) = editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .expect("serialize restored attachment");
+        assert!(tracked_buffers.is_empty());
+        let resources = content
+            .iter()
+            .filter_map(|block| match block {
+                acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource {
+                    resource: acp_v2::EmbeddedResourceResource::TextResourceContents(resource),
+                    ..
+                }) => Some(resource),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources.first().expect("captured resource").text, captured);
+        let original_text = editor.read_with(cx, |editor, cx| editor.text(cx));
+        let original_export = thread.read_with(cx, |thread, cx| thread.to_markdown(cx));
+        assert!(original_export.contains(&captured));
+        assert!(original_export.contains("<context"));
+        for compact in [true, false, true] {
+            cx.update(|_, cx| {
+                SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(
+                            &format!(r#"{{"agent": {{"super_compact_mode": {compact}}}}}"#),
+                            cx,
+                        )
+                        .expect("compact setting");
+                });
+            });
+            cx.run_until_parked();
+            assert_eq!(
+                editor.read_with(cx, |editor, cx| editor.text(cx)),
+                original_text
+            );
+            assert_eq!(
+                thread.read_with(cx, |thread, cx| thread.to_markdown(cx)),
+                original_export
+            );
+            let conversation = thread_view.read_with(cx, |view, _| view.conversation.clone());
+            let fresh_view = conversation_view.update_in(cx, |view, window, cx| {
+                view.new_thread_view(thread.clone(), conversation, false, None, window, cx)
+            });
+            let state = fresh_view.read_with(cx, |view, _| view.entry_view_state.clone());
+            state.update_in(cx, |state, window, cx| {
+                state.sync_entry(0, &thread, window, cx)
+            });
+            let fresh_editor = state.read_with(cx, |state, _| {
+                state
+                    .entry(0)
+                    .and_then(|entry| entry.message_editor())
+                    .cloned()
+                    .expect("fresh restored editor")
+            });
+            assert_ne!(fresh_editor.entity_id(), editor.entity_id());
+            assert_eq!(
+                fresh_editor.read_with(cx, |editor, cx| editor.text(cx)),
+                original_text
+            );
+            let (content, _) = fresh_editor
+                .update(cx, |editor, cx| editor.contents(false, cx))
+                .await
+                .expect("fresh mention projection");
+            assert_eq!(
+                content
+                    .iter()
+                    .filter(|block| matches!(block, acp_v2::ContentBlock::Resource(_)))
+                    .count(),
+                1
+            );
+        }
+        thread_view.update_in(cx, |view, window, cx| {
+            view.toggle_search(&crate::ToggleSearch, window, cx)
+        });
+        let bar = thread_view
+            .read_with(cx, |view, _| view.thread_search_bar.clone())
+            .expect("search bar");
+        for (query, count) in [
+            ("concise quizzes", 1),
+            ("01-overview.txt", 2),
+            ("Synthetic captured context", 0),
+        ] {
+            bar.update_in(cx, |bar, window, cx| {
+                bar.query_editor
+                    .update(cx, |editor, cx| editor.set_text(query, window, cx));
+                bar.update_matches(window, cx);
+            });
+            cx.run_until_parked();
+            assert_eq!(
+                bar.read_with(cx, |bar, _| bar.match_count()),
+                count,
+                "query {query}"
+            );
+            let highlighted = editor.read_with(cx, |editor, cx| {
+                editor
+                    .editor()
+                    .read(cx)
+                    .has_background_highlights(editor::HighlightKey::BufferSearchHighlights)
+            });
+            assert_eq!(highlighted, count > 0, "query highlight {query}");
+        }
+    }
+
+    #[gpui::test]
+    async fn test_restored_prompt_focused_keyed_replacement_clear_and_search_refresh(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::default_response(), cx).await;
+        add_to_workspace(conversation.clone(), cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let snapshot = |name: &str| {
+            let uri = format!("file:///D:/deleted/{name}.txt");
+            vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(format!(
+                "[@{name}.txt]({uri})\n<context ref=\"{uri}\">\nCaptured {name}\n</context> {name} request"
+            )).annotations(acp_v2::Annotations::new().audience(vec![acp_v2::Role::User]))
+                .meta(acp_v2::Meta::from_iter([("fixture".into(), json!(name))]))) ]
+        };
+        thread
+            .update(cx, |thread, cx| {
+                thread.upsert_user_message(
+                    acp_v2::UserMessage::new("restored-keyed").content(snapshot("original")),
+                    cx,
+                )
+            })
+            .expect("keyed replay");
+        cx.run_until_parked();
+        let editor = view.read_with(cx, |view, cx| {
+            view.entry_view_state
+                .read(cx)
+                .entry(0)
+                .and_then(|entry| entry.message_editor())
+                .cloned()
+                .expect("keyed editor")
+        });
+        view.update_in(cx, |view, window, cx| {
+            view.toggle_search(&crate::ToggleSearch, window, cx)
+        });
+        let bar = view
+            .read_with(cx, |view, _| view.thread_search_bar.clone())
+            .expect("search bar");
+        bar.update_in(cx, |bar, window, cx| {
+            bar.query_editor.update(cx, |editor, cx| {
+                editor.set_text("original request", window, cx)
+            });
+            bar.update_matches(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 1);
+        cx.focus(&editor);
+        assert!(editor.read_with(cx, |editor, cx| editor.editor().read(cx).read_only(cx)));
+        let replacement = snapshot("replacement");
+        thread
+            .update(cx, |thread, cx| {
+                thread.upsert_user_message(
+                    acp_v2::UserMessage::new("restored-keyed").content(replacement.clone()),
+                    cx,
+                )
+            })
+            .expect("keyed replacement");
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(super::thread_search_bar::SEARCH_UPDATE_DEBOUNCE * 2);
+        cx.run_until_parked();
+        assert_eq!(
+            bar.read_with(cx, |bar, _| bar.match_count()),
+            0,
+            "source replacement refreshes search coordinates"
+        );
+        let (serialized, _) = editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .expect("replacement projection");
+        assert_eq!(
+            serialized
+                .iter()
+                .filter(|block| matches!(block, acp_v2::ContentBlock::Resource(_)))
+                .count(),
+            1
+        );
+        assert!(
+            !editor
+                .read_with(cx, |editor, cx| editor.text(cx))
+                .contains("original")
+        );
+        thread.read_with(cx, |thread, _| {
+            assert_eq!(
+                thread
+                    .entries()
+                    .first()
+                    .and_then(|entry| entry.user_message())
+                    .expect("canonical keyed source")
+                    .content
+                    .source_blocks(),
+                replacement
+            )
+        });
+        thread
+            .update(cx, |thread, cx| {
+                thread.upsert_user_message(
+                    acp_v2::UserMessage::new("restored-keyed").content(Vec::new()),
+                    cx,
+                )
+            })
+            .expect("clear keyed source");
+        cx.run_until_parked();
+        assert_eq!(editor.read_with(cx, |editor, cx| editor.text(cx)), "");
+        assert!(
+            editor
+                .read_with(cx, |editor, cx| editor.draft_content_blocks_snapshot(cx))
+                .is_empty()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_restored_prompt_edit_baseline_cancel_refresh_and_regenerate(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::default_response(), cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let view = active_thread(&conversation_view, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let uri = "file:///D:/deleted/fixture.txt";
+        let body = "Captured snapshot";
+        let replay = format!(
+            "Before [@fixture.txt]({uri})\n<context ref=\"{uri}\">\n{body}\n</context>, request"
+        );
+        thread.update(cx, |thread, cx| {
+            thread.push_user_content_block(Some(ClientUserMessageId::new()), replay.into(), cx)
+        });
+        cx.run_until_parked();
+        let editor = view.read_with(cx, |view, cx| {
+            view.entry_view_state
+                .read(cx)
+                .entry(0)
+                .and_then(|entry| entry.message_editor())
+                .cloned()
+                .expect("editable prompt")
+        });
+        let clean = editor.read_with(cx, |editor, cx| editor.text(cx));
+        let composer = message_editor(&conversation_view, cx);
+        cx.focus(&editor);
+        view.read_with(cx, |view, _| assert_eq!(view.editing_message, Some(0)));
+        cx.focus(&composer);
+        view.read_with(cx, |view, _| {
+            assert_eq!(
+                view.editing_message, None,
+                "unchanged restored prompt exits editing on blur"
+            )
+        });
+
+        cx.focus(&editor);
+        editor.update_in(cx, |editor, window, cx| {
+            let offset = editor.text(cx).len();
+            editor.set_cursor_offset(offset, window, cx);
+            editor
+                .editor()
+                .update(cx, |editor, cx| editor.insert(" edited", window, cx));
+            cx.emit(MessageEditorEvent::LostFocus);
+        });
+        view.read_with(cx, |view, _| {
+            assert_eq!(view.editing_message, Some(0), "real edits remain a draft")
+        });
+        let draft = editor.read_with(cx, |editor, cx| editor.text(cx));
+        thread.update(cx, |thread, cx| {
+            thread.push_user_content_block(None, " plus source update".into(), cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.text(cx)),
+            draft,
+            "focused editable draft survives source refresh"
+        );
+        view.update_in(cx, |view, window, cx| {
+            view.cancel_editing(&Default::default(), window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.text(cx)),
+            format!("{clean} plus source update")
+        );
+        cx.focus(&editor);
+        cx.focus(&composer);
+        view.read_with(cx, |view, _| {
+            assert_eq!(
+                view.editing_message, None,
+                "cancel refreshes clean presentation baseline"
+            )
+        });
+        cx.focus(&editor);
+        view.update_in(cx, |view, window, cx| {
+            view.regenerate(0, editor.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        thread.read_with(cx, |thread, _| {
+            let source = thread.entries().first().and_then(|entry| entry.user_message())
+                .expect("regenerated user message").content.source_blocks();
+            let resources = source.iter().filter_map(|block| match block {
+                acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource {
+                    resource: acp_v2::EmbeddedResourceResource::TextResourceContents(resource), ..
+                }) => Some(resource),
+                _ => None,
+            }).collect::<Vec<_>>();
+            assert_eq!(resources.len(), 1);
+            assert_eq!(resources.first().expect("captured regenerated resource").text, body);
+            assert!(source.iter().any(|block| matches!(block, acp_v2::ContentBlock::Text(text) if text.text.contains("plus source update"))));
+            assert!(!source.iter().any(|block| matches!(block, acp_v2::ContentBlock::Text(text) if text.text.contains("<context"))));
+        });
+    }
+
+    #[gpui::test]
     async fn test_focused_read_only_keyed_user_message_refreshes_supported_snapshot(
         cx: &mut TestAppContext,
     ) {

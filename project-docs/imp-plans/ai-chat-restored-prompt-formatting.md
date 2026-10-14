@@ -1,9 +1,10 @@
 # Implementation plan: Restore formatted AI chat prompts after reopening Lathe
 
-Status: Reviewed implementation plan; review findings incorporated. Application code has not been changed.
+Status: Implemented and verified with focused tests and isolated Windows ACP replay. See [implementation evidence](ai-chat-restored-prompt-formatting-evidence/README.md).
 Created: 2026-10-13.
 Revised: 2026-10-14, incorporating product owner and system architect feedback.
 Repository baseline: `2219c72bc3`.
+Implementation baseline: `ec355a9e67938b890bbcb66ff04432aafd1f9aa1`.
 Related feature: [Super compact AI chat and previous-answer navigation](ai-chat-super-compact-mode.md).
 
 ## 1. Objective
@@ -156,12 +157,14 @@ No product decision is required to draft this fix: the original live prompt's ex
 
 The principal risks are ambiguous text envelopes, newline/Unicode offset errors, chunk-boundary parsing, and accidentally replacing historical resource content during regeneration. Keep fallback conservative, preserve canonical source, and test interactions that consume the normalized editor. Do not broaden this patch into a universal serialized-prompt parser.
 
-- [ ] Synthetic restore regression fails before the fix and passes afterward using a fresh view.
-- [ ] Existing affected histories render supported file references as mention chips in compact and normal modes.
-- [ ] Captured context and canonical transcript content are preserved; no automatic historical file/network reads occur.
-- [ ] Malformed/unsupported/literal-code cases preserve their text and existing source guards.
-- [ ] Source refresh, search, copy/export, and supported regeneration tests pass.
-- [ ] Focused tests, formatting, repository clippy, and Windows restart screenshots are recorded, with any platform limitations stated.
-- [ ] Changes remain scoped to prompt restoration; no new persistence format or compact lifecycle/projection changes are introduced.
+- [x] Synthetic restore regression fails with the original setter calls and passes with the fix using a fresh view. Initial pre-implementation execution encountered build-infrastructure failures; a byte-exact integration reversal established the failing assertion afterward.
+- [x] Supported flattened histories render file references as mention chips in compact and normal modes; verified through fresh GPUI views and persistent Windows restart/history reload with a local ACP fixture.
+- [x] Captured context and canonical transcript content are preserved; no automatic historical file/network reads occur.
+- [x] Malformed/unsupported/literal-code cases preserve their text and existing source guards.
+- [x] Source refresh, search, copy/export, and supported regeneration tests pass.
+- [x] Focused tests, formatting, repository clippy, and Windows restart screenshots are recorded. The 78 relevant tests, scoped Rust formatting, Windows clippy wrapper, and Windows release build pass; full-workspace formatting reports existing differences in unchanged files.
+- [x] Changes remain scoped to prompt restoration; no new persistence format or compact lifecycle/projection changes are introduced.
+
+Runtime evidence uses a local ACP fixture matching the serialization inspected in Codex ACP 2.2.2. It exercises actual application loading, full process restart, history reopening, both display modes, narrow panes, light/dark themes, and a missing original file. The installed Codex adapter and the user's reported session were not replayed or changed; actual provider replay remains an explicit validation limitation. The fixture demonstrates the supported editor-boundary behavior without establishing that every provider or adapter version emits this syntax.
 
 This plan fixes the reported presentation through existing prompt-editor and mention mechanisms. The original feature plan remains unchanged as historical context; its initial proposed status is not evidence that the current compact-mode commits are absent.

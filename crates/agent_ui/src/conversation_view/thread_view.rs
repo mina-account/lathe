@@ -1393,11 +1393,11 @@ impl ThreadView {
                 }
             }
             ViewEvent::MessageEditorEvent(editor, MessageEditorEvent::LostFocus) => {
-                if let Some(AgentThreadEntry::UserMessage(user_message)) =
+                if let Some(AgentThreadEntry::UserMessage(_)) =
                     self.thread.read(cx).entries().get(event.entry_index)
                     && self.can_edit_user_message(event.entry_index, cx)
                 {
-                    if editor.read(cx).text(cx).as_str() == user_message.content.to_markdown(cx) {
+                    if editor.read(cx).transcript_is_unchanged(cx) {
                         self.editing_message = None;
                         cx.notify();
                     }
@@ -3276,7 +3276,7 @@ impl ThreadView {
                     .get(index)
                     .and_then(|e| e.user_message())
                 {
-                    editor.set_source_message(
+                    editor.set_transcript_message(
                         user_message.content.source_blocks().to_vec(),
                         window,
                         cx,
