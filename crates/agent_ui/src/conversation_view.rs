@@ -10459,6 +10459,10 @@ pub(crate) mod tests {
         cx.simulate_click(summary.center(), gpui::Modifiers::default());
         cx.run_until_parked();
         assert!(cx.debug_bounds("plan-entry-0-TodoProgress").is_some());
+        assert!(
+            cx.debug_bounds("plan-entry-127-TodoProgress").is_none(),
+            "offscreen plan items remain virtualized"
+        );
 
         for (status, summary, row) in [
             (
@@ -11998,6 +12002,1411 @@ pub(crate) mod tests {
             cx.run_until_parked();
         }
         (conversation, cx)
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_disclosure_click_reveals_only_activity(cx: &mut TestAppContext) {
+        use super::display_rows::{DisplayMode, DisplayRow, SourceRole};
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        let identity = view.update(cx, |view, cx| {
+            view.entry_view_state.update(cx, |state, cx| {
+                state.toggle_thinking_block_expansion((1, 0), cx)
+            });
+            view.set_display_mode(DisplayMode::Compact, cx);
+            view.scroll_to_entry(0, cx);
+            view.response_model
+                .turns
+                .first()
+                .expect("turn")
+                .identity
+                .clone()
+        });
+        cx.run_until_parked();
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let header = cx.debug_bounds(selector).expect("interactive disclosure");
+        view.read_with(cx, |view, cx| {
+            assert!(
+                !view
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&identity)
+            );
+            assert!(!view.display_rows.rows.iter().any(|row| matches!(
+                row,
+                DisplayRow::Content {
+                    role: SourceRole::Activity,
+                    ..
+                }
+            )));
+        });
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert!(
+                view.entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&identity)
+            );
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(row,
+                DisplayRow::Content { turn, role: SourceRole::Activity, .. } if turn == &identity))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(row,
+                DisplayRow::Content { turn, role: SourceRole::Response, .. } if turn == &identity))
+                    .count(),
+                1
+            );
+        });
+        let header = cx.debug_bounds(selector).expect("open disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert!(
+                !view
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&identity)
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_state_follows_reconciled_sources_and_clears_replacement(
+        cx: &mut TestAppContext,
+    ) {
+        use super::response_model::TurnIdentity;
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            let mut turn = view.response_model.turns.first().expect("turn").clone();
+            let anchor = turn.activity.first().expect("activity").clone();
+            let provisional = TurnIdentity::Activity(99);
+            view.entry_view_state.update(cx, |state, _| {
+                state.set_activity_group_expanded(provisional, Some(anchor.clone()), true);
+                state.retain_activity_groups(std::slice::from_ref(&turn));
+                assert!(
+                    state.activity_group_expanded(&turn.identity),
+                    "echo reconciliation preserves explicit expansion"
+                );
+                turn.activity.clear();
+                state.retain_activity_groups(std::slice::from_ref(&turn));
+                assert!(
+                    !state.activity_group_expanded(&turn.identity),
+                    "replaced activity starts collapsed"
+                );
+                let mut retained = view
+                    .response_model
+                    .turns
+                    .get(2)
+                    .expect("later turn")
+                    .clone();
+                state.set_activity_group_expanded(
+                    retained.identity.clone(),
+                    retained.activity.first().cloned(),
+                    true,
+                );
+                state.remove(0..2);
+                for source in retained
+                    .prompt
+                    .iter_mut()
+                    .chain(&mut retained.activity)
+                    .chain(&mut retained.response)
+                {
+                    source.entry_index -= 2;
+                }
+                state.retain_activity_groups(std::slice::from_ref(&retained));
+                assert!(
+                    state.activity_group_expanded(&retained.identity),
+                    "unrelated removal reindexes the anchor"
+                );
+                state.remove(3..4);
+                assert!(
+                    !state.activity_group_expanded(&retained.identity),
+                    "regenerating output clears the group even if its prompt remains"
+                );
+            });
+        });
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_virtualizes_large_orphan_group(cx: &mut TestAppContext) {
+        use super::display_rows::{DisplayMode, DisplayRow, SourceRole};
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            for index in 0..512 {
+                thread
+                    .upsert_tool_call(
+                        acp_v1::ToolCall::new(
+                            format!("tool-{index}"),
+                            format!("Read private-file-{index}.rs"),
+                        )
+                        .status(acp_v1::ToolCallStatus::Completed)
+                        .content(vec!["Routine output".into()]),
+                        cx,
+                    )
+                    .expect("tool");
+            }
+        });
+        cx.run_until_parked();
+        let selectors: Vec<&'static str> = (0..512)
+            .map(|index| {
+                Box::leak(format!("agent-activity-source-{index}-0").into_boxed_str())
+                    as &'static str
+            })
+            .collect();
+        view.update(cx, |view, cx| {
+            view.entry_view_state.update(cx, |state, _| {
+                for index in 0..512 {
+                    state.expand_tool_call(format!("tool-{index}").into());
+                }
+            });
+            cx.notify();
+        });
+        cx.run_until_parked();
+        assert!(
+            selectors
+                .iter()
+                .all(|selector| cx.debug_bounds(selector).is_none())
+        );
+        let identity = view.read_with(cx, |view, _| {
+            assert_eq!(
+                view.display_rows.rows.len(),
+                1,
+                "closed group constructs no source rows"
+            );
+            let turn = view.response_model.turns.first().expect("orphan");
+            assert_eq!(turn.activity.len(), 512);
+            turn.identity.clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let header = cx.debug_bounds(selector).expect("orphan disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(
+                        row,
+                        DisplayRow::Content {
+                            role: SourceRole::Activity,
+                            ..
+                        }
+                    ))
+                    .count(),
+                512
+            );
+        });
+        let materialized = selectors
+            .iter()
+            .filter(|selector| cx.debug_bounds(selector).is_some())
+            .count();
+        assert!(
+            materialized > 0 && materialized < 64,
+            "materialized {materialized} rows"
+        );
+        view.update(cx, |view, cx| {
+            view.list_state.scroll_to(gpui::ListOffset {
+                item_ix: 256,
+                offset_in_item: px(0.),
+            });
+            cx.notify();
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert!(view.list_state.bounds_for_item(256).is_some());
+        });
+        let materialized = selectors
+            .iter()
+            .filter(|selector| cx.debug_bounds(selector).is_some())
+            .count();
+        assert!(
+            materialized > 0 && materialized < 64,
+            "scrolled materialized {materialized} rows"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_response_outcomes_and_inspection_hint(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        for mode in [DisplayMode::Normal, DisplayMode::Compact] {
+            for outcome in [
+                TurnOutcome::Interrupted,
+                TurnOutcome::Failed,
+                TurnOutcome::Unknown,
+            ] {
+                view.update(cx, |view, cx| {
+                    view.set_display_mode(mode, cx);
+                    let turn = view.response_model.turns.first_mut().expect("turn");
+                    turn.lifecycle = TurnLifecycle::Settled(outcome);
+                    view.sync_display_rows(None, cx);
+                    view.scroll_to_entry(0, cx);
+                    cx.notify();
+                });
+                cx.run_until_parked();
+                assert!(
+                    cx.debug_bounds("response-outcome-1-1").is_some(),
+                    "{mode:?} {outcome:?}"
+                );
+                assert!(cx.debug_bounds("response-outcome-1-0").is_none());
+            }
+        }
+        let identity = view.update(cx, |view, cx| {
+            let turn = view.response_model.turns.first_mut().expect("turn");
+            turn.activity.append(&mut turn.response);
+            turn.inspect_activity = true;
+            let identity = turn.identity.clone();
+            view.sync_display_rows(None, cx);
+            view.scroll_to_entry(0, cx);
+            cx.notify();
+            identity
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("response-outcome-1-1").is_none());
+        let selector: &'static str =
+            Box::leak(format!("response-activity-hint-{identity:?}").into_boxed_str());
+        assert!(cx.debug_bounds(selector).is_some());
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_streaming_echo_completion_and_permissions(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::{DisplayMode, DisplayRow, SourceRole};
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running before echo");
+            thread
+                .upsert_thought(
+                    acp_v2::AgentThought::new("thinking")
+                        .content(vec!["Live private thinking".into()]),
+                    cx,
+                )
+                .expect("thought");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer-one")
+                        .content(vec!["Partial answer one".into()]),
+                    cx,
+                )
+                .expect("first message");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer-two")
+                        .content(vec!["Partial answer two".into()]),
+                    cx,
+                )
+                .expect("second message");
+        });
+        cx.run_until_parked();
+        let identity = view.read_with(cx, |view, cx| {
+            let turn = view.response_model.turns.first().expect("provisional");
+            assert!(
+                !view
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&turn.identity)
+            );
+            assert!(turn.response.is_empty());
+            assert!(view.generating_indicator_in_list);
+            turn.identity.clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let header = cx.debug_bounds(selector).expect("live disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_thought(
+                    acp_v2::AgentThought::new("thinking")
+                        .content(vec!["Updated private thinking".into()]),
+                    cx,
+                )
+                .expect("streaming update");
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("delayed-echo").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("delayed echo");
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            let turn = view.response_model.turns.first().expect("reconciled");
+            assert!(
+                view.entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&turn.identity)
+            );
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(
+                        row,
+                        DisplayRow::Content {
+                            role: SourceRole::Activity,
+                            ..
+                        }
+                    ))
+                    .count(),
+                3
+            );
+        });
+        let request = generic_permission_prompt(
+            &thread,
+            Some(
+                serde_json::json!({"type": "command", "command": "cat secret.rs", "cwd": "/project"}),
+            ),
+            cx,
+        );
+        let (request_id, response) = request_test_generic_permission(&thread, request, cx);
+        cx.run_until_parked();
+        let identity = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .first()
+                .expect("turn")
+                .identity
+                .clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        view.update(cx, |view, cx| view.scroll_to_entry(0, cx));
+        cx.run_until_parked();
+        let header = cx.debug_bounds(selector).expect("reconciled disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("generic-permission-command-cat secret.rs")
+                .is_some()
+        );
+        view.read_with(cx, |view, cx| {
+            assert!(
+                !view
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&identity)
+            );
+            assert!(!view.display_rows.rows.iter().any(|row| matches!(
+                row,
+                DisplayRow::Content {
+                    role: SourceRole::Activity,
+                    ..
+                }
+            )));
+        });
+        click_generic_permission(request_id, Some("once"), cx);
+        response.await;
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::Cancelled),
+                    ),
+                    cx,
+                )
+                .expect("interrupted");
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| view.scroll_to_entry(0, cx));
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            let turn = view.response_model.turns.first().expect("partial response");
+            assert!(
+                !view
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&turn.identity)
+            );
+            assert_eq!(turn.response.len(), 2);
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(
+                        row,
+                        DisplayRow::Content {
+                            response_end: true,
+                            ..
+                        }
+                    ))
+                    .count(),
+                1
+            );
+        });
+        assert!(cx.debug_bounds("response-outcome-0-2").is_some());
+        assert!(cx.debug_bounds("response-outcome-0-1").is_none());
+    }
+
+    async fn add_activity_test_edit(
+        view: &Entity<ThreadView>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<ActionLog> {
+        let (thread, project) = view.read_with(cx, |view, _| {
+            (
+                view.thread.clone(),
+                view.project.upgrade().expect("project"),
+            )
+        });
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.create_dir(Path::new("/project"))
+            .await
+            .expect("directory");
+        fs.atomic_write("/project/private-file.rs".into(), "original".into())
+            .await
+            .expect("file");
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_local_buffer("/project/private-file.rs", cx)
+            })
+            .await
+            .expect("buffer");
+        let action_log = thread.read_with(cx, |thread, _| thread.action_log().clone());
+        // The agent-authored mark must precede deferred buffer edit notifications.
+        cx.update(|_, cx| {
+            action_log.update(cx, |log, cx| log.buffer_read(buffer.clone(), cx));
+            buffer.update(cx, |buffer, cx| buffer.set_text("changed", cx));
+            action_log.update(cx, |log, cx| log.buffer_edited(buffer.clone(), cx));
+        });
+        cx.run_until_parked();
+        action_log.read_with(cx, |log, cx| {
+            assert_eq!(log.changed_buffers(cx).count(), 1, "pending edit fixture")
+        });
+        action_log
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_file_write_without_transcript_activity(cx: &mut TestAppContext) {
+        use super::display_rows::{DisplayMode, DisplayRow};
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let (thread, project) = view.read_with(cx, |view, _| {
+            (
+                view.thread.clone(),
+                view.project.upgrade().expect("project"),
+            )
+        });
+        connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+            acp_v1::ContentChunk::new("The file is ready".into()),
+        )]);
+        thread
+            .update(cx, |thread, cx| thread.send_raw("Write the file", cx))
+            .await
+            .expect("prompt");
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        cx.run_until_parked();
+        assert!(!view.read_with(cx, |view, _| {
+            view.display_rows
+                .rows
+                .iter()
+                .any(|row| matches!(row, DisplayRow::ActivityHeader(_)))
+        }));
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.create_dir(Path::new("/project"))
+            .await
+            .expect("directory");
+        fs.atomic_write("/project/private-file.rs".into(), "original".into())
+            .await
+            .expect("file");
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree("/project", true, cx)
+            })
+            .await
+            .expect("worktree");
+        project
+            .update(cx, |project, cx| {
+                project.open_local_buffer("/project/private-file.rs", cx)
+            })
+            .await
+            .expect("buffer");
+        let count = thread.read_with(cx, |thread, _| thread.entries().len());
+        thread
+            .update(cx, |thread, cx| {
+                thread.write_text_file("/project/private-file.rs".into(), "changed".into(), cx)
+            })
+            .await
+            .expect("ACP file write");
+        cx.run_until_parked();
+        assert_eq!(
+            thread.read_with(cx, |thread, _| thread.entries().len()),
+            count
+        );
+        assert!(thread.read_with(cx, |thread, _| thread.plan().is_none()));
+        thread.read_with(cx, |thread, cx| {
+            assert_eq!(thread.action_log().read(cx).changed_buffers(cx).count(), 1)
+        });
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+        let identity = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .last()
+                .expect("turn")
+                .identity
+                .clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let header = cx
+            .debug_bounds(selector)
+            .expect("file-only activity disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        let edits = cx.debug_bounds("edits-container").expect("edit summary");
+        cx.simulate_click(edits.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_some());
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        let header = cx.debug_bounds(selector).expect("open file activity");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_closed_terminal_keeps_work_indicator(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::ToolCall(
+                        acp_v1::ToolCall::new("running-command", "Private command")
+                            .kind(acp_v1::ToolKind::Execute)
+                            .status(acp_v1::ToolCallStatus::InProgress),
+                    ),
+                    cx,
+                )
+                .expect("terminal call");
+        });
+        cx.run_until_parked();
+        assert!(!cx.read(|cx| AgentSettings::get_global(cx).show_turn_stats));
+        assert!(
+            cx.debug_bounds("agent-generating-dots").is_none(),
+            "normal terminal card supplies progress"
+        );
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-activity-source-0-0").is_none());
+        assert!(
+            cx.debug_bounds("agent-generating-dots").is_some(),
+            "closed terminal activity must still indicate ongoing work"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_bottom_bar_hides_routine_details_but_preserves_review(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::DisplayMode;
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let action_log = add_activity_test_edit(&view, cx).await;
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_plan(
+                    acp_v1::Plan::new(vec![acp_v1::PlanEntry::new(
+                        "Routine progress in private-file.rs",
+                        acp_v1::PlanEntryPriority::Medium,
+                        acp_v1::PlanEntryStatus::InProgress,
+                    )]),
+                    cx,
+                )
+                .expect("plan")
+        });
+        cx.run_until_parked();
+        action_log.read_with(cx, |log, cx| {
+            assert_eq!(log.changed_buffers(cx).count(), 1, "pending edit fixture")
+        });
+        let (identity, anchor) = view.update(cx, |view, cx| {
+            view.plan_expanded = true;
+            view.edits_expanded = true;
+            view.set_display_mode(DisplayMode::Compact, cx);
+            let turn = view.response_model.turns.last().expect("latest");
+            (turn.identity.clone(), turn.activity.first().cloned())
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+        for (mode, expanded, visible) in [
+            (DisplayMode::Compact, true, true),
+            (DisplayMode::Compact, false, false),
+            (DisplayMode::Normal, false, true),
+        ] {
+            view.update(cx, |view, cx| {
+                view.entry_view_state.update(cx, |state, _| {
+                    state.set_activity_group_expanded(identity.clone(), anchor.clone(), expanded)
+                });
+                view.set_display_mode(mode, cx);
+                view.sync_display_rows(None, cx);
+                cx.notify();
+            });
+            cx.run_until_parked();
+            assert_eq!(cx.debug_bounds("plan_summary").is_some(), visible);
+            assert_eq!(
+                cx.debug_bounds("agent-edited-files-list").is_some(),
+                visible
+            );
+            assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+        }
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_historical_panel_keeps_pending_edits_reachable(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::{DisplayMode, DisplayRow};
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        connection.set_next_prompt_updates(vec![
+            acp_v1::SessionUpdate::AgentThoughtChunk(acp_v1::ContentChunk::new(
+                "Edit the requested file".into(),
+            )),
+            acp_v1::SessionUpdate::AgentMessageChunk(acp_v1::ContentChunk::new(
+                "The edit is ready to review".into(),
+            )),
+        ]);
+        thread
+            .update(cx, |thread, cx| thread.send_raw("Edit the file", cx))
+            .await
+            .expect("editing prompt");
+        cx.run_until_parked();
+        add_activity_test_edit(&view, cx).await;
+        connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+            acp_v1::ContentChunk::new("A text-only reply".into()),
+        )]);
+        thread
+            .update(cx, |thread, cx| thread.send_raw("Explain the result", cx))
+            .await
+            .expect("text-only prompt");
+        cx.run_until_parked();
+        let identity = view.update(cx, |view, cx| {
+            view.edits_expanded = false;
+            view.set_display_mode(DisplayMode::Compact, cx);
+            assert!(view.thread.read(cx).plan().is_none());
+            let latest = view.response_model.turns.last().expect("latest turn");
+            assert!(latest.activity.is_empty());
+            let identity = view
+                .response_model
+                .turns
+                .first()
+                .expect("editing turn")
+                .identity
+                .clone();
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(row, DisplayRow::ActivityHeader(_)))
+                    .count(),
+                1,
+            );
+            view.scroll_to_entry(0, cx);
+            identity
+        });
+        cx.run_until_parked();
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        let header = cx.debug_bounds(selector).expect("historical activity");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        let edits = cx
+            .debug_bounds("edits-container")
+            .expect("pending edit summary");
+        cx.simulate_click(edits.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("agent-edited-files-list").is_some(),
+            "the earlier open panel must still permit pending edit inspection after a text-only turn"
+        );
+        let header = cx.debug_bounds(selector).expect("open historical activity");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+        let edits = cx
+            .debug_bounds("edits-container")
+            .expect("closed edit summary");
+        cx.simulate_click(edits.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_closed_panel_preserves_elicitation_and_errors(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::{DisplayMode, DisplayRow, SourceRole};
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let (elicitation_id, response) = thread.update(cx, |thread, cx| {
+            thread
+                .request_elicitation_with_id(
+                    acp_v2::CreateElicitationRequest::new(
+                        acp_v2::ElicitationFormMode::new(
+                            acp_v2::ElicitationSessionScope::new(acp_v2::SessionId::new(
+                                thread.session_id().0.clone(),
+                            )),
+                            acp_v2::ElicitationSchema::new().string("name", true),
+                        ),
+                        "Provide a name",
+                    ),
+                    cx,
+                )
+                .expect("elicitation")
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            assert!(view.has_elicitation_form_state(&elicitation_id));
+            assert!(view.response_model.turns.iter().all(|turn| {
+                !view
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&turn.identity)
+            }));
+            let source = view
+                .display_rows
+                .rows
+                .iter()
+                .find_map(|row| match row {
+                    DisplayRow::Content {
+                        source,
+                        role: SourceRole::RequiredAction,
+                        ..
+                    } => Some(source.clone()),
+                    _ => None,
+                })
+                .expect("action outside closed activity");
+            view.scroll_to_entry(source.entry_index, cx);
+            view.handle_thread_error(ThreadError::MaxOutputTokens, cx);
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-required-status-16").is_some());
+        assert!(cx.debug_bounds("agent-thread-error").is_some());
+        thread.update(cx, |thread, cx| {
+            thread.cancel_elicitation(&elicitation_id, cx)
+        });
+        response.await;
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_plan_only_orphan_and_delayed_echo(cx: &mut TestAppContext) {
+        use super::display_rows::{DisplayMode, DisplayRow};
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.plan_expanded = true;
+            view.edits_expanded = true;
+            view.set_display_mode(DisplayMode::Compact, cx);
+        });
+        add_activity_test_edit(&view, cx).await;
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let plan = || {
+            acp_v1::Plan::new(
+                (0..128)
+                    .map(|index| {
+                        acp_v1::PlanEntry::new(
+                            format!("Inspect private-file-{index}.rs"),
+                            acp_v1::PlanEntryPriority::Medium,
+                            acp_v1::PlanEntryStatus::InProgress,
+                        )
+                    })
+                    .collect(),
+            )
+        };
+        thread.update(cx, |thread, cx| {
+            thread.update_plan(plan(), cx).expect("orphan plan")
+        });
+        cx.run_until_parked();
+        let header = view.read_with(cx, |view, cx| {
+            assert!(view.thread.read(cx).entries().is_empty());
+            view.display_rows
+                .rows
+                .iter()
+                .find_map(|row| match row {
+                    DisplayRow::ActivityHeader(identity) => Some(identity.clone()),
+                    _ => None,
+                })
+                .expect("plan-only orphan disclosure")
+        });
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        view.update(cx, |view, cx| {
+            view.list_state.scroll_to(gpui::ListOffset {
+                item_ix: 0,
+                offset_in_item: px(0.),
+            });
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{header:?}").into_boxed_str());
+        let bounds = cx.debug_bounds(selector).expect("orphan header");
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("plan_summary").is_some());
+        assert!(
+            cx.debug_bounds("agent-edited-files-list").is_some(),
+            "the open metadata-only orphan permits edit inspection"
+        );
+        assert!(cx.debug_bounds("plan-entry-0-TodoProgress").is_some());
+        view.update(cx, |view, cx| {
+            let row = view
+                .display_rows
+                .rows
+                .iter()
+                .position(|row| matches!(row, DisplayRow::PlanEntry(_, 10)))
+                .expect("plan row");
+            view.list_state.scroll_to(gpui::ListOffset {
+                item_ix: row,
+                offset_in_item: px(7.),
+            });
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let before = cx
+            .debug_bounds("plan-entry-10-TodoProgress")
+            .expect("visible plan row");
+        let before_viewport = view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+        assert!(
+            (before.top() - before_viewport.top() + px(7.)).abs() < px(1.),
+            "the fixture must scroll within the plan: {before:?} {before_viewport:?}"
+        );
+        thread.update(cx, |thread, cx| {
+            let mut plan = plan();
+            plan.entries.push(acp_v1::PlanEntry::new(
+                "Appended work",
+                acp_v1::PlanEntryPriority::Medium,
+                acp_v1::PlanEntryStatus::Pending,
+            ));
+            thread.update_plan(plan, cx).expect("appended plan");
+        });
+        cx.run_until_parked();
+        let after = cx
+            .debug_bounds("plan-entry-10-TodoProgress")
+            .expect("same visible plan row");
+        let after_viewport = view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+        assert!(
+            ((before.top() - before_viewport.top()) - (after.top() - after_viewport.top())).abs()
+                < px(1.),
+            "metadata update moved the row within its viewport: {before:?} {before_viewport:?} {after:?} {after_viewport:?}"
+        );
+        thread.update(cx, |thread, cx| thread.clear_plan(cx));
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert!(matches!(
+                view.display_rows.rows.as_slice(),
+                [DisplayRow::ActivityHeader(_)]
+            ))
+        });
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        assert!(cx.debug_bounds("agent-edited-files-list").is_some());
+        let action_log = thread.read_with(cx, |thread, _| thread.action_log().clone());
+        action_log.update(cx, |log, cx| log.keep_all_edits(None, cx));
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| assert!(view.display_rows.rows.is_empty()));
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("provisional running");
+            thread.update_plan(plan(), cx).expect("live plan");
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.list_state.scroll_to(gpui::ListOffset {
+                item_ix: 0,
+                offset_in_item: px(0.),
+            });
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let identity = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .first()
+                .expect("provisional")
+                .identity
+                .clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let bounds = cx
+            .debug_bounds(selector)
+            .expect("provisional plan disclosure");
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("plan_summary").is_some());
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("plan-prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("echo")
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            let turn = view.response_model.turns.first().expect("echoed");
+            assert!(
+                view.entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&turn.identity)
+            );
+            assert!(turn.activity.is_empty());
+            assert!(turn.response.is_empty());
+            assert_eq!(view.thread.read(cx).entries().len(), 1);
+        });
+        assert!(cx.debug_bounds("plan-entry-0-TodoProgress").is_some());
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("ended")
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("plan_summary").is_some());
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_legacy_plan_new_turn_and_rewind_start_closed(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::{DisplayMode, DisplayRow};
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        connection
+            .defer_next_prompt_response()
+            .send(Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)))
+            .expect("first completion");
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread
+            .update(cx, |thread, cx| thread.send_raw("First prompt", cx))
+            .await
+            .expect("first");
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_plan(
+                    acp_v1::Plan::new(vec![acp_v1::PlanEntry::new(
+                        "Pending work",
+                        acp_v1::PlanEntryPriority::Medium,
+                        acp_v1::PlanEntryStatus::Pending,
+                    )]),
+                    cx,
+                )
+                .expect("plan")
+        });
+        cx.run_until_parked();
+        let (identity, client_id) = view.read_with(cx, |view, cx| {
+            let thread = view.thread.read(cx);
+            assert!(!thread.uses_reported_activity());
+            let client_id = match thread.entries().first().expect("prompt") {
+                AgentThreadEntry::UserMessage(message) => {
+                    message.client_id.clone().expect("client identity")
+                }
+                _ => panic!("prompt"),
+            };
+            (
+                view.response_model
+                    .turns
+                    .first()
+                    .expect("turn")
+                    .identity
+                    .clone(),
+                client_id,
+            )
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let bounds = cx.debug_bounds(selector).expect("first plan disclosure");
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("plan_summary").is_some());
+        connection
+            .defer_next_prompt_response()
+            .send(Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)))
+            .expect("second completion");
+        thread
+            .update(cx, |thread, cx| thread.send_raw("Second prompt", cx))
+            .await
+            .expect("second");
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            let turn = view.response_model.turns.last().expect("new turn");
+            assert_ne!(turn.identity, identity);
+            assert!(!view.entry_view_state.read(cx).activity_group_expanded(&turn.identity));
+            assert!(view.display_rows.rows.iter().any(|row| matches!(row, DisplayRow::ActivityHeader(current) if current == &turn.identity)));
+        });
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        thread
+            .update(cx, |thread, cx| thread.rewind(client_id, cx))
+            .await
+            .expect("rewind");
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        view.read_with(cx, |view, cx| {
+            assert!(view.thread.read(cx).entries().is_empty());
+            assert!(
+                view.display_rows.rows.iter().all(|row| !matches!(
+                    row,
+                    DisplayRow::PlanSummary(_) | DisplayRow::PlanEntry(..)
+                ))
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_plan_submission_boundary_without_new_generation(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::DisplayMode;
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        connection
+            .defer_next_receipt_response()
+            .send(Ok(acp_v2::PromptResponse::new("first")))
+            .expect("first receipt");
+        thread
+            .update(cx, |thread, cx| {
+                thread.send(vec!["First prompt".into()], cx)
+            })
+            .await
+            .expect("first accepted");
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .update_plan(
+                    acp_v1::Plan::new(vec![acp_v1::PlanEntry::new(
+                        "Work",
+                        acp_v1::PlanEntryPriority::Medium,
+                        acp_v1::PlanEntryStatus::InProgress,
+                    )]),
+                    cx,
+                )
+                .expect("plan");
+        });
+        cx.run_until_parked();
+        let identity = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .first()
+                .expect("provisional submission")
+                .identity
+                .clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let bounds = cx
+            .debug_bounds(selector)
+            .expect("submission plan disclosure");
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("first").content(vec!["First prompt".into()]),
+                    cx,
+                )
+                .expect("first echo");
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("first ended");
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert!(
+                view.entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&identity)
+            )
+        });
+        assert!(cx.debug_bounds("plan_summary").is_some());
+        let generation = thread.read_with(cx, |thread, _| thread.activity_generation());
+        connection
+            .defer_next_receipt_response()
+            .send(Ok(acp_v2::PromptResponse::new("second")))
+            .expect("second receipt");
+        thread
+            .update(cx, |thread, cx| {
+                thread.send(vec!["Second prompt".into()], cx)
+            })
+            .await
+            .expect("second accepted");
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("second").content(vec!["Second prompt".into()]),
+                    cx,
+                )
+                .expect("second echo")
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.thread.read(cx).activity_generation(), generation);
+            let turn = view.response_model.turns.last().expect("new submission");
+            assert_ne!(turn.identity, identity);
+            assert!(
+                !view
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(&turn.identity),
+                "a new submission is not echo reconciliation"
+            );
+        });
+        assert!(cx.debug_bounds("plan_summary").is_none());
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_empty_thought_omits_disclosure_until_visible_update(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::DisplayMode;
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("prompt");
+            thread
+                .upsert_thought(acp_v2::AgentThought::new("empty").content(Vec::new()), cx)
+                .expect("empty thought");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer").content(vec!["Answer".into()]),
+                    cx,
+                )
+                .expect("answer");
+        });
+        cx.run_until_parked();
+        let identity = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .first()
+                .expect("turn")
+                .identity
+                .clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        assert!(
+            cx.debug_bounds(selector).is_none(),
+            "empty transparent chunks have no activity to inspect"
+        );
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_thought(
+                    acp_v2::AgentThought::new("empty").content(vec!["Now visible".into()]),
+                    cx,
+                )
+                .expect("visible keyed update")
+        });
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(selector).is_some(),
+            "in-place visibility changes remeasure the disclosure"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_plan_previous_user_message_targets_own_prompt(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::{DisplayMode, DisplayRow};
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            for id in ["first", "second"] {
+                thread
+                    .upsert_user_message(acp_v2::UserMessage::new(id).content(vec![id.into()]), cx)
+                    .expect("prompt");
+            }
+            thread
+                .update_plan(
+                    acp_v1::Plan::new(
+                        (0..128)
+                            .map(|index| {
+                                acp_v1::PlanEntry::new(
+                                    format!("Work item {index}"),
+                                    acp_v1::PlanEntryPriority::Medium,
+                                    acp_v1::PlanEntryStatus::Pending,
+                                )
+                            })
+                            .collect(),
+                    ),
+                    cx,
+                )
+                .expect("plan");
+        });
+        cx.run_until_parked();
+        view.update_in(cx, |view, window, cx| {
+            view.plan_expanded = true;
+            view.set_display_mode(DisplayMode::Compact, cx);
+            let turn = view.response_model.turns.last().expect("second turn");
+            view.entry_view_state.update(cx, |state, _| {
+                state.set_activity_group_expanded(turn.identity.clone(), turn.prompt.clone(), true)
+            });
+            view.sync_display_rows(None, cx);
+            let row = view
+                .display_rows
+                .rows
+                .iter()
+                .position(|row| matches!(row, DisplayRow::PlanEntry(_, 10)))
+                .expect("plan row");
+            view.list_state.scroll_to(gpui::ListOffset {
+                item_ix: row,
+                offset_in_item: px(0.),
+            });
+            view.focus_handle(cx).focus(window, cx);
+            cx.notify();
+        });
+        cx.run_until_parked();
+        cx.dispatch_action(crate::ScrollOutputToPreviousMessage);
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert_eq!(
+                Some(view.list_state.logical_scroll_top().item_ix),
+                view.display_rows.row_for_entry(1),
+                "previous user message from the second plan is the second prompt"
+            )
+        });
     }
 
     #[gpui::test]

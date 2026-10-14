@@ -823,7 +823,15 @@ impl ThreadView {
         let session_id = thread.read(cx).session_id().clone();
         let parent_session_id = thread.read(cx).parent_session_id().cloned();
 
-        subscriptions.push(cx.observe(&thread, |_, _, cx| cx.notify()));
+        subscriptions.push(cx.observe(&thread, |this, _, cx| {
+            this.sync_display_rows(None, cx);
+            cx.notify();
+        }));
+        let action_log = thread.read(cx).action_log().clone();
+        subscriptions.push(cx.observe(&action_log, |this, _, cx| {
+            this.sync_display_rows(None, cx);
+            cx.notify();
+        }));
         subscriptions.push(cx.observe(&conversation, |_, _, cx| cx.notify()));
         subscriptions.push(cx.observe_global::<SettingsStore>(|this, cx| {
             this.set_display_mode(Self::display_mode_from_settings(cx), cx);
@@ -3898,7 +3906,10 @@ impl ThreadView {
         let action_log = thread.action_log();
         let telemetry = ActionLogTelemetry::from(thread);
         let changed_buffers = action_log.read(cx).changed_buffers(cx).collect::<Vec<_>>();
-        let plan = thread.plan().filter(|plan| !plan.is_empty());
+        let activity_details_visible = self.activity_details_visible(cx);
+        let plan = thread
+            .plan()
+            .filter(|plan| self.display_mode == DisplayMode::Normal && !plan.is_empty());
         let has_plan = plan.is_some();
         let queue_is_empty = !self.has_queued_messages();
 
@@ -3930,7 +3941,7 @@ impl ThreadView {
         let pending_edits = false;
 
         let plan_expanded = self.plan_expanded;
-        let edits_expanded = self.edits_expanded;
+        let edits_expanded = self.edits_expanded && activity_details_visible;
         let queue_expanded = self.queue_expanded;
 
         let max_content_width = AgentSettings::get_global(cx).max_content_width;
@@ -3982,6 +3993,7 @@ impl ThreadView {
                             this.child(self.render_edits_summary(
                                 &changed_buffers,
                                 edits_expanded,
+                                activity_details_visible,
                                 pending_edits,
                                 cx,
                             ))
@@ -4010,6 +4022,17 @@ impl ThreadView {
             .into()
     }
 
+    fn activity_details_visible(&self, cx: &App) -> bool {
+        if self.display_mode != DisplayMode::Compact {
+            return true;
+        }
+        let state = self.entry_view_state.read(cx);
+        // Pending edits are thread-wide and can outlive the turn that produced them.
+        self.display_rows.rows.iter().any(|row| {
+            matches!(row, DisplayRow::ActivityHeader(identity) if state.activity_group_expanded(identity))
+        })
+    }
+
     fn render_edited_files(
         &self,
         action_log: &Entity<ActionLog>,
@@ -4030,6 +4053,7 @@ impl ThreadView {
 
         v_flex()
             .id("edited_files_list")
+            .debug_selector(|| "agent-edited-files-list".into())
             .max_h_40()
             .overflow_y_scroll()
             .child(
@@ -4674,7 +4698,7 @@ impl ThreadView {
     fn render_plan_summary(
         &self,
         plan: &Plan,
-        window: &mut Window,
+        window: &Window,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let plan_expanded = self.plan_expanded;
@@ -4769,6 +4793,7 @@ impl ThreadView {
             )
             .on_click(cx.listener(|this, _, _, cx| {
                 this.plan_expanded = !this.plan_expanded;
+                this.sync_display_rows(None, cx);
                 cx.notify();
             }))
             .into_any_element()
@@ -4777,7 +4802,7 @@ impl ThreadView {
     fn render_plan_entries(
         &self,
         plan: &Plan,
-        window: &mut Window,
+        window: &Window,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         v_flex()
@@ -4785,67 +4810,75 @@ impl ThreadView {
             .max_h_40()
             .overflow_y_scroll()
             .child(
-                v_flex().children(plan.entries.iter().enumerate().flat_map(|(index, entry)| {
-                    let entry_bg = cx.theme().colors().editor_background;
-                    let tooltip_text: SharedString =
-                        entry.content.read(cx).source().to_string().into();
-                    let (icon_name, icon_color) = match &entry.source.status {
-                        acp_v2::PlanEntryStatus::InProgress => {
-                            (IconName::TodoProgress, Color::Accent)
-                        }
-                        acp_v2::PlanEntryStatus::Completed => {
-                            (IconName::TodoComplete, Color::Success)
-                        }
-                        acp_v2::PlanEntryStatus::Cancelled => (IconName::Close, Color::Muted),
-                        _ => (IconName::TodoPending, Color::Muted),
-                    };
-                    let icon = Icon::new(icon_name).size(IconSize::Small).color(icon_color);
-                    let icon = if matches!(entry.source.status, acp_v2::PlanEntryStatus::InProgress)
-                    {
-                        icon.with_rotate_animation(2).into_any_element()
-                    } else {
-                        icon.into_any_element()
-                    };
-
-                    Some(
-                        h_flex()
-                            .id(("plan_entry_row", index))
-                            .debug_selector(|| format!("plan-entry-{index}-{icon_name:?}"))
-                            .py_1()
-                            .px_2()
-                            .gap_2()
-                            .justify_between()
-                            .relative()
-                            .bg(entry_bg)
-                            .when(index < plan.entries.len() - 1, |parent| {
-                                parent.border_color(cx.theme().colors().border).border_b_1()
-                            })
-                            .overflow_hidden()
-                            .child(
-                                h_flex()
-                                    .id(("plan_entry", index))
-                                    .gap_1p5()
-                                    .min_w_0()
-                                    .text_xs()
-                                    .text_color(cx.theme().colors().text_muted)
-                                    .child(icon)
-                                    .child(MarkdownElement::new(
-                                        entry.content.clone(),
-                                        plan_label_markdown_style(&entry.source.status, window, cx),
-                                    )),
-                            )
-                            .child(div().absolute().top_0().right_0().h_full().w_8().bg(
-                                linear_gradient(
-                                    90.,
-                                    linear_color_stop(entry_bg, 1.),
-                                    linear_color_stop(entry_bg.opacity(0.), 0.),
-                                ),
-                            ))
-                            .tooltip(Tooltip::text(tooltip_text)),
-                    )
+                v_flex().children(plan.entries.iter().enumerate().map(|(index, entry)| {
+                    self.render_plan_entry(index, plan.entries.len(), entry, window, cx)
                 })),
             )
-            .into_any_element()
+    }
+
+    fn render_plan_entry(
+        &self,
+        index: usize,
+        total_entries: usize,
+        entry: &acp_thread::PlanEntry,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let entry_bg = cx.theme().colors().editor_background;
+        let tooltip_text: SharedString = entry.content.read(cx).source().to_string().into();
+        let (icon_name, icon_color) = match &entry.source.status {
+            acp_v2::PlanEntryStatus::InProgress => (IconName::TodoProgress, Color::Accent),
+            acp_v2::PlanEntryStatus::Completed => (IconName::TodoComplete, Color::Success),
+            acp_v2::PlanEntryStatus::Cancelled => (IconName::Close, Color::Muted),
+            _ => (IconName::TodoPending, Color::Muted),
+        };
+        let icon = Icon::new(icon_name).size(IconSize::Small).color(icon_color);
+        let icon = if matches!(entry.source.status, acp_v2::PlanEntryStatus::InProgress) {
+            icon.with_rotate_animation(2).into_any_element()
+        } else {
+            icon.into_any_element()
+        };
+
+        h_flex()
+            .id(("plan_entry_row", index))
+            .debug_selector(|| format!("plan-entry-{index}-{icon_name:?}"))
+            .py_1()
+            .px_2()
+            .gap_2()
+            .justify_between()
+            .relative()
+            .bg(entry_bg)
+            .when(index < total_entries.saturating_sub(1), |parent| {
+                parent.border_color(cx.theme().colors().border).border_b_1()
+            })
+            .overflow_hidden()
+            .child(
+                h_flex()
+                    .id(("plan_entry", index))
+                    .gap_1p5()
+                    .min_w_0()
+                    .text_xs()
+                    .text_color(cx.theme().colors().text_muted)
+                    .child(icon)
+                    .child(MarkdownElement::new(
+                        entry.content.clone(),
+                        plan_label_markdown_style(&entry.source.status, window, cx),
+                    )),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .h_full()
+                    .w_8()
+                    .bg(linear_gradient(
+                        90.,
+                        linear_color_stop(entry_bg, 1.),
+                        linear_color_stop(entry_bg.opacity(0.), 0.),
+                    )),
+            )
+            .tooltip(Tooltip::text(tooltip_text))
     }
 
     fn render_context_compaction(
@@ -5013,6 +5046,7 @@ impl ThreadView {
         &self,
         changed_buffers: &[(Entity<Buffer>, Entity<BufferDiff>)],
         expanded: bool,
+        details_visible: bool,
         pending_edits: bool,
         cx: &Context<Self>,
     ) -> Div {
@@ -5024,15 +5058,23 @@ impl ThreadView {
             .p_1()
             .justify_between()
             .flex_wrap()
+            .debug_selector(|| "agent-edits-review-summary".into())
             .when(expanded, |this| {
                 this.border_b_1().border_color(cx.theme().colors().border)
             })
             .child(
                 h_flex()
                     .id("edits-container")
+                    .debug_selector(|| "edits-container".into())
                     .cursor_pointer()
                     .gap_1()
-                    .child(Disclosure::new("edits-disclosure", expanded))
+                    .when(details_visible, |this| {
+                        this.child(Disclosure::new("edits-disclosure", expanded))
+                    })
+                    .when(!details_visible, |this| {
+                        this.cursor_default()
+                            .tooltip(Tooltip::text("Open Agent Activity to inspect edited files"))
+                    })
                     .map(|this| {
                         if pending_edits {
                             this.child(
@@ -5091,6 +5133,9 @@ impl ThreadView {
                         }
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
+                        if !this.activity_details_visible(cx) {
+                            return;
+                        }
                         this.edits_expanded = !this.edits_expanded;
                         cx.notify();
                     })),
@@ -7079,12 +7124,90 @@ impl ThreadView {
         if self.entry_view_state.read(cx).entry_count() != entry_count {
             return;
         }
+        let orphan = response_model::ClassifiedTurn {
+            identity: response_model::TurnIdentity::Orphan,
+            prompt: None,
+            lifecycle: TurnLifecycle::Settled(TurnOutcome::Unknown),
+            confidence: response_model::SelectionConfidence::Structural,
+            activity: Vec::new(),
+            response: Vec::new(),
+            required_actions: Vec::new(),
+            statuses: Vec::new(),
+            inspect_activity: false,
+            predecessor: None,
+        };
+        let thread = self.thread.read(cx);
+        let plan = thread.plan().filter(|plan| !plan.is_empty());
+        let uses_reported_activity = thread.uses_reported_activity();
+        let pending_edits = thread
+            .action_log()
+            .read(cx)
+            .changed_buffers(cx)
+            .next()
+            .is_some();
+        // ACP file writes can change the ActionLog without adding transcript activity.
+        let needs_edit_disclosure = pending_edits
+            && plan.is_none()
+            && !self.response_model.turns.iter().any(|turn| {
+                turn.activity.iter().any(|source| {
+                    !turn.required_actions.contains(source)
+                        && !turn.statuses.contains(source)
+                        && self.source_has_visible_content(source, cx)
+                })
+            });
+        let turns =
+            if self.response_model.turns.is_empty() && (plan.is_some() || needs_edit_disclosure) {
+                std::slice::from_ref(&orphan)
+            } else {
+                &self.response_model.turns
+            };
+        let metadata_activity = (plan.is_some() || needs_edit_disclosure)
+            .then(|| {
+                let plan_entries = plan.map(|plan| {
+                    if self.plan_expanded {
+                        plan.entries.len()
+                    } else {
+                        0
+                    }
+                });
+                let turn = turns
+                    .iter()
+                    .rev()
+                    .find(|turn| {
+                        matches!(
+                            turn.lifecycle,
+                            TurnLifecycle::Running | TurnLifecycle::RequiresAction
+                        )
+                    })
+                    .or_else(|| turns.last())?;
+                Some((
+                    turn.identity.clone(),
+                    thread.activity_generation(),
+                    plan_entries,
+                ))
+            })
+            .flatten();
         self.entry_view_state.update(cx, |state, _| {
-            state.retain_activity_groups(&self.response_model.turns)
+            if let (Some((previous, generation, _)), Some((current, current_generation, _))) =
+                (&self.display_rows.metadata_activity, &metadata_activity)
+                && uses_reported_activity
+                && generation == current_generation
+                && matches!(previous, response_model::TurnIdentity::Activity(_))
+                && matches!(current, response_model::TurnIdentity::Prompt(_))
+                && !turns.iter().any(|turn| &turn.identity == previous)
+            {
+                state.reconcile_activity_group(previous, current.clone());
+            }
+            state.retain_activity_groups(turns);
         });
         let following = self.list_state.is_following_tail();
         let offset = self.list_state.logical_scroll_top();
+        let metadata_anchor = self.display_rows.rows.get(offset.item_ix).filter(|row| {
+            matches!(row, DisplayRow::PlanSummary(_) | DisplayRow::PlanEntry(..))
+                || matches!(row, DisplayRow::ActivityHeader(identity) if self.display_rows.metadata_activity.as_ref().is_some_and(|(current, _, _)| current == identity))
+        }).cloned();
         let saved = self.display_rows.to_transcript_offset(offset, entry_count);
+        self.display_rows.metadata_activity = metadata_activity;
         let semantic = if following {
             None
         } else {
@@ -7108,7 +7231,7 @@ impl ThreadView {
         let (edits, remeasure) = self.display_rows.sync(
             self.display_mode,
             entry_count,
-            &self.response_model.turns,
+            turns,
             |identity| state.activity_group_expanded(identity),
             self.generating_indicator_in_list,
         );
@@ -7125,6 +7248,11 @@ impl ThreadView {
         }
         for row in remeasure {
             self.list_state.remeasure_items(row..row + 1);
+        }
+        for (index, row) in self.display_rows.rows.iter().enumerate() {
+            if matches!(row, DisplayRow::PlanSummary(_) | DisplayRow::PlanEntry(..)) {
+                self.list_state.remeasure_items(index..index + 1);
+            }
         }
         if let Some(entry) = updated_entry {
             if self.pending_content_scroll.as_ref().is_some_and(|pending| {
@@ -7154,7 +7282,21 @@ impl ThreadView {
                     current.reveal = pending.reveal;
                 }
             } else {
-                if let Some((target, relative)) = semantic {
+                let metadata_row = metadata_anchor.and_then(|anchor| {
+                    self.display_rows.rows.iter().position(|row| row == &anchor)
+                        .map(|row| (row, offset.offset_in_item))
+                        .or_else(|| {
+                            let current = &self.display_rows.metadata_activity.as_ref()?.0;
+                            self.display_rows.rows.iter().position(|row| matches!(row, DisplayRow::ActivityHeader(identity) if identity == current))
+                                .map(|row| (row, px(0.)))
+                        })
+                });
+                if let Some((row, offset_in_item)) = metadata_row {
+                    self.list_state.scroll_to(ListOffset {
+                        item_ix: row,
+                        offset_in_item,
+                    });
+                } else if let Some((target, relative)) = semantic {
                     self.begin_content_scroll(target, relative, cx);
                 } else {
                     self.list_state
@@ -7165,10 +7307,12 @@ impl ThreadView {
     }
 
     pub(super) fn remeasure_entry(&self, entry: usize) {
-        for (row, display) in self.display_rows.rows.iter().enumerate() {
-            if display.entry_index() == Some(entry) {
-                self.list_state.remeasure_items(row..row + 1);
-            }
+        for row in self
+            .display_rows
+            .rows_for_entry(entry)
+            .collect::<HashSet<_>>()
+        {
+            self.list_state.remeasure_items(row..row + 1);
         }
     }
 
@@ -7541,6 +7685,20 @@ impl ThreadView {
         }
     }
 
+    fn source_has_visible_content(&self, source: &SourceReference, cx: &App) -> bool {
+        match self.thread.read(cx).entries().get(source.entry_index) {
+            Some(AgentThreadEntry::AssistantMessage(message)) => source
+                .chunk_index
+                .and_then(|index| message.chunks.get(index))
+                .is_some_and(|chunk| match chunk {
+                    AssistantMessageChunk::Message { block, .. }
+                    | AssistantMessageChunk::Thought { block, .. } => block.visible_content(cx),
+                }),
+            Some(_) => true,
+            None => false,
+        }
+    }
+
     fn render_source_body(
         &self,
         source: &SourceReference,
@@ -7649,23 +7807,74 @@ impl ThreadView {
                 }
             }
             DisplayRow::Content {
+                turn,
                 source,
                 role,
                 response_end,
                 ..
             } => {
+                if *role == SourceRole::Activity && !self.source_has_visible_content(source, cx) {
+                    return Empty.into_any();
+                }
                 let body = self.render_source_body(source, window, cx);
-                let mut body = v_flex().w_full().px_5().py_1p5().child(body).when_some(
+                let mut body = if *role == SourceRole::Activity {
+                    let last_activity = self
+                        .response_model
+                        .turns
+                        .iter()
+                        .find(|candidate| &candidate.identity == turn)
+                        .and_then(|turn| {
+                            turn.activity.iter().rev().find(|source| {
+                                !turn.required_actions.contains(source)
+                                    && !turn.statuses.contains(source)
+                            })
+                        })
+                        == Some(source);
+                    let selector = format!(
+                        "agent-activity-source-{}-{}",
+                        source.entry_index,
+                        source.chunk_index.unwrap_or(0)
+                    );
+                    v_flex()
+                        .w_full()
+                        .px_5()
+                        .debug_selector(move || selector)
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .px_2()
+                                .py_1p5()
+                                .bg(cx.theme().colors().panel_background.opacity(0.2))
+                                .border_l_1()
+                                .border_r_1()
+                                .border_color(cx.theme().colors().border)
+                                .when(
+                                    last_activity
+                                        && self
+                                            .display_rows
+                                            .metadata_activity
+                                            .as_ref()
+                                            .is_none_or(|(identity, _, _)| identity != turn),
+                                    |body| body.border_b_1().rounded_b_md(),
+                                )
+                                .child(body),
+                        )
+                } else {
+                    v_flex().w_full().px_5().py_1p5().child(body)
+                }
+                .when_some(
                     self.entry_view_state
                         .read(cx)
                         .entry(source.entry_index)
                         .and_then(|entry| entry.focus_handle(cx)),
                     |body, handle| body.track_focus(&handle),
                 );
-                if *role == SourceRole::Activity {
-                    body = body.border_l_1().border_color(cx.theme().colors().border);
+                if matches!(role, SourceRole::RequiredAction | SourceRole::Status) {
+                    let selector = format!("agent-required-status-{}", source.entry_index);
+                    body = body.debug_selector(move || selector);
                 }
                 if *response_end {
+                    body = body.children(self.render_response_outcome(source));
                     let thread = self.thread.read(cx);
                     let user_message_index = thread
                         .entries()
@@ -7697,21 +7906,130 @@ impl ThreadView {
                 }
             }
             DisplayRow::ActivityHeader(identity) => {
-                let header = div()
+                let turn = self
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| &turn.identity == identity);
+                let has_metadata = self
+                    .display_rows
+                    .metadata_activity
+                    .as_ref()
+                    .is_some_and(|(current, _, _)| current == identity);
+                if !has_metadata
+                    && turn.is_none_or(|turn| {
+                        !turn
+                            .activity
+                            .iter()
+                            .any(|source| self.source_has_visible_content(source, cx))
+                    })
+                {
+                    return Empty.into_any();
+                }
+                let expanded = self
+                    .entry_view_state
+                    .read(cx)
+                    .activity_group_expanded(identity);
+                let identity = identity.clone();
+                let selector = format!("agent-activity-{identity:?}");
+                let header = v_flex()
                     .w_full()
                     .px_5()
-                    .py_1()
                     .child(
-                        Label::new("Agent Activity")
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
+                        v_flex()
+                            .w_full()
+                            .bg(cx.theme().colors().panel_background.opacity(0.2))
+                            .border_1()
+                            .border_color(cx.theme().colors().border)
+                            .rounded_t_md()
+                            .when(!expanded, |header| header.rounded_b_md())
+                            .child(
+                                h_flex()
+                                    .id(selector.clone())
+                                    .debug_selector(move || selector)
+                                    .w_full()
+                                    .px_2()
+                                    .py_1()
+                                    .gap_1()
+                                    .cursor_pointer()
+                                    .child(Disclosure::new("activity-disclosure", expanded))
+                                    .child(
+                                        Label::new("Agent Activity")
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                    .tooltip(Tooltip::text(if expanded {
+                                        "Collapse Agent Activity"
+                                    } else {
+                                        "Expand Agent Activity to inspect output"
+                                    }))
+                                    .on_click(cx.listener({
+                                        let identity = identity.clone();
+                                        move |this, _, _, cx| {
+                                            let turn = this
+                                                .response_model
+                                                .turns
+                                                .iter()
+                                                .find(|turn| turn.identity == identity);
+                                            let has_metadata = this
+                                                .display_rows
+                                                .metadata_activity
+                                                .as_ref()
+                                                .is_some_and(|(current, _, _)| {
+                                                    current == &identity
+                                                });
+                                            let anchor = turn
+                                                .and_then(|turn| {
+                                                    turn.activity
+                                                        .iter()
+                                                        .find(|source| {
+                                                            !turn.required_actions.contains(source)
+                                                                && !turn.statuses.contains(source)
+                                                        })
+                                                        .or_else(|| {
+                                                            turn.prompt
+                                                                .as_ref()
+                                                                .filter(|_| has_metadata)
+                                                        })
+                                                })
+                                                .cloned();
+                                            if anchor.is_none() && !has_metadata {
+                                                return;
+                                            }
+                                            let expanded = this
+                                                .entry_view_state
+                                                .read(cx)
+                                                .activity_group_expanded(&identity);
+                                            this.list_state.pause_following_tail();
+                                            this.entry_view_state.update(cx, |state, _| {
+                                                state.set_activity_group_expanded(
+                                                    identity.clone(),
+                                                    anchor,
+                                                    !expanded,
+                                                );
+                                            });
+                                            this.sync_display_rows(None, cx);
+                                            cx.notify();
+                                        }
+                                    })),
+                            )
+                            .when(turn.is_some_and(|turn| turn.inspect_activity), |header| {
+                                let selector = format!("response-activity-hint-{identity:?}");
+                                header.child(
+                                    div().px_2().pb_1().debug_selector(move || selector).child(
+                                        Label::new("Response available in Agent Activity")
+                                            .size(LabelSize::XSmall)
+                                            .color(Color::Muted),
+                                    ),
+                                )
+                            }),
                     )
                     .into_any();
                 let source = self
                     .response_model
                     .turns
                     .iter()
-                    .find(|turn| &turn.identity == identity)
+                    .find(|turn| turn.identity == identity)
                     .and_then(|turn| turn.activity.first());
                 if let Some(target) =
                     source.and_then(|source| self.target_for_source(source, false, cx))
@@ -7730,12 +8048,84 @@ impl ThreadView {
                     header
                 }
             }
+            DisplayRow::PlanSummary(identity) | DisplayRow::PlanEntry(identity, _) => {
+                let Some((current, _, Some(entries))) =
+                    self.display_rows.metadata_activity.as_ref()
+                else {
+                    return Empty.into_any();
+                };
+                if current != identity {
+                    return Empty.into_any();
+                }
+                let Some(plan) = self.thread.read(cx).plan().filter(|plan| !plan.is_empty()) else {
+                    return Empty.into_any();
+                };
+                let (body, last) = match row {
+                    DisplayRow::PlanSummary(_) => (
+                        self.render_plan_summary(plan, window, cx)
+                            .into_any_element(),
+                        *entries == 0,
+                    ),
+                    DisplayRow::PlanEntry(_, index) => {
+                        let Some(entry) = plan.entries.get(*index) else {
+                            return Empty.into_any();
+                        };
+                        (
+                            self.render_plan_entry(*index, plan.entries.len(), entry, window, cx)
+                                .into_any_element(),
+                            index + 1 == *entries,
+                        )
+                    }
+                    _ => return Empty.into_any(),
+                };
+                v_flex()
+                    .w_full()
+                    .px_5()
+                    .child(
+                        div()
+                            .w_full()
+                            .border_l_1()
+                            .border_r_1()
+                            .border_color(cx.theme().colors().border)
+                            .bg(cx.theme().colors().panel_background.opacity(0.2))
+                            .when(last, |body| body.border_b_1().rounded_b_md())
+                            .child(body),
+                    )
+                    .into_any()
+            }
             DisplayRow::Generating => {
                 let confirmation = self.thread.read(cx).is_waiting_for_confirmation()
                     || self.has_pending_request_elicitation(cx);
                 self.render_generating(confirmation, cx).into_any_element()
             }
         }
+    }
+
+    fn render_response_outcome(&self, source: &SourceReference) -> Option<AnyElement> {
+        let turn = self
+            .response_model
+            .turns
+            .iter()
+            .find(|turn| turn.response.last() == Some(source))?;
+        let (label, color) = match turn.lifecycle {
+            TurnLifecycle::Settled(TurnOutcome::Interrupted) => {
+                ("Interrupted response", Color::Warning)
+            }
+            TurnLifecycle::Settled(TurnOutcome::Failed) => ("Failed response", Color::Error),
+            TurnLifecycle::Settled(TurnOutcome::Unknown) => ("Outcome unknown", Color::Muted),
+            _ => return None,
+        };
+        let selector = format!(
+            "response-outcome-{}-{}",
+            source.entry_index,
+            source.chunk_index.unwrap_or(0)
+        );
+        Some(
+            div()
+                .debug_selector(move || selector)
+                .child(Label::new(label).size(LabelSize::XSmall).color(color))
+                .into_any(),
+        )
     }
 
     fn render_entry(
@@ -8125,6 +8515,25 @@ impl ThreadView {
         };
 
         let thread = self.thread.clone();
+
+        let primary = if let Some(source) = self
+            .response_model
+            .turns
+            .iter()
+            .filter_map(|turn| turn.response.last())
+            .find(|source| source.entry_index == entry_ix)
+        {
+            v_flex()
+                .w_full()
+                .child(primary)
+                .children(
+                    self.render_response_outcome(source)
+                        .map(|label| div().px_5().child(label)),
+                )
+                .into_any()
+        } else {
+            primary
+        };
 
         let primary = if is_indented {
             let line_top = if is_first_indented {
@@ -8754,7 +9163,8 @@ impl ThreadView {
         let entries = thread.entries();
         let current_ix = self
             .display_rows
-            .entry_for_row(self.list_state.logical_scroll_top().item_ix)
+            .navigation_range_for_row(self.list_state.logical_scroll_top().item_ix)
+            .map(|range| range.start)
             .unwrap_or(entries.len());
         if let Some(target_ix) = (0..current_ix).rev().find(|&i| {
             entries
@@ -8776,9 +9186,10 @@ impl ThreadView {
         let entries = thread.entries();
         let current_ix = self
             .display_rows
-            .entry_for_row(self.list_state.logical_scroll_top().item_ix)
+            .navigation_range_for_row(self.list_state.logical_scroll_top().item_ix)
+            .map(|range| range.end)
             .unwrap_or(entries.len());
-        if let Some(target_ix) = (current_ix + 1..entries.len()).find(|&i| {
+        if let Some(target_ix) = (current_ix..entries.len()).find(|&i| {
             entries
                 .get(i)
                 .is_some_and(|entry| thread.is_user_authored_scroll_target(entry))
@@ -9007,13 +9418,15 @@ impl ThreadView {
                                 .single_line(),
                         ),
                     )
-                } else if is_blocked_on_terminal_command {
+                } else if is_blocked_on_terminal_command && self.display_mode == DisplayMode::Normal
+                {
                     this
                 } else {
                     this.child(
                         h_flex()
                             .w_2()
                             .justify_center()
+                            .debug_selector(|| "agent-generating-dots".into())
                             .child(GeneratingSpinnerElement::new(SpinnerVariant::Dots)),
                     )
                 }
@@ -14511,7 +14924,11 @@ impl Render for ThreadView {
             })
             .children(self.render_skill_loading_issues(cx))
             .children(self.render_thread_retry_status_callout(cx))
-            .children(self.render_thread_error(window, cx))
+            .children(self.render_thread_error(window, cx).map(|error| {
+                div()
+                    .debug_selector(|| "agent-thread-error".into())
+                    .child(error)
+            }))
             .when_some(
                 match has_messages {
                     true => None,
