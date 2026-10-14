@@ -52,6 +52,7 @@ pub struct EntryViewState {
     expanded_compactions: HashSet<usize>,
     expanded_tool_calls: HashSet<acp_v1::ToolCallId>,
     expanded_activity_groups: collections::HashMap<TurnIdentity, Option<SourceReference>>,
+    revealed_sources: Option<HashSet<(usize, Option<usize>)>>,
 }
 
 impl EntryViewState {
@@ -75,7 +76,29 @@ impl EntryViewState {
             expanded_compactions: HashSet::default(),
             expanded_tool_calls: HashSet::default(),
             expanded_activity_groups: collections::HashMap::default(),
+            revealed_sources: None,
         }
+    }
+
+    pub(crate) fn set_revealed_sources(
+        &mut self,
+        sources: Option<HashSet<(usize, Option<usize>)>>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.revealed_sources != sources {
+            self.revealed_sources = sources;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn compact_search(&self) -> bool {
+        self.revealed_sources.is_some()
+    }
+
+    pub(crate) fn source_is_revealed(&self, entry: usize, chunk: Option<usize>) -> bool {
+        self.revealed_sources
+            .as_ref()
+            .is_none_or(|sources| sources.contains(&(entry, chunk)))
     }
 
     pub(crate) fn entry_count(&self) -> usize {
