@@ -901,4 +901,53 @@ mod tests {
             3
         );
     }
+
+    #[gpui::test]
+    async fn explicit_preview_default_overrides_legacy_and_buffer_language(
+        cx: &mut TestAppContext,
+    ) {
+        let (workspace, project, cx) = fixture(cx).await;
+        cx.update(|_, cx| configure(cx, Some(MarkdownDefaultOpenMode::Preview), false));
+        let path = cx.read(|cx| project_path(&project, "first.md", cx));
+        let buffer = project
+            .update(cx, |project, cx| project.open_buffer(path.clone(), cx))
+            .await
+            .expect("buffer");
+        buffer.update(cx, |buffer, cx| {
+            buffer.set_language(
+                Some(std::sync::Arc::new(language::Language::new(
+                    language::LanguageConfig {
+                        name: "Plain".into(),
+                        ..Default::default()
+                    },
+                    None,
+                ))),
+                cx,
+            )
+        });
+        assert_eq!(
+            buffer.read_with(cx, |buffer, _| buffer
+                .language()
+                .expect("assigned language")
+                .name()
+                .to_string()),
+            "Plain"
+        );
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(path, None, true, window, cx)
+            })
+            .await
+            .expect("explicit preview default");
+        cx.run_until_parked();
+        assert!(workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item_as::<MarkdownPreviewView>(cx)
+                .is_some()
+        }));
+        assert_eq!(
+            workspace.read_with(cx, |workspace, cx| workspace.items(cx).count()),
+            1
+        );
+    }
 }

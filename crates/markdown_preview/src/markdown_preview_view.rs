@@ -152,23 +152,26 @@ impl MarkdownPreviewView {
                 {
                     return;
                 }
-                let preview_default = lathe_hooks::LatheHooks::get(cx)
+                let resolved_preview_default = lathe_hooks::LatheHooks::get(cx)
                     .and_then(|hooks| hooks.markdown_preview_default)
                     .and_then(|resolve| {
                         item.project_path(cx)
                             .and_then(|path| workspace.project().read(cx).absolute_path(&path, cx))
                             .and_then(|path| resolve(&path, cx))
-                    })
-                    .unwrap_or(
-                        MarkdownPreviewSettings::get_global(cx).open_markdown_files_in_preview,
-                    );
+                    });
+                let preview_default = resolved_preview_default.unwrap_or(
+                    MarkdownPreviewSettings::get_global(cx).open_markdown_files_in_preview,
+                );
                 if !preview_default || workspace.is_restoring() {
                     return;
                 }
                 let Some(editor) = item.downcast::<Editor>() else {
                     return;
                 };
-                if !Self::is_markdown_editor(workspace, &editor, cx) {
+                if editor.read(cx).buffer().read(cx).as_singleton().is_none()
+                    || (resolved_preview_default != Some(true)
+                        && !Self::is_markdown_editor(workspace, &editor, cx))
+                {
                     return;
                 }
                 let Some(pane) = workspace.pane_for_item_id(item.item_id()) else {
