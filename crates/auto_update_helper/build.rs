@@ -5,6 +5,7 @@ fn main() {
     {
         println!("cargo:rerun-if-env-changed=RELEASE_CHANNEL");
         println!("cargo:rerun-if-env-changed=GITHUB_RUN_NUMBER");
+        println!("cargo:rerun-if-env-changed=ZED_COMMIT_SHA");
 
         windows_resources::compile(true).expect("failed to compile Windows resources");
     }

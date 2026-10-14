@@ -5,8 +5,12 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('lathe-update-smoke-' + [Guid]::NewGuid())
 $editor = $null
-New-Item -ItemType Directory -Path $testRoot | Out-Null
+$failure = $null
+$cleanupFailure = $null
+$previousStateless = $env:ZED_STATELESS
+$env:ZED_STATELESS = '1'
 try {
+    New-Item -ItemType Directory -Path $testRoot | Out-Null
     Expand-Archive -LiteralPath $ArchivePath -DestinationPath $testRoot
     $installation = Get-ChildItem -LiteralPath $testRoot -Directory | Select-Object -First 1
     if (-not $installation) { throw 'Missing archive installation directory.' }
@@ -14,7 +18,7 @@ try {
     $profile = Join-Path $testRoot 'profile'
     New-Item -ItemType Directory -Path (Join-Path $profile 'config') -Force | Out-Null
     $settings = Join-Path $profile 'config/settings.json'
-    Set-Content -LiteralPath $settings -Value '{"auto_update":false,"agent":{"super_compact_mode":true}}' -Encoding UTF8
+    [IO.File]::WriteAllText($settings, '{"auto_update":false,"agent":{"super_compact_mode":true}}', [Text.UTF8Encoding]::new($false))
     $settingsHash = (Get-FileHash -LiteralPath $settings).Hash
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $initialMarker = Get-Content -LiteralPath (Join-Path $installRoot 'release.txt')
@@ -36,9 +40,15 @@ try {
         $editor = Start-Process -FilePath $editorPath -ArgumentList @('--user-data-dir', ('"' + $profile + '"')) -WindowStyle Hidden -PassThru
         Start-Sleep -Seconds 10
         if ($editor.HasExited) { throw 'Isolated editor exited before staging.' }
+        $logPath = Join-Path $profile 'logs/Lathe.log'
+        if (-not (Test-Path -LiteralPath $logPath)) { throw 'Missing isolated profile log; user-data-dir was not honored.' }
+        $startupLog = [IO.File]::ReadAllText($logPath)
+        if ($startupLog.Contains('Failed to load user settings')) { throw 'Isolated settings were rejected; refusing to stage an update.' }
+        if ($startupLog.Contains('Auto Update: checking for updates')) { throw 'Automatic polling ran despite the isolated opt-out.' }
+        if (-not $startupLog.Contains("starting lathe version $coreVersion")) { throw 'Wrong application binary version in isolated startup log.' }
         $before = (Get-FileHash -LiteralPath $editorPath).Hash
         $installer = Join-Path $testRoot "Lathe-$nextVersion-$architecture-windows-setup.exe"
-        $stage = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/UPDATE=true', '/NOCLOSEAPPLICATIONS', ('/DIR="' + $installRoot + '"')) -WindowStyle Hidden -PassThru -Wait
+        $stage = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/update=true', '/NOCLOSEAPPLICATIONS', ('/DIR="' + $installRoot + '"')) -WindowStyle Hidden -PassThru -Wait
         if ($stage.ExitCode -ne 0) { throw "Staging failed: $($stage.ExitCode)" }
         if ($editor.HasExited) { throw 'Background staging closed the editor.' }
         if ((Get-FileHash -LiteralPath $editorPath).Hash -ne $before) { throw 'Background staging replaced the running editor.' }
@@ -70,14 +80,44 @@ try {
         Write-Output "Transaction $iteration passed (fixture marker $nextVersion)."
     }
 }
+catch {
+    $failure = $_
+    Write-Output "Update smoke failed before cleanup: $($_.Exception.Message)"
+}
 finally {
-    if ($editor -and -not $editor.HasExited) {
-        if (-not $editor.CloseMainWindow() -or -not $editor.WaitForExit(10000)) {
-            Stop-Process -Id $editor.Id -Force
+    $env:ZED_STATELESS = $previousStateless
+    try {
+        if ($editor -and -not $editor.HasExited) {
+            if (-not $editor.CloseMainWindow() -or -not $editor.WaitForExit(10000)) {
+                Stop-Process -Id $editor.Id -Force
+                $editor.WaitForExit()
+            }
+        }
+        $resolved = [IO.Path]::GetFullPath($testRoot)
+        $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+        if (-not $resolved.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Smoke cleanup escaped temporary root.' }
+        $ownedPrefix = $resolved.TrimEnd('\') + '\'
+        $ownedProcesses = Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($ownedPrefix, [StringComparison]::OrdinalIgnoreCase) }
+        foreach ($ownedProcess in $ownedProcesses) {
+            $process = Get-Process -Id $ownedProcess.ProcessId -ErrorAction SilentlyContinue
+            if ($process -and -not $process.WaitForExit(10000)) {
+                Stop-Process -Id $process.Id -Force
+                $process.WaitForExit()
+            }
+        }
+        $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        while (Test-Path -LiteralPath $resolved) {
+            try { Remove-Item -LiteralPath $resolved -Recurse -Force }
+            catch {
+                if ([DateTime]::UtcNow -ge $cleanupDeadline) { throw }
+                Start-Sleep -Milliseconds 250
+            }
         }
     }
-    $resolved = [IO.Path]::GetFullPath($testRoot)
-    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
-    if (-not $resolved.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Smoke cleanup escaped temporary root.' }
-    Remove-Item -LiteralPath $resolved -Recurse -Force
+    catch {
+        $cleanupFailure = $_
+        Write-Warning "Update smoke cleanup failed: $($_.Exception.Message)"
+    }
 }
+if ($failure) { throw $failure }
+if ($cleanupFailure) { throw $cleanupFailure }

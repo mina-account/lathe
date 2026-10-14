@@ -50,6 +50,8 @@ brew install --cask lathe
 
 From [Releases](https://github.com/mina-account/lathe/releases):
 
+This fork currently publishes Windows x64 Beta artifacts. The formats below apply when a matching platform and architecture asset is available; otherwise, build from source.
+
 - **macOS**: grab the `.dmg`, open it, drag **Lathe.app** to `/Applications`. There's a `.zip` too if you'd rather. Both are code-signed and notarized by Apple.
 - **Linux**: the `.tar.gz`, extracted wherever you want it. Or build from source and use the install script below. Runtime requirements are the same as upstream Zed's: the host's ALSA (`libasound2` on Debian/Ubuntu, `alsa-lib` on Fedora/Arch) and working Vulkan drivers. Any normal desktop distro already has both.
 - **Windows**: setup `.exe` or `.zip`, x86_64 or arm64. These builds aren't signed, so read [Installing on Windows](#installing-on-windows) first.

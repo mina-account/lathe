@@ -1,6 +1,6 @@
 # Implementation plan: Update Lathe from mina-account releases
 
-Status: Reviewed implementation plan; ready for implementation. No application or release changes made.
+Status: Implemented and unit verified. Live installation/update/chat acceptance is deferred to the user's manual testing at their explicit request.
 Created: 2026-10-13.
 Repository baseline: `c0aca56f4efb908e84c74299595a62fd9b2f0b82`.
 Distribution repository: `mina-account/lathe`.
@@ -165,5 +165,15 @@ Live public API reads are useful smoke evidence, but do not replace deterministi
 The release feed is compiled into existing binaries, so publishing a plan or a release alone cannot repair installed copies. A Windows-only release does not provide other platform or remote-server assets. The largest implementation risk is the inherited Zed-versus-Lathe installer/helper mismatch; do not declare completion after a URL-only edit or after a download-only smoke test.
 
 No open product questions remain: the repository is explicit, existing channel/override and user opt-out behavior are preserved, and Windows package compatibility is necessary for the requested updater to work.
+
+## Implementation evidence and manual acceptance
+
+- Runtime source commit: `6ad48ca1e68bf48ec4f466f3cb5e08e283cef81d`; application version `1.10.2`, Beta, Windows x86_64. Built using Rust `1.98.1` and the full optimized release profile with ThinLTO on Windows 11 Pro `10.0.22631`.
+- Bootstrap: `Lathe-1.10.2-x86_64-windows-setup.exe`, unsigned. SHA-256: `c3e6a50f3deb02cad9fdf4a1dc5b1c204035600ef3e17766816d1bc170ec3788`. Installer, checksum and archive are retained under `target/updater-artifacts/A/` for delivery and manual testing.
+- Build-time update/Beta/notes overrides were cleared. The built editor contains the exact mina-account releases endpoint and does not contain the old baked-in endpoint. Editor, CLI and helper Windows resources identify the same source commit and Beta channel.
+- Rust verification: `auto_update` 23 passed, 1 existing ignored network/parking test; `auto_update_helper` 9 passed, including legacy behavior, two fixture transactions, launch arguments, missing payload/marker, wrong target/channel, exclusive file lock, successful rollback, failed launch and backup preservation. Repository clippy, changed-file rustfmt, PowerShell/Bash parsing, workflow YAML parsing and `git diff --check` passed. The ignored integration test is replaced for this task by deterministic API/error/progress fixtures and remains explicitly unverified.
+- Baseline branch reconstruction reproduced the old default, native-only alias selector and editor-parent staging failures. Resolver/layout seams and cross-program protocol fixtures were developed together; this was a justified exception to test-first edits. The initial root validator failed its focused test and was corrected before the passing suites.
+- Live manual installation, canceled quit, actual version-to-version updates, a second real update and settled Super Compact conversations are **USER MANUAL / NOT VERIFIED**. An attempted local integration smoke did not pass; its original failure was masked by cleanup, so no transaction result is claimed. Cleanup now preserves the first error and waits for exact-root processes/file handles. It was inspected and parsed, without another GUI run.
+- At the user's request, GUI/installer tests and additional acceptance builds were stopped; temporary version changes were restored to `1.10.2`. No release was published by the implementation agent, and the existing `v1.10.1-beta` assets/tag were not changed.
 
 Independent product-owner/system-architect review confirmed that the Windows supporting scope is proportionate. Review feedback was incorporated by adding post-update compact-mode acceptance, rejecting version-incompatible fork remote requests explicitly, and correcting the Nightly baseline. A final workflow audit added the original Homebrew tap publication guard without introducing a tap migration.
