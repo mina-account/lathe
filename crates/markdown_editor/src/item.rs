@@ -321,7 +321,7 @@ impl MarkdownEditor {
             Mode::Sv => "sv",
             Mode::Preview => "preview",
         };
-        if self.surface.is_some() {
+        if self.surface.is_some() && self.browser_ready {
             if let Err(error) =
                 self.browser_script(&format!("window.latheRich?.mode('{mode_name}')"))
             {
@@ -1382,6 +1382,45 @@ mod tests {
             let source = cx.new(|cx| Editor::for_buffer(buffer.clone(), None, window, cx));
             MarkdownEditor::new(source, buffer, window, cx)
         })
+    }
+
+    #[gpui::test]
+    fn mode_actions_before_frontend_ready_are_restored_on_ready(cx: &mut TestAppContext) {
+        struct RecordingSurface(std::rc::Rc<std::cell::RefCell<Vec<HostMessage>>>);
+        impl BrowserSurface for RecordingSurface {
+            fn send(&mut self, message: &HostMessage) -> Result<()> {
+                self.0.borrow_mut().push(message.clone());
+                Ok(())
+            }
+            fn poll(&mut self) -> Result<Vec<ClientMessage>> {
+                Ok(Vec::new())
+            }
+            fn dispose(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+        let (item, cx) = fixture(cx, "# Modes\n");
+        let messages = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        item.update(cx, |item, cx| {
+            item.attach(Box::new(RecordingSurface(messages.clone())), cx)
+                .expect("surface");
+            assert!(!item.browser_ready);
+            item.request_mode(Mode::Wysiwyg, cx);
+            item.request_mode(Mode::Preview, cx);
+            assert_eq!(item.preferences.mode, Mode::Preview);
+            assert!(item.error().is_none());
+            item.receive(
+                ClientMessage::Ready {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                },
+                cx,
+            )
+            .expect("ready");
+            assert!(item.browser_ready);
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "# Modes\n");
+        });
+        assert!(messages.borrow().iter().any(|message| matches!(message, HostMessage::Preferences {preferences} if preferences.mode == Mode::Preview)));
     }
 
     fn draft(
