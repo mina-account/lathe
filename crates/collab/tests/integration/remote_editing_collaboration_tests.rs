@@ -46,6 +46,235 @@ use std::{
 use task::TcpArgumentsTemplate;
 use util::{path, rel_path::rel_path};
 
+#[gpui::test]
+async fn test_shared_project_binary_resources_complete_and_import_exclusively(
+    cx_host: &mut TestAppContext,
+    cx_guest: &mut TestAppContext,
+) {
+    let executor = cx_host.executor();
+    let mut server = TestServer::start(executor.clone()).await;
+    let host = server.create_client(cx_host, "asset_host").await;
+    let guest = server.create_client(cx_guest, "asset_guest").await;
+    server
+        .create_room(&mut [(&host, cx_host), (&guest, cx_guest)])
+        .await;
+    host.fs()
+        .insert_tree(path!("/project"), json!({"assets":{},".env":"private"}))
+        .await;
+    let bytes = (0..(2 * 1024 * 1024 + 17))
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    host.fs()
+        .write(path!("/project/assets/中 #.png").as_ref(), &bytes)
+        .await
+        .expect("asset fixture");
+    let (host_project, worktree_id) = host.build_local_project(path!("/project"), cx_host).await;
+    let project_id = cx_host
+        .read(ActiveCall::global)
+        .update(cx_host, |call, cx| {
+            call.share_project(host_project.clone(), cx)
+        })
+        .await
+        .expect("share project");
+    executor.run_until_parked();
+    let guest_project = guest.join_remote_project(project_id, cx_guest).await;
+    let path: ProjectPath = (worktree_id, rel_path("assets/中 #.png")).into();
+    let first = guest_project.update(cx_guest, |project, cx| {
+        project.load_binary_resource(path.clone(), 4 * 1024 * 1024, cx)
+    });
+    let second = guest_project.update(cx_guest, |project, cx| {
+        project.load_binary_resource(path.clone(), 4 * 1024 * 1024, cx)
+    });
+    assert_eq!(first.await.expect("complete shared chunks"), bytes);
+    assert_eq!(second.await.expect("concurrent shared chunks"), bytes);
+    assert!(
+        guest_project
+            .update(cx_guest, |project, cx| project.load_binary_resource(
+                path.clone(),
+                16,
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    assert!(
+        guest_project
+            .update(cx_guest, |project, cx| project.load_binary_resource(
+                (worktree_id, rel_path(".env")).into(),
+                4096,
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    let worktree = guest_project
+        .read_with(cx_guest, |project, cx| {
+            project.worktree_for_id(worktree_id, cx)
+        })
+        .expect("shared worktree");
+    assert!(
+        worktree
+            .update(cx_guest, |worktree, cx| worktree.create_entry_exclusive(
+                rel_path("assets/中 #.png").into(),
+                b"overwrite".to_vec(),
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    worktree
+        .update(cx_guest, |worktree, cx| {
+            worktree.create_entry_exclusive(rel_path("assets/import.png").into(), bytes.clone(), cx)
+        })
+        .await
+        .expect("shared import");
+    assert_eq!(
+        host.fs()
+            .load_bytes(path!("/project/assets/import.png").as_ref())
+            .await
+            .expect("host imported bytes"),
+        bytes
+    );
+    assert_eq!(
+        guest_project
+            .update(cx_guest, |project, cx| project.load_binary_resource(
+                (worktree_id, rel_path("assets/import.png")).into(),
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .expect("shared import readback"),
+        bytes
+    );
+    cx_host
+        .read(ActiveCall::global)
+        .update(cx_host, |call, cx| {
+            call.unshare_project(host_project.clone(), cx)
+        })
+        .expect("unshare");
+    executor.run_until_parked();
+    assert!(
+        guest_project
+            .update(cx_guest, |project, cx| project.load_binary_resource(
+                path,
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .is_err()
+    );
+}
+
+#[gpui::test]
+async fn test_shared_ssh_project_binary_resources_read_and_import(
+    cx_host: &mut TestAppContext,
+    cx_guest: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let executor = cx_host.executor();
+    cx_host.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    let mut server = TestServer::start(executor.clone()).await;
+    let host = server.create_client(cx_host, "ssh_asset_host").await;
+    let guest = server.create_client(cx_guest, "ssh_asset_guest").await;
+    server
+        .create_room(&mut [(&host, cx_host), (&guest, cx_guest)])
+        .await;
+    let (options, ssh_session, _) = RemoteClient::fake_server(cx_host, server_cx);
+    let filesystem = FakeFs::new(server_cx.executor());
+    filesystem
+        .insert_tree(
+            path!("/project"),
+            json!({"assets":{"source.png":"encoded fixture"}}),
+        )
+        .await;
+    server_cx.update(HeadlessProject::init);
+    let languages = Arc::new(LanguageRegistry::new(server_cx.executor()));
+    let _headless = server_cx.new(|cx| {
+        HeadlessProject::new(
+            HeadlessAppState {
+                session: ssh_session,
+                fs: filesystem.clone(),
+                http_client: Arc::new(BlockedHttpClient),
+                node_runtime: NodeRuntime::unavailable(),
+                languages,
+                extension_host_proxy: Arc::new(ExtensionHostProxy::new()),
+                startup_time: std::time::Instant::now(),
+            },
+            false,
+            cx,
+        )
+    });
+    let remote_client = RemoteClient::connect_mock(options, cx_host).await;
+    let (host_project, worktree_id) = host
+        .build_ssh_project(path!("/project"), remote_client, false, cx_host)
+        .await;
+    let project_id = cx_host
+        .read(ActiveCall::global)
+        .update(cx_host, |call, cx| {
+            call.share_project(host_project.clone(), cx)
+        })
+        .await
+        .expect("share SSH project");
+    executor.run_until_parked();
+    let guest_project = guest.join_remote_project(project_id, cx_guest).await;
+    let path: ProjectPath = (worktree_id, rel_path("assets/source.png")).into();
+    assert_eq!(
+        guest_project
+            .update(cx_guest, |project, cx| project.load_binary_resource(
+                path.clone(),
+                4096,
+                cx
+            ))
+            .await
+            .expect("shared SSH bytes"),
+        b"encoded fixture"
+    );
+    let worktree = guest_project
+        .read_with(cx_guest, |project, cx| {
+            project.worktree_for_id(worktree_id, cx)
+        })
+        .expect("shared SSH worktree");
+    assert!(
+        worktree
+            .update(cx_guest, |worktree, cx| worktree.create_entry_exclusive(
+                path.path.clone(),
+                b"overwrite".to_vec(),
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    worktree
+        .update(cx_guest, |worktree, cx| {
+            worktree.create_entry_exclusive(
+                rel_path("assets/import.png").into(),
+                b"imported binary".to_vec(),
+                cx,
+            )
+        })
+        .await
+        .expect("shared SSH import");
+    assert_eq!(
+        filesystem
+            .load_bytes(path!("/project/assets/import.png").as_ref())
+            .await
+            .expect("remote imported bytes"),
+        b"imported binary"
+    );
+    assert_eq!(
+        guest_project
+            .update(cx_guest, |project, cx| project.load_binary_resource(
+                (worktree_id, rel_path("assets/import.png")).into(),
+                4096,
+                cx
+            ))
+            .await
+            .expect("shared SSH import readback"),
+        b"imported binary"
+    );
+}
+
 #[gpui::test(iterations = 10)]
 async fn test_sharing_an_ssh_remote_project(
     cx_a: &mut TestAppContext,

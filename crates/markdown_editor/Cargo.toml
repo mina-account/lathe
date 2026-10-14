@@ -14,7 +14,7 @@ doctest = false
 
 [features]
 default = ["application"]
-application = ["dep:editor", "dep:gpui", "dep:language", "dep:project", "dep:workspace", "dep:ui", "dep:util", "dep:futures", "dep:log", "dep:db", "dep:pulldown-cmark"]
+application = ["dep:editor", "dep:gpui", "dep:language", "dep:project", "dep:workspace", "dep:ui", "dep:util", "dep:futures", "dep:log", "dep:db", "dep:pulldown-cmark", "dep:settings", "dep:theme", "dep:image", "dep:base64", "dep:http_client", "dep:path", "dep:uuid"]
 browser = ["application", "dep:cef", "dep:image"]
 test-support = ["application", "gpui/test-support", "editor/test-support", "workspace/test-support", "dep:db", "db/test-support", "dep:fs", "fs/test-support", "dep:gpui_platform", "gpui_platform/test-support", "gpui_platform/wayland", "gpui_platform/x11", "dep:raw-window-handle", "dep:sysinfo", "dep:settings"]
 
@@ -40,6 +40,11 @@ fs = { workspace = true, optional = true }
 raw-window-handle = { workspace = true, optional = true }
 sysinfo = { workspace = true, optional = true }
 settings = { workspace = true, optional = true }
+theme = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+http_client = { workspace = true, optional = true }
+path = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
 
 [[bin]]
 name = "markdown_editor_smoke"
@@ -50,3 +55,4 @@ required-features = ["browser", "test-support"]
 cef = { version = "=154.5.0", default-features = false, optional = true }
 
 [dev-dependencies]
+png = "=0.18.0"

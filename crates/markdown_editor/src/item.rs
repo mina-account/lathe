@@ -1,5 +1,6 @@
 use crate::protocol::{self, ClientMessage, HostMessage, Protocol};
 use crate::protocol::{Mode, ViewPreferences};
+use crate::settings::MarkdownEditorSettings;
 use anyhow::{Result, bail};
 use editor::Editor;
 use futures::channel::oneshot;
@@ -9,6 +10,7 @@ use gpui::{
 };
 use language::{Buffer, BufferEvent, Capability};
 use project::{Project, ProjectPath};
+use settings::Settings;
 use std::{any::TypeId, sync::Arc, time::Duration};
 use ui::prelude::*;
 use workspace::{
@@ -116,7 +118,7 @@ pub struct MarkdownEditor {
     pub preferences: ViewPreferences,
     #[cfg(feature = "test-support")]
     pub copied_text: Option<String>,
-    window: gpui::AnyWindowHandle,
+    pub(crate) window: gpui::AnyWindowHandle,
     surface: Option<Box<dyn BrowserSurface>>,
     accepting_input: bool,
     focus: FocusHandle,
@@ -133,7 +135,11 @@ pub struct MarkdownEditor {
     pointer: gpui::Point<gpui::Pixels>,
     _subscription: Subscription,
     _release_subscription: Subscription,
+    _appearance_subscriptions: Vec<Subscription>,
     _pump: Task<()>,
+    pub(crate) active_asset_requests: usize,
+    pub(crate) importing_images: bool,
+    pending_drop_paths: Option<Vec<std::path::PathBuf>>,
 }
 
 fn heading_offset(text: &str, fragment: &str) -> Option<usize> {
@@ -203,6 +209,7 @@ fn document_preference_key(source: &Editor, buffer: &Buffer, cx: &App) -> Result
 }
 
 pub fn init(cx: &mut App) {
+    MarkdownEditorSettings::register(cx);
     workspace::register_serializable_item::<MarkdownEditor>(cx);
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     cx.bind_keys([
@@ -354,6 +361,46 @@ impl MarkdownEditor {
         Ok(())
     }
 
+    #[cfg(any(
+        test,
+        all(feature = "browser", any(target_os = "windows", target_os = "linux"))
+    ))]
+    pub(crate) fn pump_browser(&mut self, cx: &mut Context<Self>) {
+        let result = (|| {
+            let messages = self
+                .surface
+                .as_mut()
+                .map(|surface| surface.poll())
+                .transpose()?
+                .unwrap_or_default();
+            if !self.accepting_input {
+                self.retain_queued_recovery(messages, cx);
+                return anyhow::Ok(());
+            }
+            self.receive_batch(messages, cx)?;
+            if let Some(frame) = self
+                .surface
+                .as_mut()
+                .map(|surface| surface.frame())
+                .transpose()?
+                .flatten()
+            {
+                if let Some(previous) = self.image.replace(frame) {
+                    self.retired_images.push(previous);
+                }
+            }
+            cx.notify();
+            anyhow::Ok(())
+        })();
+        if let Err(error) = result {
+            if self.accepting_input {
+                self.failed(error, cx);
+            } else {
+                log::debug!("Markdown stopped session: {error:#}");
+            }
+        }
+    }
+
     pub fn new(
         source: Entity<Editor>,
         buffer: Entity<Buffer>,
@@ -375,7 +422,10 @@ impl MarkdownEditor {
                     .transpose()
             });
         let preferences = match preferences {
-            Ok(preferences) => preferences.unwrap_or_default(),
+            Ok(preferences) => preferences.unwrap_or_else(|| ViewPreferences {
+                outline: MarkdownEditorSettings::get_global(cx).default_open_outline,
+                ..ViewPreferences::default()
+            }),
             Err(error) => {
                 log::error!("Markdown document preferences restoration: {error:#}");
                 ViewPreferences::default()
@@ -391,6 +441,11 @@ impl MarkdownEditor {
                     | BufferEvent::DirtyChanged
                     | BufferEvent::Saved
             ) {
+                if matches!(event, BufferEvent::FileHandleChanged) {
+                    if let Err(error) = this.send(HostMessage::ResourcesReset) {
+                        this.asset_notice(error.to_string(), cx);
+                    }
+                }
                 this.synchronize(cx);
                 if matches!(event, BufferEvent::Edited { .. }) {
                     cx.emit(ItemEvent::Edit);
@@ -407,6 +462,10 @@ impl MarkdownEditor {
                 }
             }
         });
+        let appearance_subscriptions = vec![
+            cx.observe_global::<settings::SettingsStore>(|this, cx| this.appearance_changed(cx)),
+            cx.observe_global::<theme::GlobalTheme>(|this, cx| this.appearance_changed(cx)),
+        ];
         Self {
             source,
             buffer,
@@ -432,7 +491,11 @@ impl MarkdownEditor {
             pointer: Default::default(),
             _subscription: subscription,
             _release_subscription: release_subscription,
+            _appearance_subscriptions: appearance_subscriptions,
             _pump: Task::ready(()),
+            active_asset_requests: 0,
+            importing_images: false,
+            pending_drop_paths: None,
         }
     }
 
@@ -463,15 +526,35 @@ impl MarkdownEditor {
         Ok(())
     }
 
-    fn send(&mut self, message: HostMessage) -> Result<()> {
+    pub(crate) fn send(&mut self, message: HostMessage) -> Result<()> {
         if let Some(surface) = &mut self.surface {
             surface.send(&message)?;
         }
         Ok(())
     }
 
-    fn writable(&self, cx: &App) -> bool {
+    pub(crate) fn writable(&self, cx: &App) -> bool {
         self.preferences.mode != Mode::Preview && !self.source.read(cx).read_only(cx)
+    }
+
+    fn appearance_changed(&mut self, cx: &mut Context<Self>) {
+        let settings = MarkdownEditorSettings::get_global(cx);
+        let colors = cx.theme().colors();
+        let appearance = HostMessage::Appearance {
+            background: colors.editor_background.to_string(),
+            foreground: colors.editor_foreground.to_string(),
+            accent: colors.text_accent.to_string(),
+            dark: !cx.theme().appearance().is_light(),
+            use_app_theme_colors: settings.use_app_theme_colors,
+            show_line_numbers: settings.show_line_numbers,
+            custom_css: settings.custom_css.clone(),
+            content_theme: settings.content_theme.clone(),
+            code_theme: settings.code_theme.clone(),
+            plantuml_service: settings.plantuml_service.clone(),
+        };
+        if let Err(error) = self.send(appearance) {
+            self.failed(error, cx);
+        }
     }
 
     fn synchronize(&mut self, cx: &mut Context<Self>) {
@@ -492,6 +575,68 @@ impl MarkdownEditor {
         )?;
         self.protocol.update(self.buffer.read(cx).snapshot().text());
         match &message {
+            ClientMessage::Resource { request, url, .. } => {
+                if let Err(error) = self.request_asset(*request, url.clone(), false, cx) {
+                    self.send(HostMessage::Resource {
+                        request: *request,
+                        mime: String::new(),
+                        bytes: String::new(),
+                        error: Some(error.to_string()),
+                    })?;
+                }
+            }
+            ClientMessage::Plantuml {
+                request, encoded, ..
+            } => {
+                if let Err(error) = self.request_asset(*request, encoded.clone(), true, cx) {
+                    self.send(HostMessage::Resource {
+                        request: *request,
+                        mime: String::new(),
+                        bytes: String::new(),
+                        error: Some(error.to_string()),
+                    })?;
+                }
+            }
+            ClientMessage::ImportImages {
+                position,
+                images,
+                base_revision,
+                ..
+            } => {
+                if let Err(error) = self.import_images(
+                    *base_revision,
+                    *position,
+                    crate::assets::ImageInput::Encoded(images.clone()),
+                    cx,
+                ) {
+                    self.asset_notice(error.to_string(), cx);
+                }
+            }
+            ClientMessage::PickImages {
+                position,
+                clipboard,
+                drop,
+                base_revision,
+                ..
+            } => {
+                let result = (|| {
+                    let input = if *drop {
+                        crate::assets::ImageInput::Paths(
+                            self.pending_drop_paths.take().ok_or_else(|| {
+                                anyhow::anyhow!("No native image drop is pending")
+                            })?,
+                        )
+                    } else if *clipboard {
+                        crate::assets::ImageInput::Clipboard
+                    } else {
+                        crate::assets::ImageInput::Picker
+                    };
+                    self.import_images(*base_revision, *position, input, cx)
+                })();
+                if let Err(error) = result {
+                    self.asset_notice(error.to_string(), cx);
+                }
+            }
             ClientMessage::InputState {
                 text, start, end, ..
             } => {
@@ -641,6 +786,7 @@ impl MarkdownEditor {
                 self.selection = *start..*end;
             }
             ClientMessage::Ready { .. } => {
+                self.appearance_changed(cx);
                 self.browser_ready = true;
                 self.send(HostMessage::Preferences {
                     preferences: self.preferences.clone(),
@@ -721,6 +867,41 @@ impl MarkdownEditor {
         }
         cx.notify();
         Ok(())
+    }
+
+    pub(crate) fn asset_active(&self, cx: &App) -> bool {
+        self.accepting_input && self.writable(cx)
+    }
+
+    pub(crate) fn asset_notice(&mut self, text: String, cx: &mut Context<Self>) {
+        self.error = Some(text.clone());
+        if let Err(error) = self.send(HostMessage::Notice { text }) {
+            log::error!("Markdown asset notice: {error:#}");
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn asset_started(&mut self, cx: &mut Context<Self>) {
+        self.error = None;
+        if let Err(error) = self.send(HostMessage::Notice {
+            text: "Importing images…".into(),
+        }) {
+            self.asset_notice(error.to_string(), cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn native_image_drop(
+        &mut self,
+        paths: &gpui::ExternalPaths,
+        cx: &mut Context<Self>,
+    ) {
+        if self.writable(cx) {
+            self.pending_drop_paths = Some(paths.paths().to_vec());
+            if let Err(error) = self.browser_script("window.latheRich?.nativeDrop()") {
+                self.asset_notice(error.to_string(), cx);
+            }
+        }
     }
 
     fn retain_queued_recovery(&mut self, messages: Vec<ClientMessage>, cx: &mut Context<Self>) {
@@ -866,6 +1047,33 @@ impl MarkdownEditor {
         if !self.accepting_input {
             return;
         }
+        if let gpui::PlatformInput::KeyDown(event) = input {
+            if event.keystroke.modifiers.control
+                && event.keystroke.key.eq_ignore_ascii_case("v")
+                && cx.read_from_clipboard().is_some_and(|item| {
+                    item.entries.iter().any(|entry| {
+                        matches!(
+                            entry,
+                            gpui::ClipboardEntry::Image(_) | gpui::ClipboardEntry::ExternalPaths(_)
+                        )
+                    })
+                })
+            {
+                let text = cx
+                    .read_from_clipboard()
+                    .and_then(|item| item.text())
+                    .unwrap_or_default();
+                let script = serde_json::to_string(&text)
+                    .map(|text| format!("window.latheRich?.nativePaste({text})"));
+                if let Err(error) = script
+                    .map_err(Into::into)
+                    .and_then(|script| self.browser_script(&script))
+                {
+                    self.asset_notice(error.to_string(), cx);
+                }
+                return;
+            }
+        }
         match input {
             gpui::PlatformInput::MouseDown(event) => {
                 if !self.bounds.contains(&event.position) {
@@ -963,46 +1171,8 @@ impl MarkdownEditor {
                     cx.background_executor()
                         .timer(Duration::from_millis(16))
                         .await;
-                    let result = this.update(cx, |this, cx| {
-                        let messages = this
-                            .surface
-                            .as_mut()
-                            .map(|surface| surface.poll())
-                            .transpose()?
-                            .unwrap_or_default();
-                        if !this.accepting_input {
-                            this.retain_queued_recovery(messages, cx);
-                            return anyhow::Ok(());
-                        }
-                        this.receive_batch(messages, cx)?;
-                        if let Some(frame) = this
-                            .surface
-                            .as_mut()
-                            .map(|surface| surface.frame())
-                            .transpose()?
-                            .flatten()
-                        {
-                            if let Some(previous) = this.image.replace(frame) {
-                                this.retired_images.push(previous);
-                            }
-                        }
-                        cx.notify();
-                        anyhow::Ok(())
-                    });
-                    match result {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => {
-                            if let Err(error) = this.update(cx, |this, cx| {
-                                if this.accepting_input {
-                                    this.failed(error, cx);
-                                } else {
-                                    log::debug!("Markdown stopped session: {error:#}");
-                                }
-                            }) {
-                                log::error!("{error:#}");
-                            }
-                        }
-                        Err(_) => break,
+                    if this.update(cx, |this, cx| this.pump_browser(cx)).is_err() {
+                        break;
                     }
                 }
             });
@@ -1118,6 +1288,7 @@ mod tests {
             outline: true,
             wrap: false,
             scroll: 321,
+            ..ViewPreferences::default()
         };
         visual.update(cx, |item, cx| {
             item.receive(
@@ -3196,6 +3367,7 @@ mod tests {
                 outline: true,
                 wrap: false,
                 scroll: 1234,
+                ..ViewPreferences::default()
             }
         });
         let tasks = multi_workspace.update_in(cx, |multi, window, cx| {
@@ -3283,7 +3455,8 @@ mod tests {
                     mode: Mode::Sv,
                     outline: true,
                     wrap: false,
-                    scroll: 1234
+                    scroll: 1234,
+                    ..ViewPreferences::default()
                 }
             );
         });
@@ -3685,6 +3858,9 @@ impl Render for MarkdownEditor {
             .on_action(cx.listener(|this, _: &editor::actions::Redo, _, cx| this.history(true, cx)))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                 this.input(&gpui::PlatformInput::KeyDown(event.clone()), cx)
+            }))
+            .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, _, cx| {
+                this.native_image_drop(paths, cx);
             }))
             .on_key_up(cx.listener(|this, event: &gpui::KeyUpEvent, _, cx| {
                 this.input(&gpui::PlatformInput::KeyUp(event.clone()), cx)

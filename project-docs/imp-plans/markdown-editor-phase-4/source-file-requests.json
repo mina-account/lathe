@@ -1,0 +1,482 @@
+[
+  {
+    "newline": "lf",
+    "mode": "ir",
+    "transfer": "paste",
+    "mixed": false,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "ir",
+    "transfer": "paste",
+    "mixed": true,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "ir",
+    "transfer": "drop",
+    "mixed": false,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "ir",
+    "transfer": "drop",
+    "mixed": true,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "wysiwyg",
+    "transfer": "paste",
+    "mixed": false,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "wysiwyg",
+    "transfer": "paste",
+    "mixed": true,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "wysiwyg",
+    "transfer": "drop",
+    "mixed": false,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "wysiwyg",
+    "transfer": "drop",
+    "mixed": true,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "sv",
+    "transfer": "paste",
+    "mixed": false,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "sv",
+    "transfer": "paste",
+    "mixed": true,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "sv",
+    "transfer": "drop",
+    "mixed": false,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "lf",
+    "mode": "sv",
+    "transfer": "drop",
+    "mixed": true,
+    "source": "Host 😀\nBefore 😀\n\n```unknown\nselected source\n```\n\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 30,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "ir",
+    "transfer": "paste",
+    "mixed": false,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "ir",
+    "transfer": "paste",
+    "mixed": true,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "ir",
+    "transfer": "drop",
+    "mixed": false,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "ir",
+    "transfer": "drop",
+    "mixed": true,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "wysiwyg",
+    "transfer": "paste",
+    "mixed": false,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "wysiwyg",
+    "transfer": "paste",
+    "mixed": true,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "wysiwyg",
+    "transfer": "drop",
+    "mixed": false,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "wysiwyg",
+    "transfer": "drop",
+    "mixed": true,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "sv",
+    "transfer": "paste",
+    "mixed": false,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "sv",
+    "transfer": "paste",
+    "mixed": true,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "sv",
+    "transfer": "drop",
+    "mixed": false,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  },
+  {
+    "newline": "crlf",
+    "mode": "sv",
+    "transfer": "drop",
+    "mixed": true,
+    "source": "Host 😀\r\nBefore 😀\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail",
+    "request": {
+      "kind": "import_images",
+      "images": [
+        {
+          "name": "source.png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="
+        }
+      ],
+      "position": 34,
+      "base_revision": 1,
+      "session": "browser-test",
+      "document": "1"
+    }
+  }
+]

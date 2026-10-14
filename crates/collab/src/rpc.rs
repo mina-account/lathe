@@ -427,6 +427,7 @@ impl Server {
             .add_request_handler(forward_mutating_project_request::<proto::LinkedEditingRange>)
             .add_message_handler(create_buffer_for_peer)
             .add_message_handler(create_image_for_peer)
+            .add_message_handler(create_file_for_peer)
             .add_request_handler(update_buffer)
             .add_message_handler(broadcast_project_message_from_host::<proto::RefreshInlayHints>)
             .add_message_handler(
@@ -2537,6 +2538,25 @@ async fn create_buffer_for_peer(
 /// Notify other participants that a new image has been created
 async fn create_image_for_peer(
     request: proto::CreateImageForPeer,
+    session: MessageContext,
+) -> Result<()> {
+    session
+        .db()
+        .await
+        .check_user_is_project_host(
+            ProjectId::from_proto(request.project_id),
+            session.connection_id,
+        )
+        .await?;
+    let peer_id = request.peer_id.context("invalid peer id")?;
+    session
+        .peer
+        .forward_send(session.connection_id, peer_id.into(), request)?;
+    Ok(())
+}
+
+async fn create_file_for_peer(
+    request: proto::CreateFileForPeer,
     session: MessageContext,
 ) -> Result<()> {
     session

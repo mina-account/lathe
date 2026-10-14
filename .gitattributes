@@ -4,3 +4,4 @@
 # Ensure the WSL script always has LF line endings, even on Windows
 crates/zed/resources/windows/zed.sh text eol=lf
 project-docs/imp-plans/markdown-browser-probe/run-offscreen.sh text eol=lf
+project-docs/imp-plans/markdown-editor-phase-4/run-linux.sh text eol=lf

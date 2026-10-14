@@ -1,11 +1,13 @@
 import { DocumentBridge, SourceProjection, display, fromDisplay, separateChanges, transformOffset, withinBudget } from "./application.js";
+import { renderFence, rendererLanguages, highlightCode } from "./renderers.js";
+import { themes } from "./themes.js";
 
 
 
 
 
 
-const defaults = ()              => ({mode:"ir",outline:false,wrap:true,scroll:0});
+const defaults = ()              => ({mode:"ir",outline:false,wrap:true,scroll:0,content_theme:null,code_theme:null});
 const applicationControls = new Map([...document.querySelectorAll             ("[id]")].map(element=>[element.id,element]));
 const get = (id        ) => applicationControls.get(id) ;
 const status = get("status");
@@ -13,25 +15,53 @@ const container = get("document"), viewer = get("viewer"), outline = get("outlin
 const parameters = new URL(location.href).searchParams;
 let editor      = null, generation = 0, projecting = false, ready = false, preferences = defaults();
 let latest = "", sourceEditor                             = null;
+let imageCaret                                                    =null;
 let lastSerialized = "";
 const sourceControls = new Map                                               ();
 
 let intent                = null;
 const projection = new SourceProjection();
+let appearance    ={dark:false,use_app_theme_colors:true,show_line_numbers:true,custom_css:"",background:"#fff",foreground:"#222",accent:"#2670b7",plantuml_service:null};
+const contentStyle=document.createElement("link"),codeStyle=document.createElement("link"),customStyle=document.createElement("style");
+contentStyle.rel=codeStyle.rel="stylesheet"; document.head.append(contentStyle,codeStyle,customStyle);
+const resources=new Map                                                                 ();
+const imageUrls=new Set        ();
+const imageFailures=new Map                         ();
+let imageNotice            =null;
+let resourceRequest=0;
+let resourceGeneration=0;
+let readingGeneration=0;
+const restoredScrollPositions=new WeakMap                    ();
 const forbiddenTags = ["script","style","iframe","object","embed","svg","math","template","form","input","button","select","textarea","audio","video","source","base","meta","link"];
-DOMPurify.addHook("uponSanitizeAttribute", (_node        , attribute    ) => {
-    if (attribute.attrName === "class") attribute.attrValue = attribute.attrValue.replace(/\blanguage-(?:math|mermaid|graphviz|echarts|abc|flowchart|plantuml|markmap|mindmap|smiles)\b/g,"language-text");
+const imageSources=new WeakMap                ();
+DOMPurify.addHook("uponSanitizeElement",(node        ,_data    ,configuration    )=>{
+    if(node.tagName==="IMG" && node.hasAttribute("src"))imageSources.set(node,
+        (configuration.LATHE_IMAGES ? node.getAttribute("data-lathe-original") : null) ?? node.getAttribute("src") );
+});
+DOMPurify.addHook("uponSanitizeAttribute", (_node        , attribute    ,configuration    ) => {
+    if (_node.tagName==="IMG" && attribute.attrName==="src") {
+        attribute.keepAttr=false;
+    }
+    if (attribute.attrName.startsWith("data-lathe-") && !configuration.LATHE_IMAGES) attribute.keepAttr=false;
+    if(configuration.LATHE_IMAGES && ["data-lathe-image","data-lathe-original"].includes(attribute.attrName))attribute.forceKeepAttr=true;
+    if (attribute.attrName === "class") attribute.attrValue = attribute.attrValue.replace(/\blanguage-math\b/g,"lathe-math").replace(/\blanguage-(?:mermaid|graphviz|echarts|abc|flowchart|plantuml|markmap|mindmap|smiles)\b/g,"language-text");
 });
 DOMPurify.addHook("afterSanitizeAttributes", (node        , _data    , configuration    ) => {
+    if (node.tagName==="IMG") {
+        const source=imageSources.get(node);
+        if (source) { node.removeAttribute("src"); node.removeAttribute("data-lathe-original"); node.setAttribute("data-lathe-image",source); }
+    }
     if (node.tagName !== "INPUT") return;
     if (node.getAttribute("type")?.toLowerCase() !== "checkbox") node.remove();
     else if (!configuration.ALLOW_DATA_ATTR) node.setAttribute("disabled","");
 });
-export function sanitize(html        , editing = false)         {
+export function sanitize(html        , editing = false, images = false)         {
     return DOMPurify.sanitize(html, {
         FORBID_TAGS: forbiddenTags.filter(tag => tag !== "input"),
         FORBID_ATTR:["style","srcset","formaction","autofocus","name"],
         ADD_TAGS:editing ? ["wbr"] : [], ALLOW_DATA_ATTR:editing,
+        LATHE_IMAGES:images,
+        ADD_ATTR:images?["data-lathe-image","data-lathe-original"]:[],
         ALLOWED_URI_REGEXP:/^(?:https?:|mailto:|#|[^a-zA-Z:\\/]|[a-zA-Z][^:]*$)/i,
     });
 }
@@ -39,34 +69,226 @@ export function sanitize(html        , editing = false)         {
 // Lute returns HTML before Vditor assigns it to live DOM. Sanitize at that boundary,
 // including transformations during typing, rather than trying to clean after insertion.
 const newLute = Lute.New;
+function durableImageSources(html       )        {
+    if(!/\bdata-lathe-(?:original|image)=/.test(html))return html;
+    const template=document.createElement("template");template.innerHTML=html;
+    for(const image of template.content.querySelectorAll("img[data-lathe-original],img[data-lathe-image]")) {
+        image.setAttribute("src",image.getAttribute("data-lathe-original") ?? image.getAttribute("data-lathe-image") ?? "");
+        image.removeAttribute("data-lathe-original");image.removeAttribute("data-lathe-image");
+    }
+    return template.innerHTML;
+}
 Lute.New = (...arguments_       ) => {
     const lute = newLute(...arguments_);
     for (const method of ["Md2VditorIRDOM","Md2VditorDOM","SpinVditorIRDOM","SpinVditorDOM","SpinVditorSVDOM","HTML2VditorDOM","HTML2VditorIRDOM","Md2HTML","VditorDOM2HTML","VditorIRDOM2HTML"]) {
         if (typeof lute[method] !== "function") continue;
         const original = lute[method];
-        lute[method] = (...parameters       ) => sanitize(original(...parameters), !method.endsWith("HTML"));
+        lute[method] = (...parameters       ) => {
+            if(["SpinVditorDOM","SpinVditorIRDOM"].includes(method) && typeof parameters[0]==="string")parameters[0]=durableImageSources(parameters[0]);
+            return sanitize(original(...parameters), !method.endsWith("HTML"), !method.startsWith("Md2") && !method.startsWith("HTML2"));
+        };
+    }
+    for(const method of ["VditorDOM2Md","VditorIRDOM2Md","VditorDOM2HTML","VditorIRDOM2HTML"]) {
+        const original=lute[method];
+        if(typeof original!=="function")continue;
+        lute[method]=(html       ,...parameters      )=>{
+            const template=document.createElement("template"); template.innerHTML=html;
+            for(const preview of template.content.querySelectorAll('.vditor-ir__preview,.vditor-wysiwyg__preview')) preview.remove();
+            return original(durableImageSources(template.innerHTML),...parameters);
+        };
     }
     return lute;
 };
 
 const bridge = new DocumentBridge(parameters.get("session") ?? "", parameters.get("document") ?? "",
-    message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), show, text => { status.textContent = text; });
+    message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), show, text => { imageNotice=null;status.textContent=text;updateImageNotice(); });
 (window       ).latheMarkdown = bridge;
 const receive = bridge.receive.bind(bridge);
 bridge.receive = message => {
+    if(message.kind==="resources_reset") {
+        resourceGeneration++;
+        for(const url of imageUrls)URL.revokeObjectURL(url);imageUrls.clear();
+        for(const image of document.querySelectorAll                  ("img[data-lathe-original]")) { image.removeAttribute("src");image.dataset.latheImage=image.dataset.latheOriginal; }
+        if(ready)void loadImages(renderedRoot());return;
+    }
+    if (message.kind === "resource") {
+        const pending=resources.get(message.request); resources.delete(message.request);
+        if (message.error) pending?.reject(new Error(message.error)); else pending?.resolve(message);
+        return;
+    }
+    if (message.kind === "appearance") { appearance=message; applyAppearance(); return; }
     if (["flush","document","accepted","preferences"].includes(message.kind)) commit();
     if (message.kind === "preferences") {
         if (bridge.blocked) return;
+        const previousMode=preferences.mode;
         preferences = {...defaults(),...message.preferences};
-        if (ready && !bridge.composing) build();
+        if (ready && !bridge.composing && previousMode!==preferences.mode) build();
+        else if (ready) { outline.hidden=!preferences.outline; document.body.classList.toggle("nowrap",!preferences.wrap); applyAppearance(); }
         return;
     }
     receive(message);
     permissions();
 };
 
+function applyAppearance() {
+    const restore=scrollRestoration();
+    contentStyle.onload=codeStyle.onload=restore;
+    const content=preferences.content_theme ?? appearance.content_theme ?? (appearance.dark?"dark":"light");
+    const code=preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github");
+    if(editor)editor.vditor.options.preview.hljs.style=code;
+    if (themes.content.includes(content)) contentStyle.href=`/vendor/dist/css/content-theme/${content}.css`;
+    if (themes.code.includes(code)) codeStyle.href=`/vendor/dist/js/highlight.js/styles/${code}.min.css`;
+    document.head.append(codeStyle,customStyle);
+    (get("content-theme")                     ).value=preferences.content_theme ?? "";
+    (get("code-theme")                     ).value=preferences.code_theme ?? "";
+    document.body.classList.toggle("app-theme",appearance.use_app_theme_colors);
+    document.body.classList.toggle("line-numbers",appearance.show_line_numbers && preferences.mode==="ir");
+    container.classList.toggle("vditor--dark",appearance.dark);
+    for(const [name,value] of Object.entries({background:appearance.background,foreground:appearance.foreground,accent:appearance.accent})) document.documentElement.style.setProperty(`--app-${name}`,String(value));
+    customStyle.textContent=String(appearance.custom_css ?? "").slice(0,128*1024);
+    lineNumbers();
+    if(ready && !sourceEditor && !bridge.composing)renderSourceBlocks();
+    restore();
+}
+function requestResource(kind                      ,value       )              {
+    if (resources.size>=16) return Promise.reject(new Error("Too many pending image resources."));
+    const request=++resourceRequest;
+    return new Promise((resolve,reject)=>{
+        resources.set(request,{resolve,reject}); bridge.emit({kind,request,...(kind==="resource"?{url:value}:{encoded:value})});
+        setTimeout(()=>{if(resources.delete(request))reject(new Error("Project resource timed out."));},35000);
+    });
+}
+function updateImageNotice() {
+    for(const [element] of imageFailures)if(!element.isConnected || !renderedRoot().contains(element))imageFailures.delete(element);
+    if(status.textContent!==imageNotice && status.textContent!=="Markdown Editor")return;
+    imageNotice=[...imageFailures.values()].at(-1) ?? null;
+    status.textContent=imageNotice ?? "Markdown Editor";
+}
+async function loadImages(root            ) {
+    const generation=resourceGeneration;
+    updateImageNotice();
+    const activeUrls=new Set([...document.querySelectorAll                  ("img")].map(image=>image.src));
+    for(const url of imageUrls)if(!activeUrls.has(url)){URL.revokeObjectURL(url);imageUrls.delete(url);}
+    for (const element of root.querySelectorAll                  ("img[data-lathe-image]")) {
+        if(generation!==resourceGeneration)break;
+        const url=element.dataset.latheImage;
+        // A concurrent render pass can claim this image while an earlier request awaits.
+        if(url===undefined)continue;
+        delete element.dataset.latheImage; element.dataset.latheOriginal=url;
+        try {
+            const result=await requestResource("resource",url);
+            if (!element.isConnected || generation!==resourceGeneration) continue;
+            const bytes=Uint8Array.from(atob(result.bytes),character=>character.charCodeAt(0));
+            element.onload=scrollRestoration();
+            const object=URL.createObjectURL(new Blob([bytes],{type:result.mime})); imageUrls.add(object); element.src=object;
+            element.classList.remove("resource-error");imageFailures.delete(element);updateImageNotice();
+        } catch(error) { if (element.isConnected && generation===resourceGeneration) { element.classList.add("resource-error");imageFailures.set(element,`Image unavailable: ${String(error)}`);updateImageNotice(); } }
+    }
+}
+function lineNumbers() {
+    let gutter=container.querySelector             (".line-gutter");
+    if (!ready || !appearance.show_line_numbers || preferences.mode!=="ir") { gutter?.remove(); return; }
+    if (!gutter) { gutter=document.createElement("div"); gutter.className="line-gutter"; container.append(gutter); }
+    gutter.replaceChildren(); let offset=0;
+    const bounds=container.getBoundingClientRect();
+    for(const block of editableBlocks()) {
+        const serialized=serializeBlock(block), found=projection.canonical.indexOf(serialized,offset);
+        if(found<0)continue; offset=found+serialized.length;
+        const number=document.createElement("span"); number.textContent=String(latest.slice(0,projection.sourceOffset(found)).split(/\r?\n/).length);
+        number.style.top=`${block.getBoundingClientRect().top-bounds.top}px`; gutter.append(number);
+    }
+}
+
+function insertionPosition(field                         =sourceEditor)        {
+    const selected=window.getSelection();
+    if (field) {
+        const span=sourceControls.get(field);
+        if(!span)throw new Error("The source image insertion position is no longer available.");
+        return span.start+fromDisplay(latest.slice(span.start,span.end),field.value.slice(0,field.selectionStart)).length;
+    }
+    if(!selected?.rangeCount || !active().contains(selected.anchorNode))return latest.length;
+    const range=selected.getRangeAt(0),root=active();
+    if(editor.getCurrentMode()==="sv") { const prefix=range.cloneRange();prefix.selectNodeContents(root);prefix.setEnd(range.startContainer,range.startOffset);return projection.sourceOffset(prefix.toString().length); }
+    let block          =range.startContainer;
+    while(block && block.parentNode!==root)block=block.parentNode;
+    if(!(block instanceof Element))return latest.length;
+    const blocks=editableBlocks(),index=blocks.indexOf(block);
+    let before=0;
+    for(const preceding of blocks.slice(0,index)) {
+        const serialized=serializeBlock(preceding),found=projection.canonical.indexOf(serialized,before);
+        if(found<0)throw new Error("Image insertion position cannot be mapped safely.");
+        before=found+serialized.length;
+    }
+    const start=projection.canonical.indexOf(serializeBlock(block),before);
+    if(start<0)throw new Error("Image insertion block cannot be mapped safely.");
+    const prefix=range.cloneRange();prefix.selectNodeContents(block);prefix.setEnd(range.startContainer,range.startOffset);
+    const mapping=new SourceProjection();mapping.reset(serializeBlock(block),block.textContent ?? "");
+    const offset=prefix.toString().length;
+    const marked=(range.startContainer instanceof Element?range.startContainer:range.startContainer.parentElement)?.closest('strong,em,s,del,a,code,[data-type="strong"],[data-type="em"]');
+    return projection.sourceOffset(start+mapping.sourceOffset(offset,marked && offset>0?"end":"start"));
+}
+function rememberImageCaret() {
+    if(!ready || projecting || bridge.composing)return;
+    commit();if(bridge.blocked)return;
+    try{imageCaret={position:insertionPosition(),source:latest};}
+    catch(error){imageCaret={error:String(error)};}
+}
+function importAfterFlush(input                                   ,position        ,source        ) {
+    if (!ready || !bridge.writable || bridge.blocked || preferences.mode==="preview" || bridge.composing)return;
+    commit();if(bridge.blocked)return;
+    position ??= insertionPosition();source ??= latest;
+    bridge.afterFlush.push(()=>{
+        for(const change of separateChanges(source ,latest).reverse())position=transformOffset(position ,change);
+        bridge.emit({...input,position,base_revision:bridge.revision});
+    });bridge.submit();bridge.finishFlush();
+}
+function imageImportName(name       )        {
+    const encoder=new TextEncoder();
+    if(encoder.encode(name).length<=255)return name;
+    const separator=name.lastIndexOf("."),extension=separator>0 ? name.slice(separator) : "";
+    const suffix=encoder.encode(extension).length<255 ? extension : "",stem=suffix ? name.slice(0,separator) : name;
+    let remaining=255-encoder.encode(suffix).length,result="";
+    for(const character of stem) {
+        const bytes=encoder.encode(character).length;
+        if(bytes>remaining)break;
+        result+=character;remaining-=bytes;
+    }
+    return result+suffix;
+}
+async function importFiles(files       ,field                     ) {
+    if(!ready || !bridge.writable || bridge.blocked || preferences.mode==="preview" || bridge.composing)return;
+    if(files.length>16){status.textContent="Import at most 16 images.";return;}
+    if(files.reduce((total,file)=>total+file.size,0)>8*1024*1024){status.textContent="Image batch exceeds the 8 MiB total limit.";return;}
+    try {
+        commit();const position=insertionPosition(field),source=latest,images=[];
+        for(const file of files) {
+            if(file.size>4*1024*1024)throw new Error("Image exceeds the 4 MiB limit.");
+            const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
+            for(let index=0;index<bytes.length;index+=32768)binary+=String.fromCharCode(...bytes.subarray(index,index+32768));
+            images.push({name:imageImportName(file.name),bytes:btoa(binary)});
+        }
+        importAfterFlush({kind:"import_images",images},position,source);
+    }catch(error){status.textContent=String(error);}
+}
+
 function active()              { return preferences.mode === "preview" ? viewer : editor?.vditor[editor.getCurrentMode()].element ?? container; }
+function renderedRoot()             { return preferences.mode==="sv" ? editor.vditor.preview.previewElement : active(); }
 function scrollElement()              { return preferences.mode === "preview" ? viewer : active(); }
+function restoreScroll(position       ) {
+    const element=scrollElement();
+    element.scrollTop=position;
+    // Scroll events arrive later, and the browser may clamp the requested position.
+    restoredScrollPositions.set(element,element.scrollTop);
+}
+function scrollRestoration() {
+    const element=scrollElement(),position=element.scrollTop,reading=readingGeneration;
+    return ()=>{
+        if(!ready || reading!==readingGeneration || element!==scrollElement())return;
+        // A resource completion can run before the scroll event for a newer position.
+        if(element.scrollTop!==position){readingGeneration++;return;}
+        restoreScroll(position);
+    };
+}
 function permissions() {
     if (!ready) return;
     const writable = bridge.writable && !bridge.blocked && preferences.mode !== "preview";
@@ -126,7 +348,8 @@ function show(text        ) {
         initializeEmptyBlock();
         lastSerialized = editor.getValue(); projection.reset(text,lastSerialized);
         renderViewer(); renderOutline(); renderSourceBlocks(); updateFind();
-        restoreSelection(selected,oldText); scrollElement().scrollTop = scroll;
+        void loadImages(renderedRoot()); lineNumbers();
+        restoreSelection(selected,oldText); restoreScroll(scroll);
     } catch (error) { status.textContent = String(error); bridge.blocked = true; }
     finally { projecting = false; permissions(); }
 }
@@ -165,7 +388,7 @@ function commit() {
         // Reparsing moves reference definitions and adjusts table layout. Keep the
         // source mapping in its original block order rather than adopting that output.
         lastSerialized=actual; intent = null;
-        updateSourceControls(source); bridge.input(source); renderOutline(); renderSourceBlocks(); updateFind();
+        updateSourceControls(source); bridge.input(source); renderOutline(); renderSourceBlocks(); updateFind(); void loadImages(renderedRoot()); lineNumbers();
     } catch (error) { retainUnmappedInput(error); }
 }
 function retainUnmappedInput(error        ) {
@@ -303,9 +526,10 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
         toolbar:["emoji","headings","bold","italic","strike","link","|","list","ordered-list","check","outdent","indent","|","quote","line","code","inline-code","table","insert-before","insert-after","|",
             {name:"native-undo",tip:"Undo",icon:"Undo",click:() => bridge.history("undo")},
             {name:"native-redo",tip:"Redo",icon:"Redo",click:() => bridge.history("redo")}],
-        preview:{delay:0,mode:"both",actions:[],hljs:{enable:false,lineNumber:false},
+        preview:{delay:0,mode:"both",actions:[],hljs:{enable:false,lineNumber:false,style:preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github")},
+            math:{engine:"KaTeX",inlineDigit:true},
             markdown:{sanitize:true,codeBlockPreview:false,mathBlockPreview:false,footnotes:true,toc:false},
-            theme:{current:"",path:location.origin + "/vendor"},render:{media:{enable:false}},transform:(html       ) => sanitize(html),parse:() => renderOutline()},
+            theme:{current:"",path:location.origin + "/vendor"},render:{media:{enable:false}},transform:(html       ) => sanitize(html,false,true),parse:() => { renderOutline();if(ready) { renderMath(editor.vditor.preview.previewElement);void loadImages(editor.vditor.preview.previewElement);void highlightCode(editor.vditor.preview.previewElement); } }},
         hint:{emojiPath:"",parse:false}, link:{isOpen:false,click:(element            ) => openLink(linkDestination(element))}, image:{isPreview:false},
         input:() => commit(),
         after:() => {
@@ -321,14 +545,106 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
             container.hidden = preferences.mode === "preview"; viewer.hidden = preferences.mode !== "preview";
             document.body.classList.toggle("nowrap",!preferences.wrap); outline.hidden = !preferences.outline;
             renderViewer(); renderOutline(); renderSourceBlocks(); permissions();
-            restoreSelection(selected,oldText); scrollElement().scrollTop = preferences.scroll;
+            restoreSelection(selected,oldText); restoreScroll(preferences.scroll);
+            applyAppearance(); void loadImages(renderedRoot());
             status.textContent = bridge.blocked ? "Visual draft retained; use Recover Draft." : "Markdown Editor";
             updateFind();
         },
     });
 }
 function renderViewer() {
-    if (preferences.mode === "preview") viewer.innerHTML = sanitize(editor.vditor.lute.Md2HTML(display(latest)));
+    if (preferences.mode === "preview") {
+        viewer.innerHTML = sanitize(editor.vditor.lute.Md2HTML(display(latest)),false,true);
+        renderMath(viewer);
+        void loadImages(viewer);
+        void highlightCode(viewer);
+    }
+}
+function renderMath(root            ) {
+    if(preferences.mode==="sv" || preferences.mode==="preview") {
+        for(const math of root.querySelectorAll             ('span.lathe-math,div.lathe-math')) {
+            const source=math.dataset.source ?? math.textContent ?? "";
+            if(math.dataset.source===source && math.dataset.renderer==="math")continue;
+            math.dataset.source=source;void renderFence(math,"math",source,plantuml).then(()=>refreshRenderedFind(math));
+        }
+        return;
+    }
+    for(const code of root.querySelectorAll             ('code[data-type="math-inline"],code[data-type="math-block"]')) {
+        const parent=code.closest             ('span[data-type="inline-node"],span.vditor-wysiwyg__block,div[data-type="math-block"]');
+        if(!parent)continue;
+        let preview=parent.querySelector             (':scope > .vditor-ir__preview,:scope > .vditor-wysiwyg__preview');
+        if(!preview){preview=document.createElement(code.dataset.type==="math-inline"?"span":"div");preview.className=preferences.mode==="ir"?"vditor-ir__preview":"vditor-wysiwyg__preview";preview.dataset.render="1";parent.append(preview);}
+        const source=(code.textContent ?? "").replace(/\u200b/g,"");
+        if(preview.dataset.source===source && preview.dataset.renderer==="math")continue;
+        preview.dataset.source=source;void renderFence(preview,"math",source,plantuml).then(()=>refreshRenderedFind(preview ));
+    }
+}
+function refreshRenderedFind(element            ) {
+    if(element.isConnected && active().contains(element))updateFind();
+}
+async function plantuml(source       )                 {
+    if (!appearance.plantuml_service) throw new Error("PlantUML requires an explicitly configured network service; it cannot render offline.");
+    const result=await requestResource("plantuml",source);
+    return new TextDecoder().decode(Uint8Array.from(atob(result.bytes),character=>character.charCodeAt(0)));
+}
+function parsedFences(source       )                                                  {
+    const tree=JSON.parse(editor.vditor.lute.RenderJSON(display(source))),result                                                 =[];
+    const visit=(node    )=>{
+        if(node.Type==="NodeCodeBlock" && node.IsFencedCodeBlock){
+            const language=new TextDecoder().decode(Uint8Array.from(atob(node.CodeBlockInfo??""),character=>character.charCodeAt(0))).trim().split(/\s+/)[0];
+            result.push({language,content:(node.Children?.find((child    )=>child.Type==="NodeCodeBlockCode")?.Data??"").replace(/\n$/,""),marker:String.fromCharCode(node.CodeBlockFenceChar).repeat(node.CodeBlockFenceLen)});
+        }
+        for(const child of node.Children??[])visit(child);
+    };visit(tree);return result;
+}
+function dedentFence(source       )        {
+    const indentation=source.match(/^[ \t]+/)?.[0]??"";
+    return source.split("\n").map(line=>line.startsWith(indentation)?line.slice(indentation.length):line).join("\n");
+}
+function fencedSourceSpans()                                          {
+    const result                                         =[],fences=parsedFences(latest);
+    let cursor=0;
+    for(const fence of fences){
+        const marker=fence.marker[0],opening=new RegExp(`^[ \\t]*(?:>[ \\t]*)*(?:(?:[-+*]|\\d+[.)])[ \\t]+)?(${marker}{${fence.marker.length},})[^\\r\\n]*`,'gm');
+        opening.lastIndex=cursor;
+        for(let match=opening.exec(latest);match;match=opening.exec(latest)){
+            const closing=new RegExp(`^[ \\t]*(?:>[ \\t]*)*${marker}{${match[1].length},}[ \\t]*(?=\\r?$)`,'gm');closing.lastIndex=match.index+match[0].length+1;
+            const close=closing.exec(latest),end=close?close.index+close[0].length:latest.length;
+            const candidate=latest.slice(match.index,end),direct=parsedFences(candidate);
+            const parsed=direct.length?direct:parsedFences(dedentFence(candidate));
+            if(parsed.length!==1 || parsed[0].language!==fence.language || parsed[0].content!==fence.content)continue;
+            result.push({start:match.index,end,label:match[0].slice(0,80)});cursor=end;break;
+        }
+    }
+    return result;
+}
+function renderCode() {
+    if(preferences.mode==="sv" || preferences.mode==="preview")return;
+    for(const block of active().querySelectorAll             ('[data-type="code-block"]')){
+        const code=block.querySelector             ('pre code'),language=code?.className.match(/language-([^\s]+)/)?.[1];
+        if(!code || rendererLanguages.includes(language??""))continue;
+        let preview=block.querySelector             (':scope > .vditor-ir__preview,:scope > .vditor-wysiwyg__preview');
+        if(!preview){preview=document.createElement('pre');preview.className=preferences.mode==="ir"?'vditor-ir__preview':'vditor-wysiwyg__preview';preview.dataset.render="1";block.append(preview);}
+        preview.contentEditable="false";
+        const source=code.textContent??"";
+        if(preview.dataset.codeSource===source)continue;
+        preview.dataset.codeSource=source;const rendered=document.createElement('code');rendered.className=code.className;rendered.textContent=source;preview.replaceChildren(rendered);
+        void highlightCode(preview);
+    }
+}
+function renderSourceFence(details            ,span                          ) {
+    const source=latest.slice(span.start,span.end);
+    const parsed=parsedFences(source)[0]??parsedFences(dedentFence(source))[0];
+    const fence=parsed ? [source,parsed.language,parsed.content] : null;
+    const match=fence ?? (source.startsWith("$") ? [source,"math",source.replace(/^\${1,2}|\${1,2}$/g,"").trim()] : null);
+    if (!match || !rendererLanguages.includes(match[1])) return;
+    let output=details.querySelector             (".renderer-output");
+    if (output?.dataset.source===source && (match[1]!=="plantuml" || output.dataset.service===(appearance.plantuml_service ?? ""))) return;
+    if (!output) { output=document.createElement("div"); output.className="renderer-output vditor-reset"; details.append(output); }
+    output.dataset.source=source; details.open=true; get("source-blocks").setAttribute("open","");
+    output.dataset.service=appearance.plantuml_service ?? "";
+    document.body.classList.add("has-renderers");
+    void renderFence(output,match[1],match[2],plantuml).then(()=>refreshRenderedFind(output ));
 }
 function headingElements() { return [...(preferences.mode === "sv" ? editor.vditor.preview.previewElement : active()).querySelectorAll             ("h1,h2,h3,h4,h5,h6")]; }
 function renderOutline() {
@@ -355,12 +671,27 @@ function renderOutline() {
 }
 function sourceSpans()                                           {
     const spans                                           = [];
+    const fences=fencedSourceSpans();
     const frontmatter = latest.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
     if (frontmatter) spans.push({start:0,end:frontmatter[0].length,label:"Front matter"});
-    for (const match of latest.matchAll(/(?:^<[^\r\n]+(?:\r?\n(?!(?:\r?\n))[^\r\n]+)*)|(?:^#{1,6}[^\r\n]*\{#[^}]+\}[^\r\n]*)|(?:^```[^\r\n]*\r?\n[\s\S]*?^```[^\r\n]*)|(?:^ {0,3}\[[^\]]+\]:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]+)*)/gm)) {
+    for (const match of latest.matchAll(/(?:^<[^\r\n]+(?:\r?\n(?!(?:\r?\n))[^\r\n]+)*)|(?:^#{1,6}[^\r\n]*\{#[^}]+\}[^\r\n]*)|(?:^ {0,3}\[[^\]]+\]:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]+)*)/gm)) {
+        if(fences.some(span=>match.index<span.end && match.index+match[0].length>span.start))continue;
         spans.push({start:match.index,end:match.index+match[0].length,label:match[0].split(/\r?\n/)[0].slice(0,80)});
     }
-    return spans;
+    spans.push(...fences);
+    const parsed=document.createElement("template"); parsed.innerHTML=editor.vditor.lute.Md2HTML(display(latest));
+    const math=[...parsed.content.querySelectorAll(".lathe-math")].map(element=>element.textContent?.trim());
+    const inlineCode=[...latest.matchAll(/(`+)[^\r\n]*?\1/g)].map(match=>({start:match.index,end:match.index+match[0].length}));
+    for(const expression of new Set(math)) {
+        if(!expression)continue;
+        const escaped=expression.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\n/g,"\\r?\\n");
+        for(const match of latest.matchAll(new RegExp(`(?<!\\\\)\\$\\$\\s*${escaped}\\s*\\$\\$|(?<!\\\\)\\$(?!\\$)${escaped}\\$`,"g"))) {
+            const start=match.index,end=start+match[0].length;
+            if([...spans,...inlineCode].some(span=>start<span.end && end>span.start))continue;
+            spans.push({start,end,label:match[0].startsWith("$$")?"Block math":"Inline math"});
+        }
+    }
+    return spans.sort((left,right)=>left.start-right.start);
 }
 function updateSourceControls(text       , edited                                                                 ) {
     // Diffing identical adjacent source blocks can assign a textarea edit to the
@@ -383,6 +714,7 @@ function updateSourceControls(text       , edited                               
     latest = text;
 }
 function renderSourceBlocks() {
+    if(ready && !bridge.composing && !sourceEditor){renderMath(renderedRoot());renderCode();}
     if (sourceEditor && document.activeElement === sourceEditor) return;
     const blocks = get("blocks"), retained = new Map(sourceControls); sourceEditor = null;
     let index = 0;
@@ -391,6 +723,7 @@ function renderSourceBlocks() {
         if (existing) {
             const [field] = existing, details = field.parentElement ;
             details.querySelector("summary") .textContent = span.label;
+            renderSourceFence(details,span);
             if (blocks.children[index] !== details) blocks.insertBefore(details,blocks.children[index] ?? null);
             retained.delete(field); index++; continue;
         }
@@ -416,8 +749,8 @@ function renderSourceBlocks() {
             if (bridge.blocked) { permissions(); return; }
             projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false; renderOutline(); updateFind();
         });
-        field.addEventListener("blur",() => { sourceEditor = null; renderSourceBlocks(); });
-        details.append(label,field); blocks.insertBefore(details,blocks.children[index] ?? null); index++;
+        field.addEventListener("blur",() => { rememberImageCaret();sourceEditor = null; renderSourceBlocks(); });
+        details.append(label,field); renderSourceFence(details,span); blocks.insertBefore(details,blocks.children[index] ?? null); index++;
     }
     for (const field of retained.keys()) { field.parentElement?.remove(); sourceControls.delete(field); }
     get("source-blocks").hidden = !blocks.childElementCount;
@@ -504,6 +837,8 @@ document.addEventListener("beforeinput",event => {
     else captureIntent(undefined,input.inputType === "deleteContentBackward" ? "backward" : input.inputType === "deleteContentForward" ? "forward" : undefined);
 },true);
 document.addEventListener("paste",event => {
+    const field=event.target instanceof HTMLTextAreaElement && sourceControls.has(event.target) ? event.target : undefined;
+    if((container.contains(event.target        ) || field) && event.clipboardData?.files.length) { event.preventDefault();event.stopImmediatePropagation();void importFiles([...event.clipboardData.files],field);return; }
     if (event.target instanceof HTMLTextAreaElement && get("source-blocks").contains(event.target)) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (!bridge.writable || bridge.blocked || preferences.mode === "preview") return;
@@ -523,7 +858,8 @@ document.addEventListener("paste",event => {
     editor.insertValue(markdown); commit();
 },true);
 document.addEventListener("drop",event => {
-    if (container.contains(event.target        )) { event.preventDefault(); event.stopImmediatePropagation(); status.textContent = "File import is unavailable."; }
+    const field=event.target instanceof HTMLTextAreaElement && sourceControls.has(event.target) ? event.target : undefined;
+    if (container.contains(event.target        ) || field) { event.preventDefault(); event.stopImmediatePropagation();if(event.dataTransfer?.files.length)void importFiles([...event.dataTransfer.files],field); }
 },true);
 document.addEventListener("copy",event => {
     if (event.target instanceof HTMLTextAreaElement && get("source-blocks").contains(event.target)) {
@@ -545,11 +881,23 @@ document.addEventListener("selectionchange",() => {
     const selected = selection(); if (!selected) return;
     bridge.emit({kind:"input_state",text:active().textContent ?? "",start:selected.start,end:selected.end});
 });
-document.addEventListener("scroll",() => {
+document.addEventListener("focusout",event=>{
+    if(active().contains(event.target        ))rememberImageCaret();
+},true);
+document.addEventListener("scroll",event => {
     if (!ready || projecting) return;
+    const target=event.target;
+    if(target instanceof HTMLElement && (container.contains(target) || viewer.contains(target))) {
+        if(restoredScrollPositions.get(target)!==target.scrollTop)readingGeneration++;
+        restoredScrollPositions.delete(target);
+    }
     const scroll = Math.min(100_000_000,Math.round(Math.max(0,scrollElement().scrollTop)));
     if (scroll !== preferences.scroll) { preferences.scroll = scroll; persist(); }
+    lineNumbers();
 },true);
+document.addEventListener("wheel",()=>readingGeneration++,true);
+document.addEventListener("touchmove",()=>readingGeneration++,true);
+document.addEventListener("keydown",event=>{if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"," "].includes(event.key))readingGeneration++;},true);
 
 const findBar = get("find"), query = get("query")                    , matchCase = get("case")                    ;
 let matches          = [], currentMatch = -1;
@@ -615,8 +963,31 @@ get("reset").addEventListener("click",() => {
     bridge.afterFlush.push(() => { preferences = defaults(); persist(); build(); }); bridge.submit(); bridge.finishFlush();
 });
 get("copy-markdown").addEventListener("click",() => { commit(); bridge.emit({kind:"copy",text:bridge.draft}); });
-get("copy-html").addEventListener("click",() => bridge.emit({kind:"copy",text:sanitize(editor.getHTML())}));
-(window       ).latheRich = {openFind,mode,format,commit,projection,sanitize, get editor() {return editor;}, get ready() {return ready;},
+get("copy-html").addEventListener("click",() => {
+    const template=document.createElement("template");template.innerHTML=sanitize(editor.getHTML(),false,true);
+    for(const image of template.content.querySelectorAll("img[data-lathe-image],img[data-lathe-original]")) {
+        image.setAttribute("src",image.getAttribute("data-lathe-original")??image.getAttribute("data-lathe-image")??"");image.removeAttribute("data-lathe-original");image.removeAttribute("data-lathe-image");
+    }
+    bridge.emit({kind:"copy",text:template.innerHTML});
+});
+for(const [name,values] of [["content-theme",themes.content],["code-theme",themes.code]]         ) {
+    const select=get(name)                     ;
+    for(const value of values){const option=document.createElement("option");option.value=value;option.textContent=value;select.append(option);}
+    select.addEventListener("change",()=>{if(name==="content-theme")preferences.content_theme=select.value||null;else preferences.code_theme=select.value||null;persist();applyAppearance();});
+}
+get("insert-image").addEventListener("mousedown",()=>{if(sourceEditor || active().contains(document.activeElement))rememberImageCaret();});
+get("insert-image").addEventListener("click",()=>{
+    if(imageCaret && "error" in imageCaret){status.textContent=imageCaret.error;return;}
+    importAfterFlush({kind:"pick_images",clipboard:false},imageCaret?.position,imageCaret?.source);
+});
+window.addEventListener("beforeunload",()=>{for(const url of imageUrls)URL.revokeObjectURL(url);});
+(window       ).latheRich = {openFind,mode,format,commit,projection,sanitize,
+    nativePaste:(text="")=>{
+        const focused=document.activeElement;
+        if(active().contains(focused) || focused instanceof HTMLTextAreaElement && sourceControls.has(focused))importAfterFlush({kind:"pick_images",clipboard:true});
+        else if(focused instanceof HTMLInputElement && focused.selectionStart!==null || focused instanceof HTMLTextAreaElement){focused.setRangeText(text,focused.selectionStart??0,focused.selectionEnd??0,"end");focused.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertFromPaste",data:text}));}
+    }, nativeDrop:()=>importAfterFlush({kind:"pick_images",clipboard:false,drop:true}),
+    get editor() {return editor;}, get ready() {return ready;},
     replaceText(before       ,after       ) {
         const node = textNodes(active()).find(node => node.data.includes(before));
         if (!node) throw new Error(`Rendered text not found: ${before}`);
