@@ -2408,6 +2408,7 @@ fn normalize_transcript_text(
 ) {
     let mut cursor = 0;
     let mut plain_start = 0;
+    let mut pending_context_attachment = None;
     while cursor < text.len() {
         let remaining = &text[cursor..];
         if cursor == 0 || text.as_bytes().get(cursor - 1) == Some(&b'\n') {
@@ -2442,14 +2443,28 @@ fn normalize_transcript_text(
         }
         if remaining.starts_with('`') {
             let length = remaining.bytes().take_while(|byte| *byte == b'`').count();
-            let delimiter = &remaining[..length];
             cursor += length;
-            cursor = text[cursor..]
-                .find(delimiter)
-                .map_or(text.len(), |closing| cursor + closing + length);
+            while cursor < text.len() {
+                let Some(closing) = text[cursor..].find('`') else {
+                    cursor = text.len();
+                    break;
+                };
+                cursor += closing;
+                let closing_length = text[cursor..]
+                    .bytes()
+                    .take_while(|byte| *byte == b'`')
+                    .count();
+                cursor += closing_length;
+                if closing_length == length {
+                    break;
+                }
+            }
             continue;
         }
         if remaining.starts_with("<context") {
+            if pending_context_attachment.is_some() {
+                break;
+            }
             if remaining.find("</context>").is_some_and(|closing| {
                 remaining
                     .get(1..closing)
@@ -2491,11 +2506,19 @@ fn normalize_transcript_text(
         let link_end = cursor + uri_end + 1;
         let uri = &candidate[uri_start..uri_end];
         let label = &candidate[2..name_end];
+        let valid_mention = !label.is_empty()
+            && !uri
+                .chars()
+                .any(|character| character.is_control() || matches!(character, '"' | '<' | '>'))
+            && MentionUri::parse(uri, path_style).is_ok();
         let following = &text[link_end..];
         let context = following.trim_start_matches([' ', '\t', '\r', '\n']);
         let (end, body) = if context.starts_with("<context")
             || (!context.is_empty() && "<context".starts_with(context))
         {
+            if valid_mention {
+                pending_context_attachment = None;
+            }
             let Some(closing) = context.find("</context>") else {
                 break;
             };
@@ -2541,14 +2564,14 @@ fn normalize_transcript_text(
         } else {
             (link_end, None)
         };
-        if label.is_empty()
-            || uri
-                .chars()
-                .any(|character| character.is_control() || matches!(character, '"' | '<' | '>'))
-            || MentionUri::parse(uri, path_style).is_err()
-        {
+        if !valid_mention {
             cursor = end;
             continue;
+        }
+        if body.is_some() {
+            // A later unpaired context tag can reveal that the first closing
+            // tag belonged to captured text, so keep this conversion reversible.
+            pending_context_attachment = Some((normalized.len(), plain_start));
         }
         if plain_start < cursor {
             normalized.push(text[plain_start..cursor].to_owned().into());
@@ -2563,6 +2586,12 @@ fn normalize_transcript_text(
         });
         cursor = end;
         plain_start = end;
+    }
+    if cursor < text.len()
+        && let Some((block_index, text_start)) = pending_context_attachment
+    {
+        normalized.truncate(block_index);
+        plain_start = text_start;
     }
     if plain_start < text.len() {
         normalized.push(text[plain_start..].to_owned().into());
@@ -2824,6 +2853,95 @@ mod tests {
                 normalize_transcript_message(&source, PathStyle::Windows),
                 source,
                 "must preserve {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_ambiguous_closing_tags_stay_literal() {
+        let uri = "file:///D:/f.txt";
+        for newline in ["\n", "\r\n"] {
+            let body = [
+                "first",
+                "</context>",
+                "<context>",
+                "second",
+                "</context>",
+                "third",
+            ]
+            .join(newline);
+            let source = vec![transcript_attachment(uri, &body, newline).into()];
+            assert_eq!(
+                normalize_transcript_message(&source, PathStyle::Windows),
+                source,
+                "ambiguous closing tags must retain the full captured envelope"
+            );
+            let valid = transcript_attachment("file:///D:/first.txt", "valid", newline);
+            let ambiguous = transcript_attachment(uri, &body, newline);
+            let combined = vec![format!("{valid}{newline}{ambiguous}").into()];
+            assert_eq!(
+                normalize_transcript_message(&combined, PathStyle::Windows),
+                vec![
+                    acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+                        acp_v2::EmbeddedResourceResource::TextResourceContents(
+                            acp_v2::TextResourceContents::new("valid", "file:///D:/first.txt"),
+                        ),
+                    )),
+                    format!("{newline}{ambiguous}").into(),
+                ],
+                "a preceding valid attachment must survive the ambiguous fallback"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_valid_attachment_before_incomplete_envelope() {
+        let uri = "file:///D:/first.txt";
+        let valid = transcript_attachment(uri, "valid", "\n");
+        for incomplete in [
+            "[@second](file:///D:/second.txt)\n<context ref=\"file:///D:/second.txt\">\nunfinished",
+            "[@second](file:///D:/second.txt)\n<con",
+        ] {
+            let source = vec![format!("{valid}\n{incomplete}").into()];
+            assert_eq!(
+                normalize_transcript_message(&source, PathStyle::Windows),
+                vec![
+                    acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+                        acp_v2::EmbeddedResourceResource::TextResourceContents(
+                            acp_v2::TextResourceContents::new("valid", uri),
+                        ),
+                    )),
+                    format!("\n{incomplete}").into(),
+                ],
+                "a distinct incomplete envelope must not undo the prior valid attachment"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_inline_code_requires_exact_backtick_runs() {
+        let uri = "file:///D:/f.txt";
+        for literal in [
+            format!("[@f]({uri})"),
+            transcript_attachment(uri, "captured", "\n"),
+        ] {
+            let code = format!("``literal ``` then ` {literal}``");
+            let source = vec![code.clone().into()];
+            assert_eq!(
+                normalize_transcript_message(&source, PathStyle::Windows),
+                source,
+                "longer and shorter runs must not close the double-backtick code span"
+            );
+            assert_eq!(
+                normalize_transcript_message(
+                    &[format!("{code} [@outside]({uri})").into()],
+                    PathStyle::Windows,
+                ),
+                vec![
+                    format!("{code} ").into(),
+                    acp_v2::ContentBlock::ResourceLink(acp_v2::ResourceLink::new("outside", uri)),
+                ],
+                "recognition must resume after the matching double-backtick run"
             );
         }
     }
@@ -6135,6 +6253,34 @@ mod tests {
 
         cx.run_until_parked();
         (message_editor, cx)
+    }
+
+    #[gpui::test]
+    async fn test_transcript_ambiguous_context_regeneration_retains_complete_body(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (message_editor, cx) = setup_message_editor(cx).await;
+        let body = "first\n</context>\n<context>\nsecond\n</context>\nthird";
+        let replay = format!(
+            "Before {}, request after",
+            transcript_attachment("file:///D:/f.txt", body, "\n")
+        );
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.session_capabilities.write().set_prompt_capabilities(
+                acp_v2::PromptCapabilities::new()
+                    .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
+            );
+            editor.set_transcript_message(vec![replay.clone().into()], window, cx);
+            assert_eq!(editor.text(cx), replay);
+            assert!(editor.mention_set.read(cx).is_empty());
+        });
+        let (serialized, tracked_buffers) = message_editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .expect("serialize literal historical envelope");
+        assert_eq!(serialized, vec![replay.into()]);
+        assert!(tracked_buffers.is_empty());
     }
 
     #[gpui::test]
