@@ -48,7 +48,7 @@ The required Windows repository wrapper passed: `./script/clippy.ps1 -p agent_ui
 
 These GUI results use the local fixture matching the inspected Codex ACP 2.2.2 envelope, not actual provider replay. The installed adapter and the reported user session were not invoked, submitted to, or modified. The fixture and tests verify supported flattened text at the real transcript boundary; they do not establish serialization behavior for every agent/version. No agent-server crate changed, so its crate-specific tests were not required.
 
-## Independent review fixes
+## First independent review fixes
 
 Review identified two conservative-parser gaps. A captured body containing `first\n</context>\n<context>\nsecond\n</context>\nthird` was truncated into a resource containing only `first`, with the remainder exposed as prompt text. A double-backtick code span containing a triple-backtick run followed by a single-backtick run could convert a literal mention link or attachment envelope.
 
@@ -57,3 +57,21 @@ Focused tests were authored and run before the fixes. Both parser regressions fa
 Final automated verification passed 82 unique relevant tests: 53 message-editor tests, 19 thread-search tests, four message-editing tests, three restored-prompt GPUI tests, and the existing focused-refresh, source-editability, and compact-viewport regressions. Coverage includes both literal code payloads, LF/CRLF ambiguous envelopes, complete fallback serialization for regeneration, preceding valid attachments, and recognition resuming after an exact code-span close. Scoped Rust formatting for all four implementation files and `git diff --check` passed. The required `./script/clippy.ps1 -p agent_ui --target x86_64-pc-windows-msvc` wrapper passed in release mode with all targets, all features, and warnings denied (exit 0, 36.09 seconds). The final `message_editor.rs` source blob is `5bd38464087e7b930130b7719acd50a3bf524af0`.
 
 The screenshots and executable hashes above precede these parser guard fixes and remain evidence of the initial restoration implementation. The final parser changes were verified by the automated editor and fresh-view integration tests; no second GUI build or actual provider replay was performed.
+
+## Second independent review fixes
+
+The second review found that a valid-looking mention inside an ambiguous captured body cleared rollback state before its context envelope was validated. The body `first\n</context>\n[@inner](file:///D:/inner.txt)\n<context ref="file:///D:/inner.txt">\nsecond\n</context>\nthird` therefore left an outer resource containing only `first`. It also found that list/quote prefixes on closing-fence candidates were stripped even for a root fence, so `~~~text\n- ~~~\n[@f](file:///D:/f.txt)\n~~~` incorrectly exposed a mention within literal code.
+
+Before production edits, these three test filters each failed (exit 101, zero passed and one failed), using `cargo test --offline -p agent_ui <filter> -- --nocapture`:
+
+- `test_normalize_transcript_message_ambiguous_body_with_inner_mention_stays_literal`: observed the truncated outer resource and raw remainder.
+- `test_normalize_transcript_message_closing_fence_respects_opening_container`: observed the standalone mention converted after the false `- ~~~` close.
+- `test_transcript_ambiguous_context_regeneration_retains_complete_body`: observed the outer wrapper/body missing from the editor presentation before serialization.
+
+The fixes preserve rollback while a following complete envelope is validated, and retain the existing separate-incomplete-wrapper boundary. Fence closing now checks the opening quote depth, list continuation indentation, marker, length, and empty suffix without treating a new list marker as a close. Green coverage includes LF/CRLF ambiguous bodies with inner mentions, preceding valid attachments, incomplete-wrapper separation, standalone links and complete attachment envelopes in tilde/backtick fences, list/quote/over-indented/tab false closes, valid root/list/quote closes, resumed recognition, and full literal regeneration output.
+
+Final verification passed **84 unique relevant tests**: 55 under `message_editor::tests`, 19 under `thread_search`, four under `test_message_editing_`, three under `test_restored_prompt_`, and one each for `test_focused_read_only_keyed_user_message_refreshes_supported_snapshot`, `test_unsupported_source_message_cannot_regenerate`, and `test_super_compact_settings_preserve_open_viewport_and_tail`. The three red filters all passed in the 55-test editor suite. Debug tests used `CARGO_TARGET_DIR=D:/tmp/lathe-prompt-restore-target`, host targeting, offline Cargo, Rust 1.98.1, the explicit VS 2022 Build Tools shell with `-Arch amd64 -HostArch amd64 -SkipAutomaticLocation`, and CMake; release/channel/bundle/version/commit overrides were absent.
+
+Scoped `rustfmt --edition 2024 --check` on all four implementation Rust files and `git diff --check` passed. The repository wrapper `./script/clippy.ps1 -p agent_ui --target x86_64-pc-windows-msvc` passed with release mode, all targets, all features, and warnings denied (exit 0, 31.92 seconds). Clippy used the separate release target directory `D:/tmp/lathe-prompt-restore-release-target` and the documented Dev-channel build environment. An initial in-process PowerShell invocation stopped on a package-cache lock diagnostic because the wrapper sets `ErrorActionPreference=Stop`; invoking the unchanged wrapper through a child PowerShell process completed successfully. No source changes were made to work around checks. The verified `message_editor.rs` Git blob is `75d46fc4821acc5f76fb4674e741c5d0e8aef523`.
+
+The screenshots and executable provenance above remain historical evidence from before both review fixes. This pass changed parser guards and tests only and did not rebuild the GUI. Final fresh-view integration remains green. Actual provider replay, the installed adapter, and the user's reported session were not exercised or changed; the local fixture verifies only the supported editor-boundary serialization.

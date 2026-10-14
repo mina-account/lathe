@@ -2414,16 +2414,14 @@ fn normalize_transcript_text(
         if cursor == 0 || text.as_bytes().get(cursor - 1) == Some(&b'\n') {
             let line_end = cursor + remaining.find('\n').unwrap_or(remaining.len());
             let line = &text[cursor..line_end];
-            if let Some((marker, length, _)) = transcript_code_fence(line) {
+            if let Some(fence) = transcript_code_fence(line) {
                 cursor = (line_end + 1).min(text.len());
                 while cursor < text.len() {
                     let remaining = &text[cursor..];
                     let line_end = cursor + remaining.find('\n').unwrap_or(remaining.len());
                     let line = &text[cursor..line_end];
                     cursor = (line_end + 1).min(text.len());
-                    if transcript_code_fence(line).is_some_and(|(closing, count, empty_suffix)| {
-                        closing == marker && count >= length && empty_suffix
-                    }) {
+                    if fence.is_closed_by(line) {
                         break;
                     }
                 }
@@ -2516,10 +2514,12 @@ fn normalize_transcript_text(
         let (end, body) = if context.starts_with("<context")
             || (!context.is_empty() && "<context".starts_with(context))
         {
-            if valid_mention {
-                pending_context_attachment = None;
-            }
             let Some(closing) = context.find("</context>") else {
+                // A distinct incomplete wrapper cannot reveal a second closing
+                // tag, so it does not invalidate the preceding attachment.
+                if valid_mention {
+                    pending_context_attachment = None;
+                }
                 break;
             };
             let end = text.len() - context.len() + closing + "</context>".len();
@@ -2598,9 +2598,56 @@ fn normalize_transcript_text(
     }
 }
 
-fn transcript_code_fence(line: &str) -> Option<(u8, usize, bool)> {
-    let line = line.trim_start_matches([' ', '\t', '>']);
-    let line = line
+struct TranscriptCodeFence {
+    marker: u8,
+    length: usize,
+    quote_depth: usize,
+    continuation_indent: usize,
+}
+
+impl TranscriptCodeFence {
+    fn is_closed_by(&self, line: &str) -> bool {
+        let (quote_depth, line) = transcript_fence_quote_prefix(line);
+        if quote_depth != self.quote_depth {
+            return false;
+        }
+        let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+        if indentation < self.continuation_indent || indentation > self.continuation_indent + 3 {
+            return false;
+        }
+        let line = &line[indentation..];
+        let length = line.bytes().take_while(|byte| *byte == self.marker).count();
+        length >= self.length
+            && line
+                .get(length..)
+                .is_some_and(|suffix| suffix.trim().is_empty())
+    }
+}
+
+fn transcript_fence_quote_prefix(mut line: &str) -> (usize, &str) {
+    let mut quote_depth = 0;
+    loop {
+        let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+        if indentation > 3 {
+            break;
+        }
+        let Some(remaining) = line[indentation..].strip_prefix('>') else {
+            break;
+        };
+        quote_depth += 1;
+        line = remaining.strip_prefix(' ').unwrap_or(remaining);
+    }
+    (quote_depth, line)
+}
+
+fn transcript_code_fence(line: &str) -> Option<TranscriptCodeFence> {
+    let (quote_depth, line) = transcript_fence_quote_prefix(line);
+    let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indentation > 3 {
+        return None;
+    }
+    let line = &line[indentation..];
+    let list_content = line
         .strip_prefix("- ")
         .or_else(|| line.strip_prefix("* "))
         .or_else(|| line.strip_prefix("+ "))
@@ -2613,21 +2660,23 @@ fn transcript_code_fence(line: &str) -> Option<(u8, usize, bool)> {
             suffix
                 .strip_prefix(". ")
                 .or_else(|| suffix.strip_prefix(") "))
-        })
-        .unwrap_or(line)
-        .trim_start();
+        });
+    let (line, continuation_indent) = if let Some(content) = list_content {
+        let remaining = content.trim_start_matches(' ');
+        (remaining, indentation + line.len() - remaining.len())
+    } else {
+        (line, 0)
+    };
     let marker = *line.as_bytes().first()?;
     if !matches!(marker, b'`' | b'~') {
         return None;
     }
     let length = line.bytes().take_while(|byte| *byte == marker).count();
-    (length >= 3).then(|| {
-        (
-            marker,
-            length,
-            line.get(length..)
-                .is_some_and(|suffix| suffix.trim().is_empty()),
-        )
+    (length >= 3).then_some(TranscriptCodeFence {
+        marker,
+        length,
+        quote_depth,
+        continuation_indent,
     })
 }
 
@@ -2914,6 +2963,111 @@ mod tests {
                     format!("\n{incomplete}").into(),
                 ],
                 "a distinct incomplete envelope must not undo the prior valid attachment"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_ambiguous_body_with_inner_mention_stays_literal() {
+        for newline in ["\n", "\r\n"] {
+            let body = [
+                "first",
+                "</context>",
+                "[@inner](file:///D:/inner.txt)",
+                "<context ref=\"file:///D:/inner.txt\">",
+                "second",
+                "</context>",
+                "third",
+            ]
+            .join(newline);
+            let ambiguous = transcript_attachment("file:///D:/outer.txt", &body, newline);
+            let source = vec![ambiguous.clone().into()];
+            assert_eq!(
+                normalize_transcript_message(&source, PathStyle::Windows),
+                source,
+                "an inner mention must not commit a truncated outer attachment"
+            );
+            let valid = transcript_attachment("file:///D:/first.txt", "valid", newline);
+            assert_eq!(
+                normalize_transcript_message(
+                    &[format!("{valid}{newline}{ambiguous}").into()],
+                    PathStyle::Windows,
+                ),
+                vec![
+                    acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+                        acp_v2::EmbeddedResourceResource::TextResourceContents(
+                            acp_v2::TextResourceContents::new("valid", "file:///D:/first.txt"),
+                        ),
+                    )),
+                    format!("{newline}{ambiguous}").into(),
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_closing_fence_respects_opening_container() {
+        let uri = "file:///D:/f.txt";
+        for newline in ["\n", "\r\n"] {
+            for literal in [
+                format!("[@f]({uri})"),
+                transcript_attachment(uri, "captured", newline),
+            ] {
+                for marker in ["~~~", "````"] {
+                    for false_close in [
+                        format!("- {marker}"),
+                        format!("* {marker}"),
+                        format!("+ {marker}"),
+                        format!("1. {marker}"),
+                        format!("> {marker}"),
+                        format!("    {marker}"),
+                        format!("\t{marker}"),
+                    ] {
+                        let code = format!(
+                            "{marker}text{newline}{false_close}{newline}{literal}{newline}{marker}"
+                        );
+                        assert_eq!(
+                            normalize_transcript_message(
+                                &[code.clone().into()],
+                                PathStyle::Windows
+                            ),
+                            vec![code.clone().into()],
+                            "{false_close:?} cannot close a root fence"
+                        );
+                        assert_eq!(
+                            normalize_transcript_message(
+                                &[format!("{code}{newline}[@outside]({uri})").into()],
+                                PathStyle::Windows,
+                            ),
+                            vec![
+                                format!("{code}{newline}").into(),
+                                acp_v2::ContentBlock::ResourceLink(acp_v2::ResourceLink::new(
+                                    "outside", uri
+                                )),
+                            ],
+                            "recognition must resume after the actual closing fence"
+                        );
+                    }
+                }
+            }
+        }
+        for code in [
+            "- ~~~text\n  [@f](file:///D:/f.txt)\n  ~~~",
+            "1. ~~~text\n   [@f](file:///D:/f.txt)\n   ~~~",
+            "> ~~~text\n> [@f](file:///D:/f.txt)\n> ~~~",
+            "> - ~~~text\n>   [@f](file:///D:/f.txt)\n>   ~~~",
+            "   ~~~text\n[@f](file:///D:/f.txt)\n ~~~",
+        ] {
+            assert_eq!(
+                normalize_transcript_message(
+                    &[format!("{code}\n[@outside]({uri})").into()],
+                    PathStyle::Windows,
+                ),
+                vec![
+                    format!("{code}\n").into(),
+                    acp_v2::ContentBlock::ResourceLink(acp_v2::ResourceLink::new("outside", uri)),
+                ],
+                "valid container fences must close and resume recognition"
             );
         }
     }
@@ -6261,7 +6415,7 @@ mod tests {
     ) {
         init_test(cx);
         let (message_editor, cx) = setup_message_editor(cx).await;
-        let body = "first\n</context>\n<context>\nsecond\n</context>\nthird";
+        let body = "first\n</context>\n[@inner](file:///D:/inner.txt)\n<context ref=\"file:///D:/inner.txt\">\nsecond\n</context>\nthird";
         let replay = format!(
             "Before {}, request after",
             transcript_attachment("file:///D:/f.txt", body, "\n")
