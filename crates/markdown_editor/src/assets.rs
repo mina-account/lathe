@@ -863,6 +863,103 @@ mod tests {
         }
     }
 
+    #[gpui::test]
+    async fn source_caret_picker_requests_insert_save_and_undo_at_valid_utf16_offsets(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        use workspace::item::Item as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (incoming, _) = attach_pump(&visual, cx);
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{"ensure_final_newline_on_save":false,"format_on_save":"off"}"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("exact save settings");
+            })
+        });
+        filesystem
+            .write(path!("/project/caret.png").as_ref(), &png())
+            .await
+            .expect("picker image");
+        let source = "Before 😀\n\n```rust\nfn main() {}\n```\n\nTail";
+        visual.update(cx, |item, cx| {
+            item.buffer.update(cx, |buffer, cx| {
+                let length = buffer.snapshot().len();
+                buffer.edit([(0..length, source)], None, cx);
+            })
+        });
+        cx.run_until_parked();
+        let offset = source.find("main").expect("source marker") + 2;
+        let prefix = source.get(..offset).expect("prefix boundary");
+        let suffix = source.get(offset..).expect("suffix boundary");
+        for mode in [
+            protocol::Mode::Ir,
+            protocol::Mode::Wysiwyg,
+            protocol::Mode::Sv,
+        ] {
+            let request = visual.read_with(cx, |item, _| {
+                let mut preferences = item.preferences.clone();
+                preferences.mode = mode;
+                incoming
+                    .borrow_mut()
+                    .push(protocol::ClientMessage::Preferences {
+                        session: item.protocol.session.clone(),
+                        document: item.protocol.document,
+                        preferences,
+                    });
+                protocol::ClientMessage::PickImages {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    base_revision: item.protocol.revision,
+                    position: prefix.encode_utf16().count(),
+                    clipboard: false,
+                    drop: false,
+                }
+            });
+            incoming.borrow_mut().push(request);
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            cx.run_until_parked();
+            assert!(cx.did_prompt_for_paths());
+            cx.simulate_path_prompt_response(|_| {
+                Some(vec![PathBuf::from(path!("/project/caret.png"))])
+            });
+            cx.run_until_parked();
+            let inserted = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+            assert!(
+                inserted.starts_with(&format!("{prefix}![image](assets/caret-")),
+                "{inserted}"
+            );
+            assert!(inserted.ends_with(suffix));
+            let project = visual.read_with(cx, |item, cx| {
+                item.source.read(cx).project().expect("project").clone()
+            });
+            let save = visual.update_in(cx, |item, window, cx| {
+                item.save(Default::default(), project, window, cx)
+            });
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            save.await.expect("caret source save");
+            assert_eq!(
+                filesystem
+                    .read_file_sync(path!("/project/docs/doc.md"))
+                    .expect("saved bytes"),
+                inserted.as_bytes()
+            );
+            visual.update(cx, |item, cx| {
+                item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+            });
+            cx.run_until_parked();
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                source
+            );
+        }
+    }
+
     #[gpui::test(iterations = 20)]
     async fn overlapping_image_requests_and_revision_races_keep_the_pump_editable(
         cx: &mut TestAppContext,

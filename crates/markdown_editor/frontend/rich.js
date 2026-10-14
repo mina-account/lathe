@@ -15,6 +15,7 @@ const container = get("document"), viewer = get("viewer"), outline = get("outlin
 const parameters = new URL(location.href).searchParams;
 let editor      = null, generation = 0, projecting = false, ready = false, preferences = defaults();
 let latest = "", sourceEditor                             = null;
+let imageCaret                                                    =null;
 let lastSerialized = "";
 const sourceControls = new Map                                               ();
 
@@ -211,6 +212,12 @@ function insertionPosition()        {
     const offset=prefix.toString().length;
     const marked=(range.startContainer instanceof Element?range.startContainer:range.startContainer.parentElement)?.closest('strong,em,s,del,a,code,[data-type="strong"],[data-type="em"]');
     return projection.sourceOffset(start+mapping.sourceOffset(offset,marked && offset>0?"end":"start"));
+}
+function rememberImageCaret() {
+    if(!ready || projecting || bridge.composing)return;
+    commit();if(bridge.blocked)return;
+    try{imageCaret={position:insertionPosition(),source:latest};}
+    catch(error){imageCaret={error:String(error)};}
 }
 function importAfterFlush(input                                   ,position        ,source        ) {
     if (!ready || !bridge.writable || bridge.blocked || preferences.mode==="preview" || bridge.composing)return;
@@ -699,7 +706,7 @@ function renderSourceBlocks() {
             if (bridge.blocked) { permissions(); return; }
             projecting = true; editor.setValue(display(source),true); lastSerialized=editor.getValue(); projection.reset(source,lastSerialized); projecting = false; renderOutline(); updateFind();
         });
-        field.addEventListener("blur",() => { sourceEditor = null; renderSourceBlocks(); });
+        field.addEventListener("blur",() => { rememberImageCaret();sourceEditor = null; renderSourceBlocks(); });
         details.append(label,field); renderSourceFence(details,span); blocks.insertBefore(details,blocks.children[index] ?? null); index++;
     }
     for (const field of retained.keys()) { field.parentElement?.remove(); sourceControls.delete(field); }
@@ -829,6 +836,9 @@ document.addEventListener("selectionchange",() => {
     const selected = selection(); if (!selected) return;
     bridge.emit({kind:"input_state",text:active().textContent ?? "",start:selected.start,end:selected.end});
 });
+document.addEventListener("focusout",event=>{
+    if(active().contains(event.target        ))rememberImageCaret();
+},true);
 document.addEventListener("scroll",() => {
     if (!ready || projecting) return;
     const scroll = Math.min(100_000_000,Math.round(Math.max(0,scrollElement().scrollTop)));
@@ -915,9 +925,11 @@ for(const [name,values] of [["content-theme",themes.content],["code-theme",theme
     for(const value of values){const option=document.createElement("option");option.value=value;option.textContent=value;select.append(option);}
     select.addEventListener("change",()=>{if(name==="content-theme")preferences.content_theme=select.value||null;else preferences.code_theme=select.value||null;persist();applyAppearance();});
 }
-let pickerPosition                                     =null;
-get("insert-image").addEventListener("mousedown",()=>{commit();pickerPosition={position:insertionPosition(),source:latest};});
-get("insert-image").addEventListener("click",()=>{const captured=pickerPosition;pickerPosition=null;importAfterFlush({kind:"pick_images",clipboard:false},captured?.position,captured?.source);});
+get("insert-image").addEventListener("mousedown",()=>{if(sourceEditor || active().contains(document.activeElement))rememberImageCaret();});
+get("insert-image").addEventListener("click",()=>{
+    if(imageCaret && "error" in imageCaret){status.textContent=imageCaret.error;return;}
+    importAfterFlush({kind:"pick_images",clipboard:false},imageCaret?.position,imageCaret?.source);
+});
 window.addEventListener("beforeunload",()=>{for(const url of imageUrls)URL.revokeObjectURL(url);});
 (window       ).latheRich = {openFind,mode,format,commit,projection,sanitize,
     nativePaste:(text="")=>{

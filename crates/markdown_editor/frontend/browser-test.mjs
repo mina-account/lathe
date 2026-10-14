@@ -1018,12 +1018,46 @@ test("CommonMark renderer fences render every presentation while source stays ex
 });
 
 test("picker click retains the source textarea caret through flush",async()=>{
-    const source="Before\r\n\r\n```rust\r\nfn main() {}\r\n```\r\n\r\nTail",{page,context}=await open(source);
+    for(const mode of ["ir","wysiwyg","sv"]){
+    const source="Before\r\n\r\n```rust\r\nfn main() {}\r\n```\r\n\r\nTail",{page,context}=await open(source,mode);
     await page.locator('#source-blocks').evaluate(details=>details.open=true); await page.locator('#blocks details').first().evaluate(details=>details.open=true);
     await page.locator('#blocks textarea').first().evaluate(field=>{field.focus();field.setSelectionRange(field.value.indexOf('main')+2,field.value.indexOf('main')+2);});
     await page.click('#insert-image');
     const message=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="pick_images"));
     assert.equal(message.position,source.indexOf('main')+2);assert.equal(message.base_revision,0);assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);await context.close();
+    }
+});
+
+test("keyboard image picker retains document and source carets across focus and host updates",async()=>{
+    for(const mode of ["ir","wysiwyg","sv"]){
+        for(const key of ["Enter","Space"]){
+            const source="Before\r\n\r\n```rust\r\nfn main() {}\r\n```\r\n\r\nTail",{page,context}=await open(source,mode);
+            await page.locator('#source-blocks').evaluate(details=>details.open=true);await page.locator('#blocks details').first().evaluate(details=>details.open=true);
+            await page.locator('#blocks textarea').first().evaluate(field=>{field.focus();field.setSelectionRange(field.value.indexOf('main')+2,field.value.indexOf('main')+2);});
+            for(let tabs=0;tabs<64 && !await page.locator('#insert-image').evaluate(button=>button===document.activeElement);tabs++)await page.keyboard.press('Tab');
+            assert(await page.locator('#insert-image').evaluate(button=>button===document.activeElement),"keyboard reaches image button");
+            if(key==="Space")await page.evaluate(source=>window.latheMarkdown.receive({kind:"document",revision:1,text:"Prefix\r\n"+source,writable:true,draft:null}),source);
+            await page.keyboard.press(key);
+            const message=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="pick_images")),expected=(key==="Space"?"Prefix\r\n":"")+source;
+            assert.equal(message.position,expected.indexOf('main')+2,`${mode}/${key}: source caret`);assert.equal(message.base_revision,key==="Space"?1:0);
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),expected);assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>["draft","edit"].includes(message.kind)).length),0);
+            if(key==="Space"){
+                await page.evaluate(()=>window.latheMarkdown.receive({kind:"document",revision:2,text:"Tiny",writable:true,draft:null}));
+                await page.keyboard.press('Space');
+                const replacement=await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="pick_images").at(-1));
+                assert(replacement.position>=0 && replacement.position<=4,`${mode}: replacement source offset stays valid`);assert.equal(replacement.base_revision,2);
+            }
+            await context.close();
+        }
+        const source="Before\n\nTail",{page,context}=await open(source,mode);
+        await page.evaluate(()=>{const root=window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element;root.focus();const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode())if(node.data.includes('Before')){window.getSelection().setBaseAndExtent(node,3,node,3);break;}});
+        await page.locator('#insert-image').focus();
+        await page.evaluate(source=>window.latheMarkdown.receive({kind:"document",revision:1,text:"New\n"+source,writable:true,draft:null}),source);
+        await page.locator('#insert-image').focus();
+        await page.keyboard.press('Enter');
+        const message=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="pick_images"));assert.equal(message.position,7,`${mode}: document caret`);assert.equal(message.base_revision,1);assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),"New\n"+source);
+        await context.close();
+    }
 });
 
 test("packaged code themes load and style code in every presentation",async()=>{
