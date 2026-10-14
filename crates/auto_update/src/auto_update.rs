@@ -1641,8 +1641,9 @@ async fn cleanup_windows_at(
         return Ok(None);
     }
     lathe_layout::validate_backup_cleanup(root)?;
-    let pending = if root.join("install/release.txt").exists() {
-        lathe_layout::validate_payload(root, None, Some(channel), ARCH)?;
+    let pending = if root.join("install/release.txt").exists()
+        && lathe_layout::validate_payload_version(root, None, Some(channel), ARCH)?.is_gt()
+    {
         let marker = std::fs::read_to_string(root.join("install/release.txt"))?;
         let version = Version::parse(marker.lines().nth(1).context("Missing staged version")?)?;
         let helper =
@@ -1924,6 +1925,90 @@ mod tests {
         let repaired = smol::block_on(cleanup_windows_at(root, true, "beta"))?
             .context("Expected repaired pending update")?;
         assert_eq!(std::fs::read_to_string(repaired.helper)?, "1.10.2");
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_discards_staging_after_manual_upgrade() -> Result<()> {
+        for installed_version in ["1.10.3", "1.10.4"] {
+            let folder = tempdir()?;
+            let root = folder.path();
+            windows_payload(root, installed_version)?;
+            windows_payload(&root.join("install"), "1.10.3")?;
+            std::fs::create_dir(root.join("updates"))?;
+            std::fs::write(root.join("updates/auto_update_helper.exe"), "staged helper")?;
+
+            assert!(lathe_layout::validate_payload(root, None, Some("beta"), ARCH).is_err());
+            assert!(smol::block_on(cleanup_windows_at(root, true, "beta"))?.is_none());
+            for directory in ["install", "updates"] {
+                assert!(!root.join(directory).exists());
+            }
+            assert_eq!(
+                std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+                installed_version
+            );
+            assert!(smol::block_on(InstallerDir::new_at(root, true)).is_ok());
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_preserves_invalid_superseded_staging() -> Result<()> {
+        for (relative, contents) in [
+            ("release.txt", "invalid marker".to_owned()),
+            ("install/release.txt", "invalid marker".to_owned()),
+            ("bin/lathe.exe", String::new()),
+            ("install/bin/lathe.exe", String::new()),
+            (
+                "release.txt",
+                format!("lathe-update-v1\n1.10.4\nstable\n{ARCH}\n"),
+            ),
+            (
+                "install/release.txt",
+                format!("lathe-update-v1\n1.10.3\nstable\n{ARCH}\n"),
+            ),
+            (
+                "release.txt",
+                "lathe-update-v1\n1.10.4\nbeta\nwrong-architecture\n".to_owned(),
+            ),
+            (
+                "install/release.txt",
+                "lathe-update-v1\n1.10.3\nbeta\nwrong-architecture\n".to_owned(),
+            ),
+        ] {
+            let folder = tempdir()?;
+            let root = folder.path();
+            windows_payload(root, "1.10.4")?;
+            windows_payload(&root.join("install"), "1.10.3")?;
+            std::fs::create_dir(root.join("updates"))?;
+            std::fs::write(root.join("updates/auto_update_helper.exe"), "staged helper")?;
+            std::fs::write(root.join(relative), contents)?;
+
+            assert!(
+                smol::block_on(cleanup_windows_at(root, true, "beta")).is_err(),
+                "Invalid {relative} must prevent cleanup"
+            );
+            assert!(root.join("install/release.txt").is_file());
+            assert_eq!(
+                std::fs::read_to_string(root.join("updates/auto_update_helper.exe"))?,
+                "staged helper"
+            );
+        }
+
+        let folder = tempdir()?;
+        let root = folder.path();
+        windows_payload(root, "1.10.4")?;
+        windows_payload(&root.join("install"), "1.10.3")?;
+        std::fs::create_dir(root.join("old"))?;
+        std::fs::write(root.join("old/recovery-file"), "preserve backup")?;
+        assert!(smol::block_on(cleanup_windows_at(root, true, "beta")).is_err());
+        assert!(root.join("install/release.txt").is_file());
+        assert_eq!(
+            std::fs::read_to_string(root.join("old/recovery-file"))?,
+            "preserve backup"
+        );
         Ok(())
     }
 

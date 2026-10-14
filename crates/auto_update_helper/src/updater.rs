@@ -656,6 +656,28 @@ mod lathe_tests {
         Ok(())
     }
     #[test]
+    fn equal_and_older_payloads_cannot_replace_current_installation() -> Result<()> {
+        for staged_version in ["1.10.3", "1.10.2"] {
+            let folder = tempfile::tempdir()?;
+            let root = folder.path();
+            payload(root, "", "1.10.3")?;
+            payload(root, "install", staged_version)?;
+
+            assert!(perform_lathe_update(root, false, &[]).is_err());
+            assert_eq!(
+                std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+                "1.10.3"
+            );
+            assert_eq!(
+                std::fs::read_to_string(root.join("install/bin/lathe.exe"))?,
+                staged_version
+            );
+            assert!(!root.join("old").exists());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn mismatched_marker_and_locked_payload_preserve_current() -> Result<()> {
         use std::os::windows::fs::OpenOptionsExt;
         let folder = tempfile::tempdir()?;

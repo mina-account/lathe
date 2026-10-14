@@ -75,13 +75,20 @@ pub(crate) fn validate_payload(
     channel: Option<&str>,
     architecture: &str,
 ) -> Result<()> {
+    anyhow::ensure!(
+        validate_payload_version(root, version, channel, architecture)?.is_gt(),
+        "Lathe update must be newer than installed version"
+    );
+    Ok(())
+}
+
+pub(crate) fn validate_payload_version(
+    root: &Path,
+    version: Option<&str>,
+    channel: Option<&str>,
+    architecture: &str,
+) -> Result<std::cmp::Ordering> {
     let install = validate_tree(root, Path::new("install"))?;
-    for directory in DIRECTORIES {
-        anyhow::ensure!(
-            install.join(directory).is_dir(),
-            "Incomplete Lathe update: missing {directory} directory"
-        );
-    }
     let marker = std::fs::read_to_string(install.join("release.txt"))
         .context("Incomplete Lathe update: missing completion marker")?;
     let fields: Vec<_> = marker.lines().collect();
@@ -107,16 +114,28 @@ pub(crate) fn validate_payload(
         .context("Missing installed Lathe release metadata; install the bootstrap manually")?;
     let installed: Vec<_> = installed.lines().collect();
     anyhow::ensure!(
-        installed.first().copied() == Some(MARKER)
+        installed.len() == 4
+            && installed.first().copied() == Some(MARKER)
             && installed.get(2) == fields.get(2)
             && installed.get(3) == fields.get(3),
         "Lathe update crosses installation channel or architecture"
     );
-    anyhow::ensure!(
-        numeric_version(target_version)?
-            > numeric_version(installed.get(1).context("Missing installed version")?)?,
-        "Lathe update must be newer than installed version"
-    );
+    let ordering = numeric_version(target_version)?.cmp(&numeric_version(
+        installed.get(1).context("Missing installed version")?,
+    )?);
+    validate_payload_files(root, Path::new("install"), architecture)?;
+    validate_payload_files(root, Path::new(""), architecture)?;
+    Ok(ordering)
+}
+
+fn validate_payload_files(root: &Path, relative: &Path, architecture: &str) -> Result<()> {
+    let payload = validate_tree(root, relative)?;
+    for directory in DIRECTORIES {
+        anyhow::ensure!(
+            payload.join(directory).is_dir(),
+            "Incomplete Lathe payload: missing {directory} directory"
+        );
+    }
     let console = match architecture {
         "x86_64" => "libexec/x64/OpenConsole.exe",
         "aarch64" => "libexec/arm64/OpenConsole.exe",
@@ -131,9 +150,10 @@ pub(crate) fn validate_payload(
         console,
     ] {
         anyhow::ensure!(
-            install.join(required).is_file()
-                && std::fs::metadata(install.join(required))?.len() > 0,
-            "Incomplete Lathe update: missing {required}"
+            payload.join(required).is_file()
+                && std::fs::metadata(payload.join(required))?.len() > 0,
+            "Incomplete Lathe payload: missing {required} in {}",
+            payload.display()
         );
     }
     Ok(())
