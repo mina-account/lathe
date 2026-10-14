@@ -63,7 +63,7 @@ for(const [file,hash] of Object.entries(runtime.nativeSourceHashesNormalizedLF))
 }
 const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
 assert.equal(checks.frontendBridge,17);
-assert.equal(checks.frontendRealBrowser,60);
+assert.equal(checks.frontendRealBrowser,62);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
 assert.equal(checks.windowsNative,78);assert.equal(checks.linuxNative,77);
@@ -122,6 +122,19 @@ assert.equal(checks.reviewFixPass11.nativeImportErrorRetained,true);
 assert.equal(checks.reviewFixPass11.obsoleteGenerationFailureIgnored,true);
 assert.equal(checks.reviewFixPass11.concurrentImageClaimsRemainValid,true);
 assert.equal(checks.reviewFixPass11.sourceAndHistoryUnchanged,true);
+assert.equal(checks.reviewFixPass12.findingsFixed,1);
+assert.equal(checks.reviewFixPass12.actualSourceFileRequests,24);
+assert.equal(checks.reviewFixPass12.unchangedLfNativeSourceRequests,12);
+assert.equal(checks.reviewFixPass12.nativeReplayScenarios,42);
+assert.equal(checks.reviewFixPass12.noPrematureSourceDeletion,true);
+assert.equal(checks.reviewFixPass12.readFailuresRetainSelection,true);
+assert.equal(checks.reviewFixPass12.textOnlyAndFindOwnershipPreserved,true);
+const sourceFileFixture=(await readFile(new URL("source-file-requests.json",import.meta.url),"utf8")).replaceAll("\r\n","\n");
+assert.equal(createHash("sha256").update(sourceFileFixture).digest("hex"),checks.reviewFixPass12.actualSourceFileRequestsHashNormalizedLF);
+const sourceFileRequests=JSON.parse(sourceFileFixture);
+assert.equal(sourceFileRequests.length,24);
+assert.equal(sourceFileRequests.filter(trace=>trace.newline==="lf").length,12);
+for(const {source,request} of sourceFileRequests){assert.equal(request.position,source.indexOf("selected source"));assert.equal(request.base_revision,1);assert.equal(request.kind,"import_images");}
 const nameFixture=(await readFile(new URL("image-name-requests.json",import.meta.url),"utf8")).replaceAll("\r\n","\n");
 assert.equal(createHash("sha256").update(nameFixture).digest("hex"),checks.reviewFixPass10.actualBrowserRequestFixtureSha256);
 const nameRequests=JSON.parse(nameFixture);

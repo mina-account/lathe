@@ -199,11 +199,12 @@ function lineNumbers() {
     }
 }
 
-function insertionPosition():number {
+function insertionPosition(field:HTMLTextAreaElement|null=sourceEditor):number {
     const selected=window.getSelection();
-    if (sourceEditor) {
-        const span=sourceControls.get(sourceEditor)!;
-        return span.start+fromDisplay(latest.slice(span.start,span.end),sourceEditor.value.slice(0,sourceEditor.selectionStart)).length;
+    if (field) {
+        const span=sourceControls.get(field);
+        if(!span)throw new Error("The source image insertion position is no longer available.");
+        return span.start+fromDisplay(latest.slice(span.start,span.end),field.value.slice(0,field.selectionStart)).length;
     }
     if(!selected?.rangeCount || !active().contains(selected.anchorNode))return latest.length;
     const range=selected.getRangeAt(0),root=active();
@@ -254,11 +255,12 @@ function imageImportName(name:string):string {
     }
     return result+suffix;
 }
-async function importFiles(files:File[]) {
+async function importFiles(files:File[],field?:HTMLTextAreaElement) {
+    if(!ready || !bridge.writable || bridge.blocked || preferences.mode==="preview" || bridge.composing)return;
     if(files.length>16){status.textContent="Import at most 16 images.";return;}
     if(files.reduce((total,file)=>total+file.size,0)>8*1024*1024){status.textContent="Image batch exceeds the 8 MiB total limit.";return;}
-    commit();const position=insertionPosition(),source=latest,images=[];
     try {
+        commit();const position=insertionPosition(field),source=latest,images=[];
         for(const file of files) {
             if(file.size>4*1024*1024)throw new Error("Image exceeds the 4 MiB limit.");
             const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
@@ -835,7 +837,8 @@ document.addEventListener("beforeinput",event => {
     else captureIntent(undefined,input.inputType === "deleteContentBackward" ? "backward" : input.inputType === "deleteContentForward" ? "forward" : undefined);
 },true);
 document.addEventListener("paste",event => {
-    if(container.contains(event.target as Node) && event.clipboardData?.files.length) { event.preventDefault();event.stopImmediatePropagation();void importFiles([...event.clipboardData.files]);return; }
+    const field=event.target instanceof HTMLTextAreaElement && sourceControls.has(event.target) ? event.target : undefined;
+    if((container.contains(event.target as Node) || field) && event.clipboardData?.files.length) { event.preventDefault();event.stopImmediatePropagation();void importFiles([...event.clipboardData.files],field);return; }
     if (event.target instanceof HTMLTextAreaElement && get("source-blocks").contains(event.target)) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (!bridge.writable || bridge.blocked || preferences.mode === "preview") return;
@@ -855,7 +858,8 @@ document.addEventListener("paste",event => {
     editor.insertValue(markdown); commit();
 },true);
 document.addEventListener("drop",event => {
-    if (container.contains(event.target as Node)) { event.preventDefault(); event.stopImmediatePropagation();if(event.dataTransfer?.files.length)void importFiles([...event.dataTransfer.files]); }
+    const field=event.target instanceof HTMLTextAreaElement && sourceControls.has(event.target) ? event.target : undefined;
+    if (container.contains(event.target as Node) || field) { event.preventDefault(); event.stopImmediatePropagation();if(event.dataTransfer?.files.length)void importFiles([...event.dataTransfer.files],field); }
 },true);
 document.addEventListener("copy",event => {
     if (event.target instanceof HTMLTextAreaElement && get("source-blocks").contains(event.target)) {

@@ -1281,3 +1281,85 @@ test("image resource retry ignores stale failures and preserves native import no
         assert.deepEqual(external,[]);await context.close();
     }
 });
+
+async function selectedSourceField(page) {
+    await page.locator('#source-blocks').evaluate(element=>element.open=true);
+    await page.locator('#blocks details').first().evaluate(element=>element.open=true);
+    const field=page.locator('#blocks textarea').first();await field.focus();
+    await field.evaluate(field=>field.setSelectionRange(field.value.indexOf("selected source"),field.value.indexOf("selected source")+"selected source".length));
+    return field;
+}
+test("source control File transfers retain source and caret through asynchronous reads and flush",async()=>{
+    const template="Before \u{1f600}\n\n```unknown\nselected source\n```\n\nTail",png="iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=",traces=[];
+    for(const newline of ["\n","\r\n"])for(const mode of ["ir","wysiwyg","sv"])for(const transfer of ["paste","drop"])for(const mixed of [false,true]){
+        const source=template.replaceAll("\n",newline),prefix="Host \u{1f600}"+newline;
+        const {page,context}=await open(source,mode),field=await selectedSourceField(page);
+        const before=await field.evaluate(field=>({value:field.value,start:field.selectionStart,end:field.selectionEnd}));
+        await field.evaluate((field,{transfer,mixed,png})=>{
+            window.fileReadStarted=false;
+            const data=new DataTransfer(),file=new File([Uint8Array.from(atob(png),character=>character.charCodeAt(0))],"source.png",{type:"image/png"});
+            file.arrayBuffer=()=>{window.fileReadStarted=true;return new Promise(resolve=>window.releaseSourceFile=()=>resolve(Uint8Array.from(atob(png),character=>character.charCodeAt(0)).buffer));};
+            data.items.add(file);if(mixed)data.setData("text/plain","do not replace selected source");
+            const event=transfer==="paste"?new ClipboardEvent("paste",{clipboardData:data,bubbles:true,cancelable:true}):new DragEvent("drop",{dataTransfer:data,bubbles:true,cancelable:true});
+            field.dispatchEvent(event);window.fileTransferPrevented=event.defaultPrevented;
+        },{transfer,mixed,png});
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source,`${mode}/${transfer}/${mixed}: no premature deletion or text replacement`);
+        assert.deepEqual(await field.evaluate(field=>({value:field.value,start:field.selectionStart,end:field.selectionEnd})),before);
+        assert.equal(await page.evaluate(()=>window.fileReadStarted),true,"source File must reach importer");
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="import_images")),false,"read is pending");
+        await page.evaluate(({source,prefix})=>window.latheMarkdown.receive({kind:"document",revision:1,text:prefix+source,writable:true,draft:null}),{source,prefix});
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),prefix+source);
+        await page.evaluate(()=>window.releaseSourceFile());
+        await page.waitForFunction(()=>window.testMessages.some(message=>message.kind==="import_images"));
+        const request=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="import_images"));
+        assert.equal(request.position,(prefix+source).indexOf("selected source"));assert.equal(request.base_revision,1);assert.equal(request.images[0].bytes,png);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),prefix+source);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['edit','draft','undo','redo'].includes(message.kind))),false);
+        traces.push({newline:newline==="\n"?"lf":"crlf",mode,transfer,mixed,source:prefix+source,request});await context.close();
+    }
+    if(process.env.LATHE_MARKDOWN_SOURCE_FILE_TRACES)await writeFile(process.env.LATHE_MARKDOWN_SOURCE_FILE_TRACES,JSON.stringify(traces,null,2)+"\n");
+    assert.equal(traces.length,24);console.log("24 actual source-control File requests retained LF/CRLF/Unicode source and rebased caret");
+});
+test("source control failed File reads preserve selection and text-only paste keeps control ownership",async()=>{
+    const source="Before\r\n\r\n```unknown\r\nselected source\r\n```\r\n\r\nTail";
+    for(const mode of ["ir","wysiwyg","sv"])for(const transfer of ["paste","drop"]){
+        const {page,context}=await open(source,mode),field=await selectedSourceField(page);
+        const before=await field.evaluate(field=>({value:field.value,start:field.selectionStart,end:field.selectionEnd}));
+        await field.evaluate((field,transfer)=>{
+            const data=new DataTransfer(),file=new File([new Uint8Array([1])],"failed.png",{type:"image/png"});
+            file.arrayBuffer=async()=>{throw new Error("Fixture image read failed");};data.items.add(file);
+            field.dispatchEvent(transfer==="paste"?new ClipboardEvent("paste",{clipboardData:data,bubbles:true,cancelable:true}):new DragEvent("drop",{dataTransfer:data,bubbles:true,cancelable:true}));
+        },transfer);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source,"failure must leave selected source intact");
+        await page.waitForFunction(()=>/Fixture image read failed/.test(document.querySelector('#status').textContent));
+        assert.deepEqual(await field.evaluate(field=>({value:field.value,start:field.selectionStart,end:field.selectionEnd})),before);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['edit','draft','import_images'].includes(message.kind))),false);
+        await field.evaluate((field,transfer)=>{
+            const data=new DataTransfer(),file=new File([new Uint8Array(4*1024*1024+1)],"large.png",{type:"image/png"});
+            window.largeFileRead=false;file.arrayBuffer=async()=>{window.largeFileRead=true;throw new Error("oversize file must not be read");};data.items.add(file);
+            field.dispatchEvent(transfer==="paste"?new ClipboardEvent("paste",{clipboardData:data,bubbles:true,cancelable:true}):new DragEvent("drop",{dataTransfer:data,bubbles:true,cancelable:true}));
+        },transfer);
+        await page.waitForFunction(()=>/4 MiB/.test(document.querySelector('#status').textContent));
+        assert.equal(await page.evaluate(()=>window.largeFileRead),false);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.deepEqual(await field.evaluate(field=>({value:field.value,start:field.selectionStart,end:field.selectionEnd})),before);
+        await page.evaluate(source=>window.latheMarkdown.receive({kind:"document",revision:2,text:source,writable:false,draft:null}),source);
+        await field.evaluate((field,transfer)=>{
+            const data=new DataTransfer(),file=new File([new Uint8Array([1])],"readonly.png",{type:"image/png"});
+            window.readOnlyFileRead=false;file.arrayBuffer=async()=>{window.readOnlyFileRead=true;throw new Error("readonly file must not be read");};data.items.add(file);
+            field.dispatchEvent(transfer==="paste"?new ClipboardEvent("paste",{clipboardData:data,bubbles:true,cancelable:true}):new DragEvent("drop",{dataTransfer:data,bubbles:true,cancelable:true}));
+        },transfer);
+        assert.equal(await page.evaluate(()=>window.readOnlyFileRead),false);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['edit','draft','import_images'].includes(message.kind))),false);
+        await page.evaluate(source=>window.latheMarkdown.receive({kind:"document",revision:3,text:source,writable:true,draft:null}),source);
+        await page.locator('#find').evaluate(element=>element.hidden=false);await page.locator('#query').focus();
+        await page.locator('#query').evaluate(field=>{const data=new DataTransfer();data.items.add(new File([new Uint8Array([1])],"find.png",{type:"image/png"}));const event=new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true});field.dispatchEvent(event);window.findFilePrevented=event.defaultPrevented;});
+        assert.equal(await page.evaluate(()=>window.findFilePrevented),false);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['import_images','pick_images'].includes(message.kind))),false);
+        const currentField=await selectedSourceField(page);
+        await currentField.evaluate(field=>{const data=new DataTransfer();data.setData('text/plain','replacement text');field.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('selected source','replacement text'));
+        await context.close();
+    }
+});

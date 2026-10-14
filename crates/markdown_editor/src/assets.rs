@@ -882,7 +882,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn browser_unicode_image_names_decode_import_and_keep_the_session_live(
+    async fn browser_file_requests_decode_import_and_keep_the_session_live(
         cx: &mut TestAppContext,
     ) {
         use workspace::item::Item as _;
@@ -922,8 +922,21 @@ mod tests {
             )
             .into()
         };
-        let traces: Vec<serde_json::Value> = serde_json::from_str(&traces).expect("request traces");
+        let mut traces: Vec<serde_json::Value> =
+            serde_json::from_str(&traces).expect("request traces");
         assert_eq!(traces.len(), 30);
+        let source_traces: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../project-docs/imp-plans/markdown-editor-phase-4/source-file-requests.json"
+        ))
+        .expect("actual source-control requests");
+        assert_eq!(source_traces.len(), 24);
+        // Buffer snapshots sent by the native host use LF; CRLF projection cases remain browser fixtures.
+        let source_traces = source_traces
+            .into_iter()
+            .filter(|trace| trace["newline"] == "lf")
+            .collect::<Vec<_>>();
+        assert_eq!(source_traces.len(), 12);
+        traces.extend(source_traces);
         let (visual, filesystem, cx) = fixture(cx).await;
         cx.update(|_, cx| {
             settings::SettingsStore::update_global(cx, |store, cx| {
@@ -957,7 +970,28 @@ mod tests {
             })
             .expect("decoded browser surface");
         for (index, trace) in traces.into_iter().enumerate() {
+            let source = trace["source"].as_str().unwrap_or("Before\n\nTail");
+            visual.update(cx, |item, cx| {
+                item.buffer.update(cx, |buffer, cx| {
+                    let snapshot = buffer.snapshot();
+                    if snapshot.text() != source {
+                        buffer.finalize_last_transaction();
+                        buffer.edit([(0..snapshot.len(), source)], None, cx);
+                        buffer.finalize_last_transaction();
+                    }
+                })
+            });
+            cx.run_until_parked();
+            let insertion = if trace["source"].is_string() {
+                source.find("selected source").expect("preserved selection")
+            } else {
+                8
+            };
             let mut request = trace["request"].clone();
+            assert_eq!(
+                request["position"].as_u64().expect("UTF-16 caret"),
+                u64::try_from(source[..insertion].encode_utf16().count()).expect("caret bound")
+            );
             visual.read_with(cx, |item, _| {
                 request["session"] = item.protocol.session.clone().into();
                 request["document"] = item.protocol.document.to_string().into();
@@ -979,9 +1013,13 @@ mod tests {
             assert!(visual.read_with(cx, |item, _| item.error().is_none()));
             let imported = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
             let link = imported
-                .strip_prefix("Before\n\n![image](")
-                .and_then(|text| text.strip_suffix(")Tail"))
-                .expect("exact anchored source");
+                .strip_prefix(&source[..insertion])
+                .and_then(|text| text.strip_suffix(&source[insertion..]))
+                .and_then(|text| text.strip_prefix("![image]("))
+                .and_then(|text| text.strip_suffix(')'))
+                .unwrap_or_else(|| {
+                    panic!("exact anchored source: source={source:?} imported={imported:?}")
+                });
             let path = urlencoding::decode(link).expect("relative asset path");
             let filename = path.rsplit('/').next().expect("destination filename");
             assert!(filename.len() <= 255 && filename.encode_utf16().count() <= 255);
@@ -1044,7 +1082,7 @@ mod tests {
             cx.run_until_parked();
             assert_eq!(
                 visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
-                "Before\n\nTail"
+                source
             );
             let close = visual.update_in(cx, |item, window, cx| item.prepare_to_save(window, cx));
             visual.update(cx, |item, cx| item.pump_browser(cx));

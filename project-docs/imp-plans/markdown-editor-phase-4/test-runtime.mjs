@@ -15,7 +15,7 @@ const paths=new Set([
     ...Object.keys(runtime.sourceHashesNormalizedLF).map(path=>"crates/markdown_editor/frontend/"+path),
     "crates/markdown_editor/src/assets.rs","crates/markdown_editor/src/item.rs","crates/fs/src/fs.rs",
     "project-docs/imp-plans/markdown-editor-baseline/runtime.json",
-    ...["record-runtime.mjs","verify.mjs","checks.json","image-name-requests.json","windows-observed.jsonl","wayland-observed.jsonl","x11-observed.jsonl"].map(path=>evidence+path),
+    ...["record-runtime.mjs","verify.mjs","checks.json","image-name-requests.json","source-file-requests.json","windows-observed.jsonl","wayland-observed.jsonl","x11-observed.jsonl"].map(path=>evidence+path),
 ]);
 for(const path of paths) {
     const destination=new URL(path,isolated);
