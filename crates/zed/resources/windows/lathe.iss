@@ -70,9 +70,9 @@ AppName={#LatheDisplayName}
 AppVersion={#LatheVersion}
 AppVerName={#LatheDisplayName} {#LatheVersion}
 AppPublisher=Chris Paterson
-AppPublisherURL=https://github.com/paterschris/lathe
-AppSupportURL=https://github.com/paterschris/lathe/issues
-AppUpdatesURL=https://github.com/paterschris/lathe/releases
+AppPublisherURL=https://github.com/mina-account/lathe
+AppSupportURL=https://github.com/mina-account/lathe/issues
+AppUpdatesURL=https://github.com/mina-account/lathe/releases
 DefaultDirName={localappdata}\Programs\Lathe\{#LatheDirName}
 DefaultGroupName={#LatheDisplayName}
 DisableDirPage=yes
@@ -92,8 +92,10 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ChangesEnvironment=yes
-CloseApplications=force
+CloseApplications=no
 RestartApplications=no
+Uninstallable=not IsUpdating
+CreateUninstallRegKey=not IsUpdating
 UninstallDisplayIcon={app}\share\lathe.ico
 UninstallDisplayName={#LatheDisplayName}
 WizardImageStretch=no
@@ -123,16 +125,19 @@ Name: "addtopath"; Description: "Add the &lathe CLI to your PATH"; GroupDescript
 ;   because they are loaded by bare name (exe-dir search), like upstream
 ;   ships them next to Zed.exe.
 ;   share\lathe.ico
-Source: "{#StageDir}\bin\*";     DestDir: "{app}\bin";     Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#StageDir}\libexec\*"; DestDir: "{app}\libexec"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#StageDir}\share\*";   DestDir: "{app}\share";   Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\bin\*";     DestDir: "{code:GetInstallDir}\bin";     Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\libexec\*"; DestDir: "{code:GetInstallDir}\libexec"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\share\*";   DestDir: "{code:GetInstallDir}\share";   Flags: ignoreversion recursesubdirs createallsubdirs
+
+Source: "{#StageDir}\tools\*"; DestDir: "{code:GetInstallDir}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\licenses.md"; DestDir: "{code:GetInstallDir}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\{#LatheDisplayName}"; Filename: "{app}\libexec\lathe-editor.exe"; IconFilename: "{app}\share\lathe.ico"; WorkingDir: "{app}"
-Name: "{userdesktop}\{#LatheDisplayName}"; Filename: "{app}\libexec\lathe-editor.exe"; IconFilename: "{app}\share\lathe.ico"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{#LatheDisplayName}"; Filename: "{app}\libexec\lathe-editor.exe"; IconFilename: "{app}\share\lathe.ico"; WorkingDir: "{app}"; Check: not IsUpdating
+Name: "{userdesktop}\{#LatheDisplayName}"; Filename: "{app}\libexec\lathe-editor.exe"; IconFilename: "{app}\share\lathe.ico"; WorkingDir: "{app}"; Check: not IsUpdating; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\libexec\lathe-editor.exe"; Description: "Launch {#LatheDisplayName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\libexec\lathe-editor.exe"; Description: "Launch {#LatheDisplayName}"; Flags: nowait postinstall skipifsilent; Check: not IsUpdating
 
 [Registry]
 ; Idempotent PATH update -- only added when not already present, scoped to the user's environment.
@@ -142,10 +147,44 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
     Tasks: addtopath
 
 [Code]
+function IsUpdating(): Boolean;
+begin
+  Result := CompareText(ExpandConstant('{param:update}'), 'true') = 0;
+end;
+
+function GetInstallDir(Param: string): string;
+begin
+  if IsUpdating() then Result := ExpandConstant('{app}\install')
+  else Result := ExpandConstant('{app}');
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if IsUpdating() then begin
+    if not FileExists(ExpandConstant('{app}\libexec\lathe-editor.exe')) or
+       not FileExists(ExpandConstant('{app}\release.txt')) then
+      Result := 'Install the Lathe bootstrap manually before using automatic updates.';
+    if DirExists(ExpandConstant('{app}\install')) then
+      Result := 'A Lathe update is already staged. Restart Lathe before checking again.';
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then begin
+    if not SaveStringToFile(GetInstallDir('') + '\release.txt',
+      'lathe-update-v1' + #13#10 + '{#LatheVersion}' + #13#10 +
+      '{#LatheChannel}' + #13#10 + '{#LatheArch}' + #13#10, False) then
+      RaiseException('Cannot write the Lathe update completion marker.');
+  end;
+end;
+
 function NeedsAddPath(NewDir: string): boolean;
 var
   OrigPath: string;
 begin
+  if IsUpdating() then begin Result := False; exit; end;
   if not RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', OrigPath) then
   begin
     Result := True;

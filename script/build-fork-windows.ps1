@@ -208,7 +208,7 @@ if (-not $env:ZED_COMMIT_SHA) {
 Write-Output "Channel: $channel"
 Write-Output "Building release binaries..."
 
-cargo build --release --target $Target --package zed --package cli
+cargo build --release --target $Target --package zed --package cli --package auto_update_helper
 if ($LASTEXITCODE -ne 0) { throw "Cargo build failed (exit code $LASTEXITCODE)." }
 
 $outDir = "target/$Target/release"

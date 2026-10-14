@@ -2,6 +2,12 @@
 
 Most recent releases first. Beta releases (`-beta` suffix) ship as GitHub pre-releases and typically batch new features ahead of a stable cut.
 
+## v1.10.2-beta - 2026-10-13
+
+- Fixed Lathe update discovery to use mina-account/lathe and compatible setup assets.
+- Added safe Windows update staging, graceful restart and rollback for the Lathe package layout.
+- One manual bootstrap upgrade is required. Existing `auto_update: false` preferences are preserved; see README for optional re-enablement. Existing v1.10.1-beta artifacts remain available.
+
 ## v1.10.1-beta - 2026-10-10
 
 Fixes for things the last upstream sync broke. Some of them had been quietly broken since an earlier sync, too.
