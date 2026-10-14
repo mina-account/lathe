@@ -6352,7 +6352,7 @@ pub(crate) mod tests {
         let connection = StubAgentConnection::new().with_receipt_submissions(true);
         let (conversation_view, cx) =
             setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
-        add_to_workspace(conversation_view.clone(), cx);
+        add_to_workspace_with_size(conversation_view.clone(), true, cx);
         let thread_view = active_thread(&conversation_view, cx);
         let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
         for index in 0..2 {
@@ -6448,6 +6448,47 @@ pub(crate) mod tests {
             );
             assert_eq!(second.predecessor.as_ref(), Some(&first.identity));
         });
+        for mode in [
+            super::display_rows::DisplayMode::Normal,
+            super::display_rows::DisplayMode::Compact,
+        ] {
+            thread_view.update(cx, |view, cx| {
+                view.set_display_mode(mode, cx);
+                view.scroll_to_entry(0, cx);
+            });
+            cx.run_until_parked();
+            assert!(cx.debug_bounds("response-previous-1-0").is_none());
+            assert!(cx.debug_bounds("response-top-1-0").is_some());
+            assert!(cx.debug_bounds("response-top-1-1").is_some());
+            for (selector, expected) in [
+                ("response-copy-1-0", "Answer 0"),
+                ("response-copy-1-1", "Answer 1"),
+            ] {
+                let copy = cx
+                    .debug_bounds(selector)
+                    .expect("distinct same-entry response control");
+                cx.simulate_click(copy.center(), gpui::Modifiers::default());
+                assert_eq!(
+                    cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+                        .as_deref(),
+                    Some(expected)
+                );
+            }
+            let previous = cx
+                .debug_bounds("response-previous-1-1")
+                .expect("second response predecessor");
+            cx.simulate_click(previous.center(), gpui::Modifiers::default());
+            cx.run_until_parked();
+            let body = cx
+                .debug_bounds("message-content-1-0-0")
+                .expect("first same-entry response");
+            let viewport = thread_view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+            assert!(
+                body.top() >= viewport.top() && body.top() < viewport.bottom(),
+                "{mode:?}: {body:?} {viewport:?}"
+            );
+            thread_view.read_with(cx, |view, _| assert!(view.pending_content_scroll.is_none()));
+        }
     }
 
     #[gpui::test]
@@ -13405,6 +13446,447 @@ pub(crate) mod tests {
             cx.run_until_parked();
         }
         (conversation, cx)
+    }
+
+    #[gpui::test]
+    async fn test_response_navigation_historical_footer_and_anchor(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        for mode in [DisplayMode::Normal, DisplayMode::Compact] {
+            for outcome in [
+                TurnOutcome::Success,
+                TurnOutcome::Interrupted,
+                TurnOutcome::Unknown,
+            ] {
+                view.update(cx, |view, cx| {
+                    if !view
+                        .entry_view_state
+                        .read(cx)
+                        .thinking_block_state((1, 0), cx)
+                        .0
+                    {
+                        view.entry_view_state.update(cx, |state, cx| {
+                            state.toggle_thinking_block_expansion((1, 0), cx)
+                        });
+                    }
+                    view.set_display_mode(mode, cx);
+                    view.response_model.turns[0].lifecycle = TurnLifecycle::Settled(outcome);
+                    view.response_model.turns[1].lifecycle = TurnLifecycle::Settled(outcome);
+                    view.sync_display_rows(None, cx);
+                    view.scroll_to_entry(3, cx);
+                });
+                cx.run_until_parked();
+                let previous = cx
+                    .debug_bounds("response-previous-3-1")
+                    .expect("historical previous answer");
+                let top = cx.debug_bounds("response-top-3-1").expect("historical top");
+                assert!(previous.right() <= top.left());
+                cx.simulate_click(previous.center(), gpui::Modifiers::default());
+                cx.run_until_parked();
+                let response = cx
+                    .debug_bounds("message-content-1-1-0")
+                    .expect("first response body");
+                let viewport = view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+                assert!(
+                    (response.top() - viewport.top()).abs() < px(1.),
+                    "{mode:?} {outcome:?}: {response:?} {viewport:?}"
+                );
+                assert!(cx.debug_bounds("response-previous-1-1").is_none());
+                assert!(cx.debug_bounds("response-top-1-1").is_some());
+                view.read_with(cx, |view, cx| {
+                    assert!(
+                        !view
+                            .entry_view_state
+                            .read(cx)
+                            .activity_group_expanded(&view.response_model.turns[0].identity)
+                    )
+                });
+            }
+        }
+    }
+
+    #[gpui::test]
+    async fn test_response_footer_copies_selected_run_and_retracts_on_resumption(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::DisplayMode;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("prompt");
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("commentary")
+                        .content(vec!["Private commentary".into()]),
+                    cx,
+                )
+                .expect("commentary");
+            thread
+                .upsert_thought(
+                    acp_v2::AgentThought::new("thought").content(vec!["Private thought".into()]),
+                    cx,
+                )
+                .expect("thought");
+            let acp_v1::ContentBlock::Image(image) = png_image() else {
+                panic!("image fixture")
+            };
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer-a").content(vec![
+                        "Selected first".into(),
+                        acp_v2::ContentBlock::Image(acp_v2::ImageContent::new(
+                            image.data,
+                            image.mime_type,
+                        )),
+                    ]),
+                    cx,
+                )
+                .expect("first block");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer-b").content(vec!["Selected second".into()]),
+                    cx,
+                )
+                .expect("second block");
+        });
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("response-copy-1-3").is_none(),
+            "running text has no footer"
+        );
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::Cancelled),
+                    ),
+                    cx,
+                )
+                .expect("cancelled");
+        });
+        cx.run_until_parked();
+        for mode in [DisplayMode::Normal, DisplayMode::Compact] {
+            view.update(cx, |view, cx| {
+                view.set_display_mode(mode, cx);
+                view.scroll_to_entry(0, cx);
+            });
+            cx.run_until_parked();
+            assert!(
+                cx.debug_bounds("response-copy-1-2").is_none(),
+                "one footer per run"
+            );
+            let copy = cx
+                .debug_bounds("response-copy-1-3")
+                .expect("partial response copy");
+            cx.simulate_click(copy.center(), gpui::Modifiers::default());
+            assert_eq!(
+                cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+                    .as_deref(),
+                Some("Selected first\n\n`Image`\n\nSelected second")
+            );
+            let body = cx
+                .debug_bounds("message-content-1-2-0")
+                .expect("selected response body");
+            cx.simulate_mouse_down(
+                body.center(),
+                gpui::MouseButton::Right,
+                gpui::Modifiers::default(),
+            );
+            cx.simulate_mouse_up(
+                body.center(),
+                gpui::MouseButton::Right,
+                gpui::Modifiers::default(),
+            );
+            let copy = cx
+                .debug_bounds("MENU_ITEM-Copy This Agent Response")
+                .expect("response context copy");
+            cx.simulate_click(copy.center(), gpui::Modifiers::default());
+            assert_eq!(
+                cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+                    .as_deref(),
+                Some("Selected first\n\n`Image`\n\nSelected second")
+            );
+            assert!(cx.debug_bounds("response-outcome-1-3").is_some());
+            assert!(cx.debug_bounds("response-previous-1-3").is_none());
+            assert!(cx.debug_bounds("response-top-1-3").is_some());
+        }
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("resumed");
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("response-copy-1-3").is_none());
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Normal, cx)
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("response-copy-1-3").is_none());
+    }
+
+    #[gpui::test]
+    async fn test_response_feedback_remains_success_only_without_answer(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        use super::response_model::{TurnLifecycle, TurnOutcome};
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let server = cx.update(|cx| {
+            language_model::LanguageModelRegistry::test(cx);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+            let thread_store = cx.new(|cx| ThreadStore::new(cx));
+            NativeAgentServer::new(fs, thread_store)
+        });
+        let (conversation, cx) = setup_conversation_view(server, cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("prompt");
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::ToolCall(
+                        acp_v1::ToolCall::new("tool", "Tool only")
+                            .status(acp_v1::ToolCallStatus::Completed),
+                    ),
+                    cx,
+                )
+                .expect("tool");
+        });
+        cx.run_until_parked();
+        for mode in [DisplayMode::Normal, DisplayMode::Compact] {
+            for outcome in [
+                TurnOutcome::Success,
+                TurnOutcome::Interrupted,
+                TurnOutcome::Unknown,
+            ] {
+                view.update(cx, |view, cx| {
+                    view.parent_session_id = Some("parent".into());
+                    view.set_display_mode(mode, cx);
+                    assert!(view.response_model.turns[0].response.is_empty());
+                    view.response_model.turns[0].lifecycle = TurnLifecycle::Settled(outcome);
+                    view.sync_display_rows(None, cx);
+                    view.scroll_to_entry(0, cx);
+                    cx.notify();
+                });
+                cx.run_until_parked();
+                assert_eq!(
+                    cx.debug_bounds("agent-success-feedback").is_some(),
+                    outcome == TurnOutcome::Success,
+                    "{mode:?} {outcome:?}"
+                );
+                assert!(cx.debug_bounds("response-top-1-0").is_none());
+            }
+        }
+    }
+
+    #[gpui::test]
+    async fn test_response_stats_remain_without_selected_answer(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        init_test(cx);
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(r#"{"agent":{"show_turn_stats":true}}"#, cx)
+                    .expect("stats setting")
+            })
+        });
+        let connection = StubAgentConnection::new();
+        connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::ToolCall(
+            acp_v1::ToolCall::new("tool", "Completed tool")
+                .status(acp_v1::ToolCallStatus::Completed),
+        )]);
+        let (conversation, cx) =
+            setup_full_size_conversation_and_send(connection, "Tool only", cx).await;
+        let view = active_thread(&conversation, cx);
+        for mode in [DisplayMode::Normal, DisplayMode::Compact] {
+            view.update(cx, |view, cx| {
+                view.turn_fields.last_turn_duration = Some(Duration::from_secs(31));
+                view.turn_fields.last_turn_tokens = Some(500);
+                view.set_display_mode(mode, cx);
+                view.scroll_to_entry(0, cx);
+                cx.notify();
+            });
+            cx.run_until_parked();
+            assert!(
+                cx.debug_bounds("agent-turn-stats").is_some(),
+                "{mode:?} tool-only turn retains bottom stats"
+            );
+            assert!(cx.debug_bounds("response-top-1-0").is_none());
+            cx.update(|_, cx| {
+                SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(r#"{"agent":{"show_turn_stats":false}}"#, cx)
+                        .expect("hide stats")
+                })
+            });
+            cx.run_until_parked();
+            assert!(cx.debug_bounds("agent-turn-stats").is_none());
+            cx.update(|_, cx| {
+                SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(r#"{"agent":{"show_turn_stats":true}}"#, cx)
+                        .expect("show stats")
+                })
+            });
+            cx.run_until_parked();
+        }
+    }
+
+    #[gpui::test]
+    async fn test_response_search_open_activity_includes_offscreen_tools(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        connection.set_next_prompt_updates(
+            (0..64)
+                .map(|index| {
+                    acp_v1::SessionUpdate::ToolCall(
+                        acp_v1::ToolCall::new(format!("tool-{index}"), "Needle tool")
+                            .status(acp_v1::ToolCallStatus::Completed)
+                            .content(vec!["Needle output".into()]),
+                    )
+                })
+                .collect(),
+        );
+        let (conversation, cx) =
+            setup_full_size_conversation_and_send(connection, "Tools", cx).await;
+        let view = active_thread(&conversation, cx);
+        let (identity, thread) = view.update_in(cx, |view, window, cx| {
+            view.entry_view_state.update(cx, |state, _| {
+                for index in 0..64 {
+                    state.expand_tool_call(format!("tool-{index}").into());
+                }
+            });
+            view.set_display_mode(DisplayMode::Compact, cx);
+            view.scroll_to_entry(0, cx);
+            view.toggle_search(&crate::ToggleSearch, window, cx);
+            (
+                view.response_model.turns[0].identity.clone(),
+                view.thread.clone(),
+            )
+        });
+        let bar = view.read_with(cx, |view, _| {
+            view.thread_search_bar.clone().expect("search")
+        });
+        bar.update_in(cx, |bar, window, cx| {
+            bar.query_editor
+                .update(cx, |editor, cx| editor.set_text("needle", window, cx));
+            bar.update_matches(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 0);
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let header = cx.debug_bounds(selector).expect("disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(
+            bar.read_with(cx, |bar, _| bar.match_count()),
+            128,
+            "all logically revealed tools, including virtualized content"
+        );
+        view.update(cx, |view, cx| view.scroll_to_entry(32, cx));
+        cx.run_until_parked();
+        let before = view.read_with(cx, |view, _| view.list_state.logical_scroll_top());
+        thread
+            .update(cx, |thread, cx| {
+                thread.handle_session_update(
+                    acp_v1::SessionUpdate::ToolCallUpdate(acp_v1::ToolCallUpdate::new(
+                        "tool-0",
+                        acp_v1::ToolCallUpdateFields::new().content(vec!["Replacement".into()]),
+                    )),
+                    cx,
+                )
+            })
+            .expect("historical update");
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(super::thread_search_bar::SEARCH_UPDATE_DEBOUNCE * 2);
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 127);
+        let after = view.read_with(cx, |view, _| view.list_state.logical_scroll_top());
+        assert_eq!(before.item_ix, after.item_ix);
+        assert!((before.offset_in_item - after.offset_in_item).abs() < px(1.));
+        bar.update_in(cx, |bar, window, cx| {
+            bar.select_prev_match(
+                &super::thread_search_bar::SelectPreviousThreadMatch,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert!(view.list_state.logical_scroll_top().item_ix > 32)
+        });
+    }
+
+    #[gpui::test]
+    async fn test_response_search_respects_outer_activity_visibility(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        let identity = view.update_in(cx, |view, window, cx| {
+            view.entry_view_state.update(cx, |state, cx| {
+                state.toggle_thinking_block_expansion((1, 0), cx)
+            });
+            view.set_display_mode(DisplayMode::Compact, cx);
+            view.scroll_to_entry(0, cx);
+            view.toggle_search(&crate::ToggleSearch, window, cx);
+            view.response_model.turns[0].identity.clone()
+        });
+        let bar = view.read_with(cx, |view, _| {
+            view.thread_search_bar.clone().expect("search")
+        });
+        bar.update_in(cx, |bar, window, cx| {
+            bar.query_editor
+                .update(cx, |editor, cx| editor.set_text("thought", window, cx));
+            bar.update_matches(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 0);
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let header = cx.debug_bounds(selector).expect("disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 1);
+        let header = cx.debug_bounds(selector).expect("open disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 0);
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Normal, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 1);
     }
 
     #[gpui::test]

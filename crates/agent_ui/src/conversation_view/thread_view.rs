@@ -7254,6 +7254,21 @@ impl ThreadView {
                 self.list_state.remeasure_items(index..index + 1);
             }
         }
+        let revealed_sources = (self.display_mode == DisplayMode::Compact).then(|| {
+            self.display_rows
+                .rows
+                .iter()
+                .filter_map(|row| match row {
+                    DisplayRow::Content { source, .. } => {
+                        Some((source.entry_index, source.chunk_index))
+                    }
+                    _ => None,
+                })
+                .collect()
+        });
+        self.entry_view_state.update(cx, |state, cx| {
+            state.set_revealed_sources(revealed_sources, cx)
+        });
         if let Some(entry) = updated_entry {
             if self.pending_content_scroll.as_ref().is_some_and(|pending| {
                 pending.target.source.entry_index == entry && pending.target.text_offset.is_some()
@@ -7525,6 +7540,14 @@ impl ThreadView {
                     })
                     .map(|source| (turn, source))
             })?;
+        if target.text_offset.is_some()
+            && !self
+                .entry_view_state
+                .read(cx)
+                .source_is_revealed(source.entry_index, source.chunk_index)
+        {
+            return None;
+        }
         if target.response_only
             && (!matches!(turn.lifecycle, TurnLifecycle::Settled(_))
                 || !turn.response.contains(source))
@@ -7777,7 +7800,7 @@ impl ThreadView {
         if self.entry_view_state.read(cx).entry_count() != self.thread.read(cx).entries().len() {
             return Empty.into_any();
         }
-        match row {
+        let body = match row {
             DisplayRow::Transcript(index) => {
                 let entries = self.thread.read(cx).entries();
                 let Some(entry) = entries.get(*index) else {
@@ -7875,20 +7898,14 @@ impl ThreadView {
                 }
                 if *response_end {
                     body = body.children(self.render_response_outcome(source));
-                    let thread = self.thread.read(cx);
-                    let user_message_index = thread
-                        .entries()
+                    if let Some(turn) = self
+                        .response_model
+                        .turns
                         .iter()
-                        .take(source.entry_index)
-                        .rposition(|entry| thread.is_user_authored_scroll_target(entry));
-                    body = body.child(self.render_thread_controls(
-                        &self.thread,
-                        source.entry_index,
-                        Some(source.entry_index),
-                        source.entry_index + 1 == self.thread.read(cx).entries().len(),
-                        user_message_index,
-                        cx,
-                    ));
+                        .find(|turn| turn.response.last() == Some(source))
+                    {
+                        body = body.child(self.render_thread_controls(turn, cx));
+                    }
                 }
                 if let Some(target) = self.target_for_source(source, false, cx) {
                     self.measure_content(
@@ -8098,6 +8115,51 @@ impl ThreadView {
                     || self.has_pending_request_elicitation(cx);
                 self.render_generating(confirmation, cx).into_any_element()
             }
+        };
+        let at_bottom = self.display_rows.rows.last() == Some(row);
+        let standalone_controls = at_bottom
+            && self.response_model.turns.last().is_some_and(|turn| {
+                turn.response.is_empty() && matches!(turn.lifecycle, TurnLifecycle::Settled(_))
+            })
+            && !matches!(self.thread.read(cx).status(), ThreadStatus::Generating)
+            && !self.thread.read(cx).is_waiting_for_confirmation()
+            && !self.has_pending_request_elicitation(cx);
+        let body = if standalone_controls {
+            let stats = self.render_turn_stats(true, cx);
+            let feedback = self.render_feedback_buttons(
+                self.response_model.turns.last().is_some_and(|turn| {
+                    turn.lifecycle == TurnLifecycle::Settled(TurnOutcome::Success)
+                }),
+                cx,
+            );
+            if stats.is_some() || feedback.is_some() {
+                v_flex()
+                    .w_full()
+                    .child(body)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .justify_end()
+                            .px_4()
+                            .py_1p5()
+                            .children(stats)
+                            .children(feedback),
+                    )
+                    .into_any()
+            } else {
+                body
+            }
+        } else {
+            body
+        };
+        if at_bottom && let Some(editor) = self.thread_feedback.comments_editor.clone() {
+            v_flex()
+                .w_full()
+                .child(body)
+                .child(Self::render_feedback_feedback_editor(editor, cx))
+                .into_any()
+        } else {
+            body
         }
     }
 
@@ -8144,8 +8206,6 @@ impl ThreadView {
                 .entries()
                 .get(entry_ix.saturating_sub(1))
                 .is_none_or(|entry| !entry.is_indented());
-
-        let mut assistant_message_is_blank = false;
 
         let primary = match &entry {
             AgentThreadEntry::UserMessage(message) => {
@@ -8364,6 +8424,28 @@ impl ThreadView {
                                         .child(self.render_message_content(
                                             entry_ix, chunk_ix, block, window, cx,
                                         ))
+                                        .children(
+                                            self.response_model
+                                                .turns
+                                                .iter()
+                                                .filter(|turn| {
+                                                    turn.response.last().is_some_and(|source| {
+                                                        source.entry_index == entry_ix
+                                                            && source.chunk_index == Some(chunk_ix)
+                                                    })
+                                                })
+                                                .map(|turn| {
+                                                    v_flex()
+                                                        .children(turn.response.last().and_then(
+                                                            |source| {
+                                                                self.render_response_outcome(source)
+                                                            },
+                                                        ))
+                                                        .child(
+                                                            self.render_thread_controls(turn, cx),
+                                                        )
+                                                }),
+                                        )
                                         .into_any_element()
                                 })
                             }
@@ -8380,8 +8462,6 @@ impl ThreadView {
                         },
                     ))
                     .into_any();
-
-                assistant_message_is_blank = is_blank;
 
                 if is_blank {
                     Empty.into_any()
@@ -8514,27 +8594,6 @@ impl ThreadView {
             primary
         };
 
-        let thread = self.thread.clone();
-
-        let primary = if let Some(source) = self
-            .response_model
-            .turns
-            .iter()
-            .filter_map(|turn| turn.response.last())
-            .find(|source| source.entry_index == entry_ix)
-        {
-            v_flex()
-                .w_full()
-                .child(primary)
-                .children(
-                    self.render_response_outcome(source)
-                        .map(|label| div().px_5().child(label)),
-                )
-                .into_any()
-        } else {
-            primary
-        };
-
         let primary = if is_indented {
             let line_top = if is_first_indented {
                 rems_from_px(-12.0_f32)
@@ -8557,69 +8616,6 @@ impl ThreadView {
                         .bg(cx.theme().colors().border.opacity(0.6)),
                 )
                 .child(primary)
-                .into_any_element()
-        } else {
-            primary
-        };
-
-        let is_generating = matches!(thread.read(cx).status(), ThreadStatus::Generating);
-
-        let is_turn_end = Self::entry_is_finalized_turn_end(thread.read(cx).entries(), entry_ix)
-            .unwrap_or(!is_generating);
-
-        let primary = if is_turn_end && !assistant_message_is_blank {
-            let user_message_index = {
-                let thread = thread.read(cx);
-                thread
-                    .entries()
-                    .iter()
-                    .take(entry_ix)
-                    .rposition(|entry| thread.is_user_authored_scroll_target(entry))
-            };
-
-            v_flex()
-                .w_full()
-                .child(primary)
-                .child(self.render_thread_controls(
-                    &thread,
-                    entry_ix,
-                    Some(entry_ix),
-                    entry_ix + 1 == total_entries,
-                    user_message_index,
-                    cx,
-                ))
-                .into_any_element()
-        } else {
-            primary
-        };
-
-        let is_assistant = matches!(entry, AgentThreadEntry::AssistantMessage(_));
-
-        let comments_editor = self.thread_feedback.comments_editor.clone();
-
-        let primary = if entry_ix + 1 == total_entries {
-            let last_assistant_index = thread
-                .read(cx)
-                .entries()
-                .iter()
-                .rposition(|entry| matches!(entry, AgentThreadEntry::AssistantMessage(_)));
-
-            v_flex()
-                .w_full()
-                .child(primary)
-                .when(!is_assistant, |this| {
-                    this.child(self.render_thread_controls(
-                        &thread,
-                        entry_ix,
-                        last_assistant_index,
-                        true,
-                        None,
-                        cx,
-                    ))
-                })
-                .when_some(comments_editor, |this, editor| {
-                    this.child(Self::render_feedback_feedback_editor(editor, cx))
-                })
                 .into_any_element()
         } else {
             primary
@@ -8786,112 +8782,168 @@ impl ThreadView {
             )
     }
 
-    /// A turn ends when no further assistant output (message or tool call)
-    /// follows before the next user message, and it's finalized once a user
-    /// message follows it.
-    fn entry_is_finalized_turn_end(entries: &[AgentThreadEntry], entry_ix: usize) -> Option<bool> {
-        if !matches!(
-            entries.get(entry_ix),
-            Some(AgentThreadEntry::AssistantMessage(_))
-        ) {
-            return Some(false);
-        }
+    fn response_content(
+        &self,
+        identity: &response_model::TurnIdentity,
+        cx: &App,
+    ) -> Option<String> {
+        let turn = self.response_model.turns.iter().find(|turn| {
+            &turn.identity == identity && matches!(turn.lifecycle, TurnLifecycle::Settled(_))
+        })?;
+        let text = turn
+            .response
+            .iter()
+            .filter_map(|source| self.source_message_content(source, cx))
+            .map(|content| content.to_markdown(cx))
+            .filter(|text| !text.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        (!text.is_empty()).then_some(text)
+    }
 
-        for entry in &entries[entry_ix + 1..] {
-            match entry {
-                AgentThreadEntry::UserMessage(_) => return Some(true),
-                AgentThreadEntry::AssistantMessage(_) | AgentThreadEntry::ToolCall(_) => {
-                    return Some(false);
-                }
-                _ => {}
-            }
+    fn scroll_to_previous_response(
+        &mut self,
+        identity: &response_model::TurnIdentity,
+        endpoint: &SourceReference,
+        cx: &mut Context<Self>,
+    ) {
+        let target = self
+            .response_model
+            .turns
+            .iter()
+            .find(|turn| {
+                &turn.identity == identity
+                    && turn.response.last() == Some(endpoint)
+                    && matches!(turn.lifecycle, TurnLifecycle::Settled(_))
+            })
+            .and_then(|turn| turn.predecessor.as_ref())
+            .and_then(|previous| {
+                self.response_model.turns.iter().find(|turn| {
+                    &turn.identity == previous
+                        && matches!(turn.lifecycle, TurnLifecycle::Settled(_))
+                })
+            })
+            .and_then(|turn| turn.response.first())
+            .and_then(|source| self.target_for_source(source, true, cx));
+        if let Some(target) = target {
+            self.scroll_to_content(target, cx);
         }
-
-        None
     }
 
     fn render_thread_controls(
         &self,
-        thread: &Entity<AcpThread>,
-        entry_ix: usize,
-        copy_response_index: Option<usize>,
-        is_thread_bottom: bool,
-        user_message_index: Option<usize>,
+        turn: &response_model::ClassifiedTurn,
         cx: &Context<Self>,
-    ) -> impl IntoElement {
-        let is_generating = matches!(thread.read(cx).status(), ThreadStatus::Generating);
-        let needs_confirmation = thread.read(cx).is_waiting_for_confirmation()
-            || self.has_pending_request_elicitation(cx);
-
-        if is_thread_bottom && (is_generating || needs_confirmation) {
-            return Empty.into_any_element();
-        }
-
-        let copy_response_button = copy_response_index.map(|response_index| {
-            IconButton::new(("copy_agent_response", entry_ix), IconName::Copy)
-                .icon_size(IconSize::Small)
-                .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("Copy This Agent Response"))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    let entries = this.thread.read(cx).entries();
-                    if let Some(text) = Self::get_agent_message_content(entries, response_index, cx)
-                    {
-                        cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    }
-                }))
-        });
-
+    ) -> AnyElement {
+        let Some(source) = turn
+            .response
+            .last()
+            .filter(|_| matches!(turn.lifecycle, TurnLifecycle::Settled(_)))
+        else {
+            return Empty.into_any();
+        };
+        let entry_ix = source.entry_index;
+        let chunk_ix = source.chunk_index.unwrap_or(0);
+        let identity = turn.identity.clone();
+        let control_id = format!("{identity:?}-{source:?}");
+        let is_thread_bottom = self
+            .response_model
+            .turns
+            .last()
+            .is_some_and(|last| last.identity == identity)
+            && !matches!(self.thread.read(cx).status(), ThreadStatus::Generating)
+            && !self.thread.read(cx).is_waiting_for_confirmation()
+            && !self.has_pending_request_elicitation(cx);
+        let user_message_index = {
+            let thread = self.thread.read(cx);
+            let prompt = turn.prompt.as_ref().map(|prompt| prompt.entry_index);
+            thread
+                .entries()
+                .iter()
+                .take(entry_ix)
+                .rposition(|entry| thread.is_user_authored_scroll_target(entry))
+                .filter(|index| prompt.is_none_or(|prompt| *index >= prompt))
+                .or(prompt)
+        };
+        let copy_identity = identity.clone();
+        let copy_response_button = IconButton::new(
+            SharedString::from(format!("copy-response-{control_id}")),
+            IconName::Copy,
+        )
+        .icon_size(IconSize::Small)
+        .icon_color(Color::Muted)
+        .tooltip(Tooltip::text("Copy This Agent Response"))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if let Some(text) = this.response_content(&copy_identity, cx) {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }
+        }));
+        let copy_response_button = div()
+            .debug_selector(move || format!("response-copy-{entry_ix}-{chunk_ix}"))
+            .child(copy_response_button);
         let scroll_to_recent_user_prompt = IconButton::new(
-            ("scroll_to_recent_user_prompt", entry_ix),
+            SharedString::from(format!("response-prompt-{control_id}")),
             IconName::UserArrowUp,
         )
         .icon_size(IconSize::Small)
         .icon_color(Color::Muted)
         .tooltip(Tooltip::text("Scroll to User Message"))
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.scroll_to_user_message_index(user_message_index, cx);
+            this.scroll_to_user_message_index(user_message_index, cx)
         }));
-
-        let scroll_to_top = is_thread_bottom.then(|| {
-            IconButton::new(("scroll_to_top", entry_ix), IconName::ArrowUp)
-                .icon_size(IconSize::Small)
-                .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("Scroll to Top"))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.scroll_to_top(cx);
-                }))
+        let previous_response = turn.predecessor.as_ref().map(|_| {
+            let identity = identity.clone();
+            let endpoint = source.clone();
+            div()
+                .debug_selector(move || format!("response-previous-{entry_ix}-{chunk_ix}"))
+                .child(
+                    IconButton::new(
+                        SharedString::from(format!("response-previous-{control_id}")),
+                        IconName::ArrowLeft,
+                    )
+                    .icon_size(IconSize::Small)
+                    .icon_color(Color::Muted)
+                    .tooltip(Tooltip::text("Scroll to Previous Answer"))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.scroll_to_previous_response(&identity, &endpoint, cx)
+                    })),
+                )
         });
+        let scroll_to_top = IconButton::new(
+            SharedString::from(format!("response-top-{control_id}")),
+            IconName::ArrowUp,
+        )
+        .icon_size(IconSize::Small)
+        .icon_color(Color::Muted)
+        .tooltip(Tooltip::text("Scroll to Top"))
+        .on_click(cx.listener(move |this, _, _, cx| this.scroll_to_top(cx)));
 
-        let show_stats = is_thread_bottom && AgentSettings::get_global(cx).show_turn_stats;
+        let scroll_to_top = div()
+            .debug_selector(move || format!("response-top-{entry_ix}-{chunk_ix}"))
+            .child(scroll_to_top);
+        let feedback_buttons = self.render_feedback_buttons(
+            is_thread_bottom && turn.lifecycle == TurnLifecycle::Settled(TurnOutcome::Success),
+            cx,
+        );
 
-        let last_turn_clock = show_stats
-            .then(|| {
-                self.turn_fields
-                    .last_turn_duration
-                    .filter(|&duration| duration > STOPWATCH_THRESHOLD)
-                    .map(|duration| {
-                        Label::new(duration_alt_display(duration))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                    })
-            })
-            .flatten();
+        h_flex()
+            .w_full()
+            .py_1p5()
+            .px_4()
+            .justify_end()
+            .opacity(0.4)
+            .hover(|s| s.opacity(1.))
+            .children(self.render_turn_stats(is_thread_bottom, cx))
+            .when_some(feedback_buttons, |this, buttons| this.child(buttons))
+            .child(copy_response_button)
+            .child(scroll_to_recent_user_prompt)
+            .when_some(previous_response, |this, button| this.child(button))
+            .child(scroll_to_top)
+            .into_any_element()
+    }
 
-        let last_turn_tokens_label = last_turn_clock
-            .is_some()
-            .then(|| {
-                self.turn_fields
-                    .last_turn_tokens
-                    .filter(|&tokens| tokens > TOKEN_THRESHOLD)
-                    .map(|tokens| {
-                        Label::new(format!("{} tokens", crate::humanize_token_count(tokens)))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                    })
-            })
-            .flatten();
-
-        let feedback_buttons = is_thread_bottom
+    fn render_feedback_buttons(&self, eligible: bool, cx: &Context<Self>) -> Option<Div> {
+        eligible
             .then(|| {
                 (self.is_subagent() && self.is_thread_feedback_enabled(cx)).then(|| {
                     let feedback = self.thread_feedback.feedback;
@@ -8899,6 +8951,7 @@ impl ThreadView {
                         "Rating the thread sends all of your current conversation to the Zed team.";
 
                     h_flex()
+                        .debug_selector(|| "agent-success-feedback".to_string())
                         .child(
                             IconButton::new("feedback-thumbs-up", IconName::ThumbsUp)
                                 .icon_size(IconSize::Small)
@@ -8947,43 +9000,58 @@ impl ThreadView {
                         )
                 })
             })
+            .flatten()
+    }
+
+    fn render_turn_stats(&self, is_thread_bottom: bool, cx: &Context<Self>) -> Option<Div> {
+        let show_stats = is_thread_bottom && AgentSettings::get_global(cx).show_turn_stats;
+
+        let last_turn_clock = show_stats
+            .then(|| {
+                self.turn_fields
+                    .last_turn_duration
+                    .filter(|&duration| duration > STOPWATCH_THRESHOLD)
+                    .map(|duration| {
+                        Label::new(duration_alt_display(duration))
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                    })
+            })
             .flatten();
 
-        let separator_dots = || {
-            Label::new("•")
+        let last_turn_tokens_label = last_turn_clock
+            .is_some()
+            .then(|| {
+                self.turn_fields
+                    .last_turn_tokens
+                    .filter(|&tokens| tokens > TOKEN_THRESHOLD)
+                    .map(|tokens| {
+                        Label::new(format!("{} tokens", crate::humanize_token_count(tokens)))
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                    })
+            })
+            .flatten();
+
+        if last_turn_clock.is_none() {
+            return None;
+        }
+        let separator = || {
+            Label::new("\u{2022}")
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .alpha(0.5)
         };
-
-        h_flex()
-            .w_full()
-            .py_1p5()
-            .px_4()
-            .justify_end()
-            .opacity(0.4)
-            .hover(|s| s.opacity(1.))
-            .when(
-                last_turn_tokens_label.is_some() || last_turn_clock.is_some(),
-                |this| {
-                    this.child(
-                        h_flex()
-                            .px_1()
-                            .gap_1()
-                            .when_some(last_turn_tokens_label, |this, label| {
-                                this.child(label).child(separator_dots())
-                            })
-                            .when_some(last_turn_clock, |this, label| {
-                                this.child(label).child(separator_dots())
-                            }),
-                    )
-                },
-            )
-            .when_some(feedback_buttons, |this, buttons| this.child(buttons))
-            .when_some(copy_response_button, |this, button| this.child(button))
-            .child(scroll_to_recent_user_prompt)
-            .when_some(scroll_to_top, |this, button| this.child(button))
-            .into_any_element()
+        Some(
+            h_flex()
+                .debug_selector(|| "agent-turn-stats".to_string())
+                .px_1()
+                .gap_1()
+                .when_some(last_turn_tokens_label, |row, label| {
+                    row.child(label).child(separator())
+                })
+                .children(last_turn_clock.map(|label| h_flex().child(label).child(separator()))),
+        )
     }
 
     fn is_thread_feedback_enabled(&self, cx: &App) -> bool {
@@ -9509,6 +9577,7 @@ impl ThreadView {
                     );
                     let content = self.render_message_context_menu(
                         entry_ix,
+                        chunk_ix,
                         block.markdown().cloned(),
                         content,
                         cx,
@@ -9610,7 +9679,13 @@ impl ThreadView {
                         this.toggle_thinking_block_expansion(key, window, cx);
                     }))
                     .map(|header| {
-                        self.render_message_context_menu(entry_ix, None, header.into_any(), cx)
+                        self.render_message_context_menu(
+                            entry_ix,
+                            chunk_ix,
+                            None,
+                            header.into_any(),
+                            cx,
+                        )
                     }),
             )
             .when(is_open, |this| {
@@ -9670,6 +9745,7 @@ impl ThreadView {
     fn render_message_context_menu(
         &self,
         entry_ix: usize,
+        chunk_ix: usize,
         markdown: Option<Entity<Markdown>>,
         message_body: AnyElement,
         cx: &Context<Self>,
@@ -9701,9 +9777,8 @@ impl ThreadView {
                             let entity = entity.clone();
                             move |_, cx| {
                                 entity.update(cx, |this, cx| {
-                                    let entries = this.thread.read(cx).entries();
                                     if let Some(text) =
-                                        Self::get_agent_message_content(entries, entry_ix, cx)
+                                        this.get_agent_message_content(entry_ix, chunk_ix, cx)
                                     {
                                         cx.write_to_clipboard(ClipboardItem::new_string(text));
                                     }
@@ -9781,56 +9856,29 @@ impl ThreadView {
     }
 
     fn get_agent_message_content(
-        entries: &[AgentThreadEntry],
+        &self,
         entry_index: usize,
+        chunk_index: usize,
         cx: &App,
     ) -> Option<String> {
-        let entry = entries.get(entry_index)?;
-        if matches!(entry, AgentThreadEntry::UserMessage(_)) {
-            return None;
-        }
-
-        let start_index = (0..entry_index)
-            .rev()
-            .find(|&i| matches!(entries.get(i), Some(AgentThreadEntry::UserMessage(_))))
-            .map(|i| i + 1)
-            .unwrap_or(0);
-
-        let end_index = (entry_index + 1..entries.len())
-            .find(|&i| matches!(entries.get(i), Some(AgentThreadEntry::UserMessage(_))))
-            .map(|i| i - 1)
-            .unwrap_or(entries.len() - 1);
-
-        let parts: Vec<String> = (start_index..=end_index)
-            .filter_map(|i| entries.get(i))
-            .filter_map(|entry| {
-                if let AgentThreadEntry::AssistantMessage(message) = entry {
-                    let text: String = message
-                        .chunks
-                        .iter()
-                        .filter_map(|chunk| match chunk {
-                            AssistantMessageChunk::Message { block, .. } => {
-                                let markdown = block.to_markdown(cx);
-                                if markdown.trim().is_empty() {
-                                    None
-                                } else {
-                                    Some(markdown)
-                                }
-                            }
-                            AssistantMessageChunk::Thought { .. } => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n\n");
-
-                    if text.is_empty() { None } else { Some(text) }
-                } else {
-                    None
-                }
+        let turn = self.response_model.turns.iter().find(|turn| {
+            turn.activity.iter().chain(&turn.response).any(|source| {
+                source.entry_index == entry_index && source.chunk_index == Some(chunk_index)
             })
-            .collect();
-
-        let text = parts.join("\n\n");
-        if text.is_empty() { None } else { Some(text) }
+        })?;
+        if matches!(turn.lifecycle, TurnLifecycle::Settled(_)) {
+            return self.response_content(&turn.identity, cx);
+        }
+        let text = turn
+            .activity
+            .iter()
+            .filter(|source| matches!(source.identity, response_model::SourceIdentity::Message(_)))
+            .filter_map(|source| self.source_message_content(source, cx))
+            .map(|content| content.to_markdown(cx))
+            .filter(|text| !text.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        (!text.is_empty()).then_some(text)
     }
 
     fn is_blocked_on_terminal_command(&self, cx: &App) -> bool {

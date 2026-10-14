@@ -209,6 +209,20 @@ impl ThreadSearchBar {
                 }
             },
         );
+        let visibility_subscription =
+            cx.observe_in(&entry_view_state, window, |this, _, window, cx| {
+                if this.is_active {
+                    this._update_matches_task = None;
+                    this.update_matches_with_scroll(false, window, cx);
+                }
+                cx.notify();
+            });
+        let settings_subscription =
+            cx.observe_global_in::<settings::SettingsStore>(window, |this, window, cx| {
+                if this.is_active {
+                    this.schedule_update_matches(window, cx);
+                }
+            });
         cx.on_release(|this, cx| {
             this.clear_highlights_impl(cx);
         })
@@ -228,7 +242,12 @@ impl ThreadSearchBar {
             is_active: false,
             _update_matches_task: None,
             _search_task: None,
-            _subscriptions: vec![editor_subscription, thread_subscription],
+            _subscriptions: vec![
+                editor_subscription,
+                thread_subscription,
+                visibility_subscription,
+                settings_subscription,
+            ],
             patch_buffer_subscriptions: HashMap::default(),
         }
     }
@@ -250,8 +269,10 @@ impl ThreadSearchBar {
     fn schedule_update_matches(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self._update_matches_task = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(SEARCH_UPDATE_DEBOUNCE).await;
-            this.update_in(cx, |this, window, cx| this.update_matches(window, cx))
-                .ok();
+            this.update_in(cx, |this, window, cx| {
+                this.update_matches_with_scroll(false, window, cx)
+            })
+            .ok();
         }));
     }
 
@@ -330,6 +351,16 @@ impl ThreadSearchBar {
     }
 
     pub(super) fn update_matches(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.update_matches_with_scroll(true, window, cx);
+    }
+
+    fn update_matches_with_scroll(
+        &mut self,
+        allow_scroll: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self._search_task = None;
         let previous_active_match_ix = self.active_match;
         let previous_active_key = previous_active_match_ix
             .and_then(|ix| self.matches.get(ix))
@@ -354,6 +385,9 @@ impl ThreadSearchBar {
             match entry {
                 // Past user messages render through `MessageEditor`, not markdown.
                 AgentThreadEntry::UserMessage(_) => {
+                    if !entry_view_state.source_is_revealed(entry_ix, None) {
+                        continue;
+                    }
                     let editor = entry_view_state
                         .entry(entry_ix)
                         .and_then(|view_entry| view_entry.message_editor())
@@ -378,6 +412,7 @@ impl ThreadSearchBar {
                         });
                     }
                     if let AgentThreadEntry::ToolCall(tool_call) = entry
+                        && entry_view_state.source_is_revealed(entry_ix, None)
                         && entry_view_state.is_tool_call_content_visible(tool_call)
                     {
                         for content in tool_call.content() {
@@ -486,6 +521,7 @@ impl ThreadSearchBar {
                     scanned,
                     previous_active_key,
                     previous_active_match_ix,
+                    allow_scroll,
                     window,
                     cx,
                 );
@@ -499,6 +535,7 @@ impl ThreadSearchBar {
         scanned: Vec<ScannedTarget>,
         previous_active_key: Option<MatchKey>,
         previous_active_match_ix: Option<usize>,
+        allow_scroll: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -560,7 +597,7 @@ impl ThreadSearchBar {
             let active_match_ix = preserved_ix
                 .or_else(|| previous_active_match_ix.filter(|ix| *ix < self.matches.len()))
                 .unwrap_or(0);
-            let scroll_to_match = preserved_ix.is_none();
+            let scroll_to_match = allow_scroll && preserved_ix.is_none();
             self.activate_match(active_match_ix, scroll_to_match, window, cx);
         } else {
             cx.notify();
@@ -921,6 +958,13 @@ impl Render for ThreadSearchBar {
             .border_b_1()
             .border_color(theme.border.opacity(0.6))
             .child(bar_row)
+            .when(self.entry_view_state.read(cx).compact_search(), |bar| {
+                bar.child(
+                    Label::new("Expand Agent Activity to search its contents.")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+            })
             .children(error_row)
     }
 }
@@ -992,6 +1036,9 @@ pub(super) fn collect_markdowns(
         AgentThreadEntry::UserMessage(_) => {}
         AgentThreadEntry::AssistantMessage(message) => {
             for (chunk_ix, chunk) in message.chunks.iter().enumerate() {
+                if !entry_view_state.source_is_revealed(entry_ix, Some(chunk_ix)) {
+                    continue;
+                }
                 match chunk {
                     AssistantMessageChunk::Message { block, .. } => {
                         out.extend(block.markdowns().cloned());
@@ -1008,6 +1055,9 @@ pub(super) fn collect_markdowns(
             }
         }
         AgentThreadEntry::ToolCall(tool_call) => {
+            if !entry_view_state.source_is_revealed(entry_ix, None) {
+                return out;
+            }
             out.push(tool_call.label.clone());
             if entry_view_state.is_tool_call_content_visible(tool_call) {
                 out.extend(
@@ -1018,11 +1068,15 @@ pub(super) fn collect_markdowns(
                 );
             }
         }
-        AgentThreadEntry::ContextCompaction(compaction) => out.extend(compaction_markdowns(
-            compaction,
-            entry_view_state.is_compaction_expanded(entry_ix),
-        )),
-        AgentThreadEntry::Elicitation(_) => {}
+        AgentThreadEntry::ContextCompaction(compaction)
+            if entry_view_state.source_is_revealed(entry_ix, None) =>
+        {
+            out.extend(compaction_markdowns(
+                compaction,
+                entry_view_state.is_compaction_expanded(entry_ix),
+            ))
+        }
+        AgentThreadEntry::Elicitation(_) | AgentThreadEntry::ContextCompaction(_) => {}
     }
     out
 }
