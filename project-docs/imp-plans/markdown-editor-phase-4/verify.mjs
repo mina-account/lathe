@@ -113,7 +113,7 @@ assert.equal(checks.reviewFixPass10.actualBrowserRequestScenarios,30);
 assert.equal(checks.reviewFixPass10.actualWindowsOriginalNames,5);
 assert.equal(checks.reviewFixPass10.nativeDecodePumpImportSaveUndoClose,true);
 assert.equal(checks.reviewFixPass10.genuineProtocolLimitPreserved,true);
-const nameFixture=await readFile(new URL("image-name-requests.json",import.meta.url));
+const nameFixture=(await readFile(new URL("image-name-requests.json",import.meta.url),"utf8")).replaceAll("\r\n","\n");
 assert.equal(createHash("sha256").update(nameFixture).digest("hex"),checks.reviewFixPass10.actualBrowserRequestFixtureSha256);
 const nameRequests=JSON.parse(nameFixture);
 assert.equal(nameRequests.length,30);
