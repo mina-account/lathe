@@ -9404,6 +9404,22 @@ fn ai_page(cx: &App) -> SettingsPage {
                 files: USER,
             }),
             SettingsPageItem::SettingItem(SettingItem {
+                title: "Super Compact Mode",
+                description: "Collapse thinking, intermediate messages, and tool activity into one panel per turn. Responses appear when the turn ends; open Agent Activity to inspect live output. Search includes only revealed content. Pending approval requests remain visible and may show commands or file paths. Final response detection is best effort for agents without final-answer markers.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.super_compact_mode"),
+                    pick: |settings_content| {
+                        settings_content.agent.as_ref()?.super_compact_mode.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.agent.get_or_insert_default().super_compact_mode = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
                 title: "Show Turn Stats",
                 description: "Whether to show turn statistics like elapsed time during generation and final turn duration.",
                 field: Box::new(SettingField {
