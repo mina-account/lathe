@@ -17,7 +17,7 @@
     "package-lock.json": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
     "build.mjs": "3bcd0bdf8cbcaa1e7304987c4dce37d7e260ffe766c1082974ea0500d09707ed",
     "application.ts": "ea9badf9952e598ce124ac2b61cbc6f220baadb546ac2315c11ea4c2257c0344",
-    "rich.ts": "c48186eba69f5c1932b561ff07a9d62ed54d93f39683902148b85ed330b8f22a",
+    "rich.ts": "52543d75721ad8ff6614814b6fb32edc75016a38343c49a59f577f37c3c6cd35",
     "renderers.ts": "455439b13564b2e90a8a174435b3919b33ad87ce09a3bb8f640efb26a7814b9a",
     "index.html": "d6b8bfa0b72d3ddcd911c84ee734412224da33bbbe3f98f5b5c01e916232bf86",
     "application.css": "2f0e792395427d47b86ea351a0a9e19b1c3f8d3b2e733968b16942c522e61279"
@@ -29,7 +29,7 @@
   },
   "assets": {
     "crates/markdown_editor/frontend/application.js": "af2968282ab1e91d7e2e4525b078b8291e4d7a2b4c006e732d9fb1ef803a6248",
-    "crates/markdown_editor/frontend/rich.js": "05b5b10234fd72560e37954b097e4775c0267be5f228d42670a2658dde91f161",
+    "crates/markdown_editor/frontend/rich.js": "300dd0afc6f878ff5fc3d1937f1d454a31ce3fa1504f3b86e9c131698ef31863",
     "crates/markdown_editor/frontend/renderers.js": "d8ec89545b009df0d93db0357a16a7041fb19976eea24c5004b3b5dd9fc9e563",
     "crates/markdown_editor/frontend/themes.js": "3e961c73eeacc4b70e4984441aadbfe4a8d867be08a61bc2389c1f1d625be63b",
     "crates/markdown_editor/frontend/vendor/DIFF-MATCH-PATCH-LICENSE": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",

@@ -63,7 +63,7 @@ for(const [file,hash] of Object.entries(runtime.nativeSourceHashesNormalizedLF))
 }
 const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
 assert.equal(checks.frontendBridge,17);
-assert.equal(checks.frontendRealBrowser,58);
+assert.equal(checks.frontendRealBrowser,60);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
 assert.equal(checks.windowsNative,78);assert.equal(checks.linuxNative,77);
@@ -113,6 +113,15 @@ assert.equal(checks.reviewFixPass10.actualBrowserRequestScenarios,30);
 assert.equal(checks.reviewFixPass10.actualWindowsOriginalNames,5);
 assert.equal(checks.reviewFixPass10.nativeDecodePumpImportSaveUndoClose,true);
 assert.equal(checks.reviewFixPass10.genuineProtocolLimitPreserved,true);
+assert.equal(checks.reviewFixPass11.findingsFixed,1);
+assert.equal(checks.reviewFixPass11.focusedBrowserGreen,2);
+assert.equal(checks.reviewFixPass11.recoveredImageErrorCleared,true);
+assert.equal(checks.reviewFixPass11.remainingImageFailureRetained,true);
+assert.equal(checks.reviewFixPass11.allRecoveredStatusCleared,true);
+assert.equal(checks.reviewFixPass11.nativeImportErrorRetained,true);
+assert.equal(checks.reviewFixPass11.obsoleteGenerationFailureIgnored,true);
+assert.equal(checks.reviewFixPass11.concurrentImageClaimsRemainValid,true);
+assert.equal(checks.reviewFixPass11.sourceAndHistoryUnchanged,true);
 const nameFixture=(await readFile(new URL("image-name-requests.json",import.meta.url),"utf8")).replaceAll("\r\n","\n");
 assert.equal(createHash("sha256").update(nameFixture).digest("hex"),checks.reviewFixPass10.actualBrowserRequestFixtureSha256);
 const nameRequests=JSON.parse(nameFixture);

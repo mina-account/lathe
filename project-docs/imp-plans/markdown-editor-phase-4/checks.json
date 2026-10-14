@@ -1,7 +1,7 @@
 {
   "date": "2026-10-13",
   "frontendBridge": 17,
-  "frontendRealBrowser": 58,
+  "frontendRealBrowser": 60,
   "windowsNative": 78,
   "linuxNative": 77,
   "windowsProtocol": 13,
@@ -951,6 +951,124 @@
       "reason": "Current browser/bridge/generated/native/protocol/app/wrapper/smoke suites are fresh for changed frontend embedding and regression. Fs/project/worktree/server/workspace/preview/routing and transport production source remains unchanged; unrelated broad groups retain prior exact SHA/report/log chain."
     },
     "temporaryFixtureDataRetained": true,
+    "additionalCacheCleanup": false,
+    "confidentialTransportProbes": false
+  },
+  "reviewFixPass11": {
+    "reviewedHead": "b422f636af5b3c02f3e7ea06782004bb1b7ac4f4",
+    "findingsFixed": 1,
+    "expectedRed": {
+      "groups": 2,
+      "passed": 0,
+      "failed": 2,
+      "log": "C:/tmp/lathe-phase4-fixes11-browser-red.log",
+      "reason": "A successfully decoded retry retains its error class; an obsolete resource-generation failure reapplies the error after newer success"
+    },
+    "focusedBrowserGreen": 2,
+    "presentations": [
+      "preview",
+      "ir",
+      "wysiwyg",
+      "sv"
+    ],
+    "recoveryScenarios": 8,
+    "recoveredImageErrorCleared": true,
+    "remainingImageFailureRetained": true,
+    "allRecoveredStatusCleared": true,
+    "nativeImportErrorRetained": true,
+    "newResourceFailureDoesNotHideNativeError": true,
+    "ordinaryNativeCompletionShowsRemainingImageFailure": true,
+    "obsoleteGenerationFailureIgnored": true,
+    "obsoleteGenerationStopsClaimingImages": true,
+    "concurrentImageClaimsRemainValid": true,
+    "sourceAndHistoryUnchanged": true,
+    "diagnosticLog": "C:/tmp/lathe-phase4-fixes11-browser-diagnostic.log",
+    "diagnosticCorrection": "Presented-image assertions replace premature global error counts. Actual diagnostics showed concurrent loader passes claiming an already-claimed image after await and emitting a missing URL. Loader now rechecks unclaimed URL and resource generation before each claim; focused and full tests require valid destinations.",
+    "currentLogs": [
+      "C:/tmp/lathe-phase4-fixes11-browser-final.log",
+      "C:/tmp/lathe-phase4-fixes11-bridge-final.log",
+      "C:/tmp/lathe-phase4-fixes11-assets-final.log",
+      "C:/tmp/lathe-phase4-fixes11-windows-final.log",
+      "C:/tmp/lathe-phase4-fixes11-linux-final.log"
+    ],
+    "freshBackendSmokeExits": {
+      "windows": 0,
+      "wayland": 0,
+      "x11": 0
+    },
+    "frontendSourceChanged": true,
+    "frontendGeneratedBeforeNativeBuilds": true,
+    "nativeSourceChanged": false,
+    "reusedVerification": {
+      "sourceCommit": "b422f636af5b3c02f3e7ea06782004bb1b7ac4f4",
+      "report": "C:/tmp/lathe-phase4-fixes-10.md",
+      "historicalBroadVerification": {
+        "sourceCommit": "fdc9c7b1ef3ec34d5864c5394b4d95750bbb6817",
+        "report": "C:/tmp/lathe-phase4-fixes-7.md",
+        "checks": [
+          "browser57 and bridge17",
+          "isolated347 generated resources/332 pinned hashes"
+        ],
+        "logs": [
+          "C:/tmp/lathe-phase4-fixes7-browser-final-verified.log",
+          "C:/tmp/lathe-phase4-fixes7-bridge-final-verified.log",
+          "C:/tmp/lathe-phase4-fixes7-assets-final-verified.log"
+        ],
+        "historicalBroadVerification": {
+          "sourceCommit": "5c949e6769f9e8b051575e7e3e3d1031bd711589",
+          "report": "C:/tmp/lathe-phase4-fixes-6.md",
+          "previousVerification": {
+            "sourceCommit": "548c863ba00a06b4646fa8150e91fe902ee61166",
+            "report": "C:/tmp/lathe-phase4-fixes-5.md",
+            "checks": [
+              "Fs23 each and Linux direct SSH resource/import1 retain pass4 ef69587de52180dfb4e6435f5c202e40e2baa741 provenance",
+              "Historical unaffected transport/workspace/preview/routing and other lint groups retain pass2 a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d provenance"
+            ],
+            "previousVerification": {
+              "sourceCommit": "ef69587de52180dfb4e6435f5c202e40e2baa741",
+              "report": "C:/tmp/lathe-phase4-fixes-4.md",
+              "checks": [
+                "browser53 and bridge17",
+                "isolated347 assets/332 hashes reconstruction",
+                "Fs23 each",
+                "Linux direct SSH resource/import1"
+              ],
+              "logs": [
+                "C:/tmp/lathe-phase4-fixes4-browser-final.log",
+                "C:/tmp/lathe-phase4-fixes4-bridge-final.log",
+                "C:/tmp/lathe-phase4-fixes4-assets-final.log",
+                "C:/tmp/lathe-phase4-fixes4-windows-final.log",
+                "C:/tmp/lathe-phase4-fixes4-linux-final.log"
+              ],
+              "historicalBroadGroups": {
+                "sourceCommit": "a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d",
+                "report": "C:/tmp/lathe-phase4-fixes-2.md",
+                "windowsLog": "C:/tmp/lathe-phase4-fixes2-windows-final.log",
+                "linuxLog": "C:/tmp/lathe-phase4-fixes2-linux-final.log",
+                "previousCurrentPassReport": "C:/tmp/lathe-phase4-fixes-3.md",
+                "previousCurrentPassCommit": "6530c95413dc34d69f6cd2420dbb9d84d68e15bb",
+                "checks": [
+                  "Windows direct SSH resource/import1",
+                  "Windows collaborative local/shared-SSH1 each",
+                  "preview32 each",
+                  "saveWindows25/Linux26",
+                  "close49 each",
+                  "routingWorkspace1/terminal15 each",
+                  "Project/Worktree/Settings and RemoteServer wrapper lints each",
+                  "Windows Zed/Collab wrapper lints"
+                ],
+                "reason": "No project/worktree/protocol/server/workspace/preview/routing production source changed. Fresh native/pump/import, protocol, app, Fs, Markdown/Workspace/Fs lint, browser and actual backend smokes cover current bytes; existing benign Linux direct-SSH fixture is fresh. FakeFs instrumentation is test-support only with unchanged zero-delay behavior."
+              },
+              "reason": "Frontend/generated/protocol/Fs/project/worktree/server/workspace/preview/routing source remains unchanged. Fresh full native/pump/asset suites, app checks, scoped wrapper lint, three actual smokes and generator/asset verifiers cover changed decode scheduling and evidence behavior."
+            },
+            "reason": "Native image/protocol/Fs/project/worktree/server/workspace/preview/routing production source is unchanged. Fresh full packaged-browser/bridge, native request/pump suites, protocol, application checks, scoped wrapper lint, locked reconstruction and three actual smokes cover the caret fix and its final embedded bytes."
+          },
+          "reason": "Native/protocol/Fs/project/worktree/server/workspace/preview/routing production source remains unchanged. Fs23 each and benign Linux SSH1 retain pass4 ef69587de52180dfb4e6435f5c202e40e2baa741 provenance; other unaffected broad tests/lint groups retain explicit pass2 a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d provenance. Fresh packaged-browser/bridge, native and protocol suites, apps, scoped wrappers, locked reconstruction and 3 actual smokes cover final frontend embedded bytes."
+        },
+        "reason": "Only native image naming and its real-filesystem regression change. Frontend/generated/Fs/project/worktree/server/workspace/preview/routing and transport production source remains unchanged. Current full native/protocol/app/wrapper checks and fresh actual3backend smokes cover the changed native bytes; runtime hashes/verifiers are regenerated fresh."
+      },
+      "reason": "Frontend/browser/bridge/resources/native embedding/protocol/app/scoped wrappers and three actual backend smokes are fresh. Native/Fs/project/worktree/server/workspace/preview/routing and transport production source remains unchanged; unrelated broad groups retain exact prior SHA/report/log chain."
+    },
     "additionalCacheCleanup": false,
     "confidentialTransportProbes": false
   }

@@ -26,6 +26,8 @@ const contentStyle=document.createElement("link"),codeStyle=document.createEleme
 contentStyle.rel=codeStyle.rel="stylesheet"; document.head.append(contentStyle,codeStyle,customStyle);
 const resources=new Map                                                                 ();
 const imageUrls=new Set        ();
+const imageFailures=new Map                         ();
+let imageNotice            =null;
 let resourceRequest=0;
 let resourceGeneration=0;
 let readingGeneration=0;
@@ -99,7 +101,7 @@ Lute.New = (...arguments_       ) => {
 };
 
 const bridge = new DocumentBridge(parameters.get("session") ?? "", parameters.get("document") ?? "",
-    message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), show, text => { status.textContent = text; });
+    message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), show, text => { imageNotice=null;status.textContent=text;updateImageNotice(); });
 (window       ).latheMarkdown = bridge;
 const receive = bridge.receive.bind(bridge);
 bridge.receive = message => {
@@ -156,19 +158,31 @@ function requestResource(kind                      ,value       )              {
         setTimeout(()=>{if(resources.delete(request))reject(new Error("Project resource timed out."));},35000);
     });
 }
+function updateImageNotice() {
+    for(const [element] of imageFailures)if(!element.isConnected || !renderedRoot().contains(element))imageFailures.delete(element);
+    if(status.textContent!==imageNotice && status.textContent!=="Markdown Editor")return;
+    imageNotice=[...imageFailures.values()].at(-1) ?? null;
+    status.textContent=imageNotice ?? "Markdown Editor";
+}
 async function loadImages(root            ) {
     const generation=resourceGeneration;
+    updateImageNotice();
     const activeUrls=new Set([...document.querySelectorAll                  ("img")].map(image=>image.src));
     for(const url of imageUrls)if(!activeUrls.has(url)){URL.revokeObjectURL(url);imageUrls.delete(url);}
     for (const element of root.querySelectorAll                  ("img[data-lathe-image]")) {
-        const url=element.dataset.latheImage ; delete element.dataset.latheImage; element.dataset.latheOriginal=url;
+        if(generation!==resourceGeneration)break;
+        const url=element.dataset.latheImage;
+        // A concurrent render pass can claim this image while an earlier request awaits.
+        if(url===undefined)continue;
+        delete element.dataset.latheImage; element.dataset.latheOriginal=url;
         try {
             const result=await requestResource("resource",url);
             if (!element.isConnected || generation!==resourceGeneration) continue;
             const bytes=Uint8Array.from(atob(result.bytes),character=>character.charCodeAt(0));
             element.onload=scrollRestoration();
             const object=URL.createObjectURL(new Blob([bytes],{type:result.mime})); imageUrls.add(object); element.src=object;
-        } catch(error) { if (element.isConnected) { element.classList.add("resource-error");status.textContent=`Image unavailable: ${String(error)}`; } }
+            element.classList.remove("resource-error");imageFailures.delete(element);updateImageNotice();
+        } catch(error) { if (element.isConnected && generation===resourceGeneration) { element.classList.add("resource-error");imageFailures.set(element,`Image unavailable: ${String(error)}`);updateImageNotice(); } }
     }
 }
 function lineNumbers() {

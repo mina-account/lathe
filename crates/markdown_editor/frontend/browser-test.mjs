@@ -1205,3 +1205,79 @@ test("browser File imports bound legal Windows Unicode basenames before native s
     }
     console.log(`Verified ${traces.length} real File import requests; native Windows original files: ${process.platform==="win32"?names.length:0}`);
 });
+
+async function imageResourceReply(page,url,error,bytes="") {
+    await page.waitForFunction(url=>window.testMessages.some(message=>message.kind==="resource"&&message.url===url&&!window.repliedImages?.includes(message.request)),url);
+    try {await page.waitForFunction(({url,error,bytes})=>{
+        window.repliedImages??=[];
+        for(const request of window.testMessages.filter(message=>message.kind==="resource"&&message.url===url&&!window.repliedImages.includes(message.request))){
+            window.repliedImages.push(request.request);
+            window.latheMarkdown.receive({kind:"resource",request:request.request,mime:bytes?"image/png":"",bytes,error});
+        }
+        const editor=window.latheRich.editor,mode=editor.getCurrentMode();
+        const root=document.querySelector('#mode').value==="preview"?document.querySelector('#viewer'):mode==="sv"?editor.vditor.preview.previewElement:editor.vditor[mode].element;
+        const image=[...root.querySelectorAll('img')].find(image=>image.dataset.latheOriginal===url);
+        return error?image?.classList.contains('resource-error'):image?.naturalWidth>0;
+    },{url,error,bytes},{timeout:5000});}catch(failure){throw new Error(JSON.stringify(await page.evaluate(()=>({mode:document.querySelector('#mode').value,images:[...document.querySelectorAll('img')].map(image=>image.outerHTML),requests:window.testMessages.filter(message=>message.kind==="resource"),replied:window.repliedImages,status:document.querySelector('#status').textContent}))),{cause:failure});}
+}
+async function imageResourceState(page,url) {
+    return page.evaluate(url=>{
+        const rich=window.latheRich,editor=rich.editor,mode=editor.getCurrentMode();
+        const root=document.querySelector('#mode').value==="preview"?document.querySelector('#viewer'):mode==="sv"?editor.vditor.preview.previewElement:editor.vditor[mode].element;
+        const image=[...root.querySelectorAll('img')].find(image=>image.dataset.latheOriginal===url);
+        return {width:image?.naturalWidth??0,error:image?.classList.contains('resource-error')??false,status:document.querySelector('#status').textContent};
+    },url);
+}
+test("successful image resource reload clears only recovered image failures",async()=>{
+    const png="iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=",source="Before\n\n![a](assets/a.png)\n\n![b](assets/b.png)\n\nTail";
+    for(const mode of ["preview","ir","wysiwyg","sv"]){
+        const {page,context,external}=await open(source,mode);
+        await imageResourceReply(page,"assets/a.png","A missing");await imageResourceReply(page,"assets/b.png","B missing");
+        await page.waitForFunction(()=>document.querySelectorAll('img.resource-error').length>=2);
+        assert.match((await imageResourceState(page,"assets/b.png")).status,/B missing/);
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"resources_reset"}));
+        await imageResourceReply(page,"assets/a.png",null,png);
+        await page.waitForFunction(()=>[...document.querySelectorAll('img')].some(image=>image.dataset.latheOriginal==="assets/a.png"&&image.naturalWidth===2));
+        assert.equal((await imageResourceState(page,"assets/a.png")).error,false,mode+": recovered image is not outlined");
+        assert.equal((await imageResourceState(page,"assets/b.png")).error,true,mode+": remaining failure stays outlined");
+        assert.match((await imageResourceState(page,"assets/b.png")).status,/B missing/);
+        await imageResourceReply(page,"assets/b.png",null,png);
+        await page.waitForFunction(()=>[...document.querySelectorAll('img')].filter(image=>image.src.startsWith('blob:')&&image.naturalWidth===2).length>=2);
+        assert.equal((await imageResourceState(page,"assets/b.png")).error,false);
+        assert.equal((await imageResourceState(page,"assets/b.png")).status,"Markdown Editor");
+        assert.deepEqual(await page.evaluate(()=>({source:window.latheMarkdown.draft,mutations:window.testMessages.filter(message=>['edit','draft','undo','redo'].includes(message.kind))})),{source,mutations:[]});
+        assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="resource").every(message=>typeof message.url==="string"&&message.url.length>0)),true,"all image requests keep their actual destination");
+        assert.deepEqual(external,[]);await context.close();
+    }
+});
+test("image resource retry ignores stale failures and preserves native import notices",async()=>{
+    const png="iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=",source="Before\n\n![a](assets/a.png)\n\nTail";
+    for(const mode of ["preview","ir","wysiwyg","sv"]){
+        const {page,context,external}=await open(source,mode);
+        await page.waitForFunction(()=>window.testMessages.some(message=>message.kind==="resource"));
+        const stale=await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="resource").map(message=>message.request));
+        await page.evaluate(stale=>{window.repliedImages=[...stale];window.latheMarkdown.receive({kind:"resources_reset"});},stale);
+        await imageResourceReply(page,"assets/a.png",null,png);
+        await page.waitForFunction(()=>[...document.querySelectorAll('img')].some(image=>image.src.startsWith('blob:')&&image.naturalWidth===2));
+        await page.evaluate(stale=>{for(const request of stale)window.latheMarkdown.receive({kind:"resource",request,mime:"",bytes:"",error:"Obsolete missing file"});},stale);
+        assert.equal((await imageResourceState(page,"assets/a.png")).error,false,mode+": stale failure must not mark new image");
+        assert.equal((await imageResourceState(page,"assets/a.png")).status,"Markdown Editor");
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"resources_reset"}));
+        await imageResourceReply(page,"assets/a.png","Current missing file");
+        await page.waitForSelector('img.resource-error');
+        await page.evaluate(()=>{window.latheMarkdown.receive({kind:"notice",text:"Image import failed: permission denied"});window.latheMarkdown.receive({kind:"resources_reset"});});
+        await imageResourceReply(page,"assets/a.png",null,png);
+        await page.waitForFunction(()=>[...document.querySelectorAll('img')].some(image=>image.src.startsWith('blob:')&&image.naturalWidth===2));
+        assert.equal((await imageResourceState(page,"assets/a.png")).error,false);
+        assert.equal((await imageResourceState(page,"assets/a.png")).status,"Image import failed: permission denied");
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"resources_reset"}));
+        await imageResourceReply(page,"assets/a.png","Another current image failure");
+        await page.waitForSelector('img.resource-error');
+        assert.equal((await imageResourceState(page,"assets/a.png")).status,"Image import failed: permission denied");
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"notice",text:"Markdown Editor"}));
+        assert.match((await imageResourceState(page,"assets/a.png")).status,/Another current image failure/);
+        assert.deepEqual(await page.evaluate(()=>({source:window.latheMarkdown.draft,mutations:window.testMessages.filter(message=>['edit','draft','undo','redo'].includes(message.kind))})),{source,mutations:[]});
+        assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="resource").every(message=>typeof message.url==="string"&&message.url.length>0)),true,"all image requests keep their actual destination");
+        assert.deepEqual(external,[]);await context.close();
+    }
+});
