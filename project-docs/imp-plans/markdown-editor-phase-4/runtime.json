@@ -23,7 +23,7 @@
     "application.css": "2f0e792395427d47b86ea351a0a9e19b1c3f8d3b2e733968b16942c522e61279"
   },
   "nativeSourceHashesNormalizedLF": {
-    "crates/markdown_editor/src/assets.rs": "01050c9d4c22dcf14b331c0ae24bda53fe5f5b2fe3c725e778b6390ccde01890",
+    "crates/markdown_editor/src/assets.rs": "2be3ea36ffc0380400664bdae4e5833045306d30cc87b2083f708518801c66a3",
     "crates/markdown_editor/src/item.rs": "347cb19a3bb797422682b8bb7a43dd6b1b6d2c090abbb791e5e3af5db3bd0705",
     "crates/fs/src/fs.rs": "ca6d8b9adf16108e89ba4497b1dd0b93f236252eb4dd9507593c84d0ed4c56a0"
   },

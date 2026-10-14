@@ -535,6 +535,12 @@ impl MarkdownEditor {
                 this.importing_images = false;
                 if let Err(error) = result {
                     this.asset_notice(error.to_string(), cx);
+                } else if this.error().is_none() {
+                    if let Err(error) = this.send(HostMessage::Notice {
+                        text: "Markdown Editor".into(),
+                    }) {
+                        this.asset_notice(error.to_string(), cx);
+                    }
                 }
             }) {
                 log::debug!("Markdown import item closed: {error:#}");
@@ -876,6 +882,209 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn completed_imports_clear_image_progress_and_preserve_error_notices(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (incoming, sent) = attach_pump(&visual, cx);
+        let original = PathBuf::from(path!("/project/notice.png"));
+        filesystem
+            .write(&original, &png())
+            .await
+            .expect("image fixture");
+        let mut traces = Vec::new();
+        for route in [
+            "encoded",
+            "picker",
+            "drop",
+            "clipboard",
+            "partial",
+            "failure",
+            "recovery",
+            "readonly",
+            "recovery-after-readonly",
+        ] {
+            sent.borrow_mut().clear();
+            if route == "clipboard" {
+                cx.update(|_, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem {
+                        entries: vec![ClipboardEntry::ExternalPaths(gpui::ExternalPaths(
+                            vec![original.clone()].into(),
+                        ))],
+                    })
+                });
+            }
+            if route == "drop" {
+                visual.update(cx, |item, cx| {
+                    item.native_image_drop(&gpui::ExternalPaths(vec![original.clone()].into()), cx)
+                });
+            }
+            let request = visual.read_with(cx, |item, _| {
+                if ["picker", "readonly"].contains(&route) {
+                    return pick(item, false, false);
+                }
+                if route == "drop" {
+                    return pick(item, false, true);
+                }
+                if route == "clipboard" {
+                    return pick(item, true, false);
+                }
+                let mut images = Vec::new();
+                if route != "failure" {
+                    images.push(ImportedImage {
+                        name: "notice.png".into(),
+                        bytes: STANDARD.encode(png()),
+                    });
+                }
+                if ["partial", "failure"].contains(&route) {
+                    images.push(ImportedImage {
+                        name: "invalid.png".into(),
+                        bytes: STANDARD.encode(b"invalid"),
+                    });
+                }
+                protocol::ClientMessage::ImportImages {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    base_revision: item.protocol.revision,
+                    position: 8,
+                    images,
+                }
+            });
+            incoming.borrow_mut().push(request);
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            assert!(sent.borrow().iter().any(|message| matches!(message, HostMessage::Notice{text} if text=="Importing images…")), "{route}: progress begins");
+            cx.run_until_parked();
+            if ["picker", "readonly"].contains(&route) {
+                assert!(cx.did_prompt_for_paths());
+                if route == "readonly" {
+                    visual.update(cx, |item, cx| {
+                        item.source
+                            .update(cx, |source, _| source.set_read_only(true))
+                    });
+                }
+                cx.simulate_path_prompt_response(|_| Some(vec![original.clone()]));
+                cx.run_until_parked();
+            }
+            let (text, error, importing) = visual.read_with(cx, |item, cx| {
+                (
+                    item.buffer.read(cx).snapshot().text(),
+                    item.error().map(str::to_owned),
+                    item.importing_images,
+                )
+            });
+            assert!(!importing, "{route}: import completes");
+            let notices = sent
+                .borrow()
+                .iter()
+                .filter(|message| matches!(message, HostMessage::Notice { .. }))
+                .cloned()
+                .collect::<Vec<_>>();
+            let last = notices
+                .iter()
+                .rev()
+                .find_map(|message| {
+                    if let HostMessage::Notice { text } = message {
+                        Some(text.clone())
+                    } else {
+                        None
+                    }
+                })
+                .expect("displayed notice");
+            if ["partial", "failure", "readonly"].contains(&route) {
+                assert_eq!(
+                    Some(last.as_str()),
+                    error.as_deref(),
+                    "{route}: retain visible error"
+                );
+                assert_ne!(last, "Importing images…");
+            } else {
+                assert!(error.is_none(), "{route}: {error:?}");
+                assert_ne!(last, "Importing images…", "{route}: progress must end");
+            }
+            let expected_links = usize::from(!["failure", "readonly"].contains(&route));
+            assert_eq!(text.matches("![image]").count(), expected_links, "{route}");
+            assert!(text.starts_with("Before\n\n") && text.ends_with("Tail"));
+            traces.push(serde_json::json!({"scenario":route,"notices":notices}));
+            if route == "readonly" {
+                visual.update(cx, |item, cx| {
+                    item.source
+                        .update(cx, |source, _| source.set_read_only(false))
+                });
+            }
+            if expected_links != 0 {
+                visual.update(cx, |item, cx| {
+                    item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+                });
+            }
+            cx.run_until_parked();
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                "Before\n\nTail"
+            );
+        }
+        if let Some(path) = std::env::var_os("LATHE_MARKDOWN_IMPORT_NOTICE_TRACE") {
+            std::fs::write(
+                path,
+                serde_json::to_vec(&traces).expect("typed notice traces"),
+            )
+            .expect("notice trace file");
+        }
+    }
+
+    #[gpui::test]
+    async fn cancelled_saved_picker_replaces_image_progress_without_document_changes(
+        cx: &mut TestAppContext,
+    ) {
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (incoming, sent) = attach_pump(&visual, cx);
+        let before = filesystem.paths(true);
+        incoming
+            .borrow_mut()
+            .push(visual.read_with(cx, |item, _| pick(item, false, false)));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        cx.run_until_parked();
+        assert!(cx.did_prompt_for_paths());
+        cx.simulate_path_prompt_response(|_| None);
+        cx.run_until_parked();
+        let notices = sent
+            .borrow()
+            .iter()
+            .filter(|message| matches!(message, HostMessage::Notice { .. }))
+            .cloned()
+            .collect::<Vec<_>>();
+        let last = notices
+            .iter()
+            .rev()
+            .find_map(|message| {
+                if let HostMessage::Notice { text } = message {
+                    Some(text.as_str())
+                } else {
+                    None
+                }
+            })
+            .expect("displayed notice");
+        assert_ne!(last, "Importing images…", "cancellation must end progress");
+        assert!(!visual.read_with(cx, |item, _| item.importing_images));
+        assert!(visual.read_with(cx, |item, _| item.error().is_none()));
+        assert_eq!(
+            visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+            "Before\n\nTail"
+        );
+        assert_eq!(filesystem.paths(true), before);
+        if let Some(path) = std::env::var_os("LATHE_MARKDOWN_CANCEL_NOTICE_TRACE") {
+            std::fs::write(
+                path,
+                serde_json::to_vec(
+                    &serde_json::json!([{"scenario":"saved-picker-cancel","notices":notices}]),
+                )
+                .expect("typed cancel trace"),
+            )
+            .expect("cancel trace file");
+        }
+    }
+
+    #[gpui::test]
     async fn source_caret_picker_requests_insert_save_and_undo_at_valid_utf16_offsets(
         cx: &mut TestAppContext,
     ) {
@@ -1072,6 +1281,25 @@ mod tests {
         );
         assert_eq!(imported.matches("![image]").count(), 1);
         assert!(imported.ends_with("Tail"));
+        let notice = sent
+            .borrow()
+            .iter()
+            .rev()
+            .find_map(|message| {
+                if let HostMessage::Notice { text } = message {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            })
+            .expect("overlap notice");
+        assert_eq!(
+            Some(notice.as_str()),
+            visual
+                .read_with(cx, |item, _| item.error().map(str::to_owned))
+                .as_deref(),
+            "completed first import retains overlap/revision rejection notice"
+        );
         let stale = visual.read_with(cx, |item, _| pick(item, true, false));
         let stale_encoded = visual.read_with(cx, |item, _| protocol::ClientMessage::ImportImages {
             session: item.protocol.session.clone(),
