@@ -364,7 +364,7 @@ impl EntryViewState {
                     editor.update(cx, |editor, cx| editor.set_read_only(!is_editable, cx));
                     if let Some(source_blocks) = refreshed_source {
                         editor.update(cx, |editor, cx| {
-                            editor.set_source_message(source_blocks, window, cx);
+                            editor.set_transcript_message(source_blocks, window, cx);
                         });
                         *synced_source_version = source_version;
                     }
@@ -388,7 +388,7 @@ impl EntryViewState {
                         if !is_editable {
                             editor.set_read_only(true, cx);
                         }
-                        editor.set_source_message(source_blocks, window, cx);
+                        editor.set_transcript_message(source_blocks, window, cx);
                         editor
                     });
                     cx.subscribe(&message_editor, move |_, editor, event, cx| {

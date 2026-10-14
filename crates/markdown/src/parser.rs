@@ -22,6 +22,24 @@ pub const PARSE_OPTIONS: Options = Options::ENABLE_TABLES
     .union(Options::ENABLE_SUPERSCRIPT)
     .union(Options::ENABLE_SUBSCRIPT);
 
+pub fn code_source_ranges(source: &str) -> Vec<Range<usize>> {
+    Parser::new_ext(source, PARSE_OPTIONS)
+        .into_offset_iter()
+        .filter_map(|(event, mut range)| match event {
+            pulldown_cmark::Event::Start(pulldown_cmark::Tag::CodeBlock(_)) => {
+                // Include the container prefix so callers do not interpret an
+                // opening fence before reaching its parser-reported offset.
+                range.start = source[..range.start]
+                    .rfind('\n')
+                    .map_or(0, |newline| newline + 1);
+                Some(range)
+            }
+            pulldown_cmark::Event::Code(_) => Some(range),
+            _ => None,
+        })
+        .collect()
+}
+
 #[derive(Default)]
 struct ParseState {
     events: Vec<(Range<usize>, MarkdownEvent)>,
@@ -1048,6 +1066,66 @@ mod tests {
     const UNWANTED_OPTIONS: Options = Options::ENABLE_MATH
         .union(Options::ENABLE_DEFINITION_LIST)
         .union(Options::ENABLE_WIKILINKS);
+
+    #[test]
+    fn test_code_source_ranges_nested_containers() {
+        for newline in ["\n", "\r\n"] {
+            for code in [
+                ">     literal 雪",
+                "> \t  literal 雪",
+                "- >     literal 雪",
+                "> - >     literal 雪",
+                "- > ~~~text\n  > literal 雪\n  > ~~~",
+                "1. > ~~~text\n   > literal 雪\n   > ~~~",
+                "> - > ````text\n>   > literal 雪\n>   > ````",
+                "- > - ~~~text\n  >   literal 雪\n  >   ~~~",
+                "> - > - ~~~text\n>   >   literal 雪\n>   >   ~~~",
+            ] {
+                let code = code.replace('\n', newline);
+                let source = format!("{code}{newline}{newline}outside 雪");
+                let ranges = code_source_ranges(&source);
+                assert_eq!(ranges.len(), 1, "{source:?}");
+                let range = ranges.first().expect("one code range");
+                assert_eq!(range.start, 0, "include the opening container prefix");
+                assert!(source[range.clone()].contains("literal 雪"));
+                assert!(!source[range.clone()].contains("outside"));
+                assert!(source.is_char_boundary(range.end));
+            }
+        }
+    }
+
+    #[test]
+    fn test_code_source_ranges_closing_fence_whitespace() {
+        for newline in ["\n", "\r\n"] {
+            for marker in ["~~~", "````"] {
+                for suffix in ["\u{a0}", "\u{b}", "\u{c}", "\t"] {
+                    let source = format!(
+                        "{marker}text{newline}{marker}{suffix}{newline}literal 雪{newline}{marker}   {newline}outside"
+                    );
+                    let ranges = code_source_ranges(&source);
+                    assert_eq!(ranges.len(), 1);
+                    let range = ranges.first().expect("one fenced code range");
+                    assert!(source[range.clone()].contains("literal 雪"), "{source:?}");
+                    assert!(!source[range.clone()].contains("outside"), "{source:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_code_source_ranges_inline_and_unterminated_blocks() {
+        let source = "before 雪 ``literal ` code`` between `second` after";
+        let ranges = code_source_ranges(source);
+        assert_eq!(
+            ranges
+                .iter()
+                .map(|range| &source[range.clone()])
+                .collect::<Vec<_>>(),
+            vec!["``literal ` code``", "`second`"],
+        );
+        let source = "- > ~~~text\n  > literal 雪";
+        assert_eq!(code_source_ranges(source), vec![0..source.len()]);
+    }
 
     #[test]
     fn all_options_considered() {

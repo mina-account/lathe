@@ -1,9 +1,10 @@
 # Implementation plan: Restore formatted AI chat prompts after reopening Lathe
 
-Status: Reviewed implementation plan; review findings incorporated. Application code has not been changed.
+Status: Implemented and verified with focused tests and isolated Windows ACP replay. See [implementation evidence](ai-chat-restored-prompt-formatting-evidence/README.md).
 Created: 2026-10-13.
 Revised: 2026-10-14, incorporating product owner and system architect feedback.
 Repository baseline: `2219c72bc3`.
+Implementation baseline: `ec355a9e67938b890bbcb66ff04432aafd1f9aa1`.
 Related feature: [Super compact AI chat and previous-answer navigation](ai-chat-super-compact-mode.md).
 
 ## 1. Objective
@@ -66,8 +67,8 @@ Process a complete source snapshot on creation and on source-version changes, ra
 1. Recognize valid `[@label](uri)` syntax using balanced delimiters and `MentionUri::parse` with the workspace's `PathStyle`. Reuse existing parsing logic only after checking its escaped/code-literal behavior.
 2. A supported embedded text attachment requires a recognized link followed immediately by the adapter's single line break and `<context ref="SAME_URI">`, then a complete closing `</context>` in the same contiguous text run. Recognize LF and CRLF. Match the URI as serialized; do not associate a nearby unrelated link with a context body.
 3. Consume only the link and its paired envelope. Preserve surrounding prompt text and separation. Remove precisely the adapter-added opening/closing line separators; preserve the captured resource body's own leading/trailing newlines and Unicode content. The transient resource uses the captured URI and body.
-4. Convert supported standalone serialized mention links into `ResourceLink`/`Mention::Link`, without loading their targets. Preserve ordinary Markdown links. Do not recognize escaped links, inline code, or fenced code blocks as attachments.
-5. Leave malformed, incomplete, mismatched, nested/ambiguous, unsupported-attribute, or base64 envelopes visible as their original text. In particular, do not convert their leading link in a way that makes an invalid wrapper appear partially repaired or drops content. Do not strip arbitrary `<context>` elements or user-authored XML examples.
+4. Convert supported standalone serialized mention links into `ResourceLink`/`Mention::Link`, without loading their targets. Preserve ordinary Markdown links. Do not recognize escaped links, inline code, or fenced/indented code blocks as attachments, including nested list/quote containers. Use the existing Markdown parser's source ranges as supplemental code protection while retaining conservative literal fallback for historical noncanonical syntax. Compute those ranges from the prompt projection with captured envelopes removed, then map offsets back to canonical text; snapshot Markdown must not govern subsequent authored text. Closing fences must respect the opening container, continuation indentation, and ASCII-space suffix before attachment recognition resumes.
+5. Leave malformed, incomplete, mismatched, nested/ambiguous, unsupported-attribute, or base64 envelopes visible as their original text. In particular, do not convert their leading link in a way that makes an invalid wrapper appear partially repaired or drops content. Keep provisional attachments reversible while validating a following complete envelope, including a valid-looking inner mention in captured text. A separate incomplete wrapper retains the prior valid attachment. Do not strip arbitrary `<context>` elements or user-authored XML examples.
 6. A complete serialized-looking example outside code is inherently indistinguishable from adapter-generated content when replay supplies only text. Treat recognized syntax as attachment presentation, preserve its full canonical source and captured body, and document this limitation. Never claim provenance can be recovered from text alone.
 
 Use a bounded, linear scan with safe byte/character boundaries. Do not use a broad multiline regex that can greedily swallow multiple attachments or subsequent prompt instructions. Ambiguity must preserve text rather than hiding it.
@@ -88,6 +89,7 @@ Rejected alternatives: rendering `MessageContent` Markdown would change the user
 | File | Expected work |
 | --- | --- |
 | `crates/agent_ui/src/message_editor.rs` | Pure transcript normalization helper, explicit transcript-only integration, shared original-source guards, parser/editor regression tests. |
+| `crates/markdown/src/parser.rs` | Small pure code-source-range helper using the existing Markdown parser and offsets; regressions for nested containers, exact closing-fence whitespace, inline code, and unterminated blocks. |
 | `crates/agent_ui/src/entry_view_state.rs` | Opt user entry creation/refresh into normalization while retaining source-version, focus, and editability protections. |
 | `crates/agent_ui/src/conversation_view/thread_view.rs` | Align unchanged-edit detection with normalized prompt presentation; opt transcript edit cancellation into normalization; preserve regenerate semantics and other editor call sites. |
 | `crates/agent_ui/src/conversation_view.rs` | GPUI regression coverage of replay, resource synchronization, compact/normal presentation, search, and mode changes. |
@@ -139,6 +141,7 @@ Rejected alternatives: rendering `MessageContent` Markdown would change the user
 | Live structured resource compared with restored flattened text | Same mention/text presentation; captured resource text is retained; no duplicate chip. |
 | ResourceLink flattened into a standalone `[@name](uri)` | Existing mention chip; no context fetch. Ordinary non-mention links remain text. |
 | Multiple/duplicate references and text on both sides | Correct ordering and number of mentions; no greedy consumption of the next request or attachment. |
+| Captured Markdown followed by attachments and authored code | Snapshot fences, inline backticks, indented code, and nested containers cannot hide a later attachment. Actual authored code remains literal, with recognition resuming after its close; captured bodies and canonical source/export remain unchanged. |
 | Adjacent text chunks split link or context delimiters | Final complete snapshot hydrates correctly; incomplete content remains visible until complete; no crossing a non-text block. |
 | LF/CRLF, Unicode, encoded URI, balanced parentheses, empty body | Safe parsing and correct crease ranges; original source unchanged; captured body preserved after removal of wrapper separators. |
 | Invalid/mismatched URI, missing close tag, nested ambiguity, base64/extra attributes | Original span remains visible; no partial transformation or lost instruction text. |
@@ -156,12 +159,14 @@ No product decision is required to draft this fix: the original live prompt's ex
 
 The principal risks are ambiguous text envelopes, newline/Unicode offset errors, chunk-boundary parsing, and accidentally replacing historical resource content during regeneration. Keep fallback conservative, preserve canonical source, and test interactions that consume the normalized editor. Do not broaden this patch into a universal serialized-prompt parser.
 
-- [ ] Synthetic restore regression fails before the fix and passes afterward using a fresh view.
-- [ ] Existing affected histories render supported file references as mention chips in compact and normal modes.
-- [ ] Captured context and canonical transcript content are preserved; no automatic historical file/network reads occur.
-- [ ] Malformed/unsupported/literal-code cases preserve their text and existing source guards.
-- [ ] Source refresh, search, copy/export, and supported regeneration tests pass.
-- [ ] Focused tests, formatting, repository clippy, and Windows restart screenshots are recorded, with any platform limitations stated.
-- [ ] Changes remain scoped to prompt restoration; no new persistence format or compact lifecycle/projection changes are introduced.
+- [x] Synthetic restore regression fails with the original setter calls and passes with the fix using a fresh view. Initial pre-implementation execution encountered build-infrastructure failures; a byte-exact integration reversal established the failing assertion afterward.
+- [x] Supported flattened histories render file references as mention chips in compact and normal modes; verified through fresh GPUI views and persistent Windows restart/history reload with a local ACP fixture.
+- [x] Captured context and canonical transcript content are preserved; no automatic historical file/network reads occur.
+- [x] Malformed/unsupported/literal-code cases preserve their text and existing source guards.
+- [x] Source refresh, search, copy/export, and supported regeneration tests pass.
+- [x] Focused tests, formatting, repository clippy, and Windows restart screenshots are recorded. After fixes from five independent review passes, 102 relevant tests (99 `agent_ui` and three Markdown helper tests), scoped Rust formatting, and the Windows clippy wrapper for both affected crates pass. The Windows release build and screenshots verify the initial implementation before the parser guard fixes; fresh-view integration tests verify the final source. Full-workspace formatting reports existing differences in unchanged files.
+- [x] Changes remain scoped to prompt restoration; no new persistence format or compact lifecycle/projection changes are introduced.
+
+Runtime evidence uses a local ACP fixture matching the serialization inspected in Codex ACP 2.2.2. It exercises actual application loading, full process restart, history reopening, both display modes, narrow panes, light/dark themes, and a missing original file. The installed Codex adapter and the user's reported session were not replayed or changed; actual provider replay remains an explicit validation limitation. The fixture demonstrates the supported editor-boundary behavior without establishing that every provider or adapter version emits this syntax.
 
 This plan fixes the reported presentation through existing prompt-editor and mention mechanisms. The original feature plan remains unchanged as historical context; its initial proposed status is not evidence that the current compact-mode commits are absent.
