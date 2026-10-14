@@ -77,6 +77,13 @@ impl MatchTarget {
     }
 }
 
+pub(super) struct SearchActivation {
+    pub entry_index: usize,
+    pub entity_id: EntityId,
+    pub source_index: usize,
+    pub reveal: Arc<dyn Fn(&mut Window, &mut App)>,
+}
+
 struct ThreadMatch {
     entry_ix: usize,
     target: MatchTarget,
@@ -139,7 +146,7 @@ pub struct ThreadSearchBar {
     highlighted_editors: Vec<WeakEntity<Editor>>,
     thread: Entity<AcpThread>,
     entry_view_state: Entity<EntryViewState>,
-    on_activate_match: Arc<dyn Fn(usize, &mut Window, &mut App)>,
+    on_activate_match: Arc<dyn Fn(SearchActivation, &mut Window, &mut App)>,
     is_active: bool,
     _update_matches_task: Option<Task<()>>,
     _search_task: Option<Task<()>>,
@@ -160,10 +167,10 @@ impl Focusable for ThreadSearchBar {
 }
 
 impl ThreadSearchBar {
-    pub fn new(
+    pub(super) fn new(
         thread: Entity<AcpThread>,
         entry_view_state: Entity<EntryViewState>,
-        on_activate_match: Arc<dyn Fn(usize, &mut Window, &mut App)>,
+        on_activate_match: Arc<dyn Fn(SearchActivation, &mut Window, &mut App)>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -583,9 +590,6 @@ impl ThreadSearchBar {
                 let active = (weak.entity_id() == target_entity_id).then_some(target_match_ix);
                 markdown.update(cx, |markdown, cx| {
                     markdown.set_active_search_highlight(active, cx);
-                    if active.is_some() && scroll_to_match {
-                        markdown.request_autoscroll_to_source_index(source_index, cx);
-                    }
                 });
             }
         }
@@ -635,20 +639,55 @@ impl ThreadSearchBar {
             } = &target
             && let Some(editor) = editor.upgrade()
         {
-            let anchor_range = anchor_range.clone();
             editor.update(cx, |editor, cx| {
                 editor.change_selections(
-                    SelectionEffects::scroll(Autoscroll::fit()).from_search(true),
+                    SelectionEffects::no_scroll().from_search(true),
                     window,
                     cx,
-                    |selections| selections.select_anchor_ranges([anchor_range]),
+                    |selections| selections.select_anchor_ranges([anchor_range.clone()]),
                 );
             });
         }
-
         self.active_match = Some(ix);
         if scroll_to_match {
-            (self.on_activate_match)(entry_ix, window, cx);
+            let entity_id = target.entity_id();
+            let reveal = Arc::new(move |window: &mut Window, cx: &mut App| match &target {
+                MatchTarget::Markdown { markdown, .. } => {
+                    if let Some(markdown) = markdown.upgrade() {
+                        markdown.update(cx, |markdown, cx| {
+                            markdown.request_autoscroll_to_source_index(source_index, cx)
+                        });
+                    }
+                }
+                MatchTarget::Editor {
+                    editor,
+                    anchor_range,
+                    ..
+                } => {
+                    if let Some(editor) = editor.upgrade() {
+                        editor.update(cx, |editor, cx| {
+                            editor.change_selections(
+                                SelectionEffects::scroll(Autoscroll::fit()).from_search(true),
+                                window,
+                                cx,
+                                |selections| {
+                                    selections.select_anchor_ranges([anchor_range.clone()])
+                                },
+                            );
+                        });
+                    }
+                }
+            });
+            (self.on_activate_match)(
+                SearchActivation {
+                    entry_index: entry_ix,
+                    entity_id,
+                    source_index,
+                    reveal,
+                },
+                window,
+                cx,
+            );
         }
         cx.notify();
     }
@@ -942,7 +981,7 @@ fn nav_button(
         .tooltip(move |_window, cx| Tooltip::for_action_in(tooltip, action, &focus_handle, cx))
 }
 
-fn collect_markdowns(
+pub(super) fn collect_markdowns(
     entry_ix: usize,
     entry: &AgentThreadEntry,
     entry_view_state: &EntryViewState,
