@@ -2406,6 +2406,9 @@ fn normalize_transcript_text(
     path_style: PathStyle,
     normalized: &mut Vec<acp_v2::ContentBlock>,
 ) {
+    let mut code_ranges = markdown::parser::code_source_ranges(text)
+        .into_iter()
+        .peekable();
     let mut cursor = 0;
     let mut plain_start = 0;
     let mut pending_context_attachment = None;
@@ -2435,6 +2438,17 @@ fn normalize_transcript_text(
                 cursor = (line_end + 1).min(text.len());
                 continue;
             }
+        }
+        // Keep the historical conservative fence guard before parser ranges:
+        // an unindented list continuation can end the Markdown block early.
+        while code_ranges.peek().is_some_and(|range| range.end <= cursor) {
+            code_ranges.next();
+        }
+        if let Some(range) = code_ranges.peek()
+            && range.start <= cursor
+        {
+            cursor = range.end;
+            continue;
         }
         if remaining.starts_with('\\') {
             cursor += 1;
@@ -2704,9 +2718,13 @@ impl TranscriptCodeFence {
         let line = &line[indentation..];
         let length = line.bytes().take_while(|byte| *byte == self.marker).count();
         length >= self.length
-            && line
-                .get(length..)
-                .is_some_and(|suffix| suffix.trim().is_empty())
+            && line.get(length..).is_some_and(|suffix| {
+                suffix
+                    .strip_suffix('\r')
+                    .unwrap_or(suffix)
+                    .bytes()
+                    .all(|byte| byte == b' ')
+            })
     }
 }
 
@@ -3286,6 +3304,118 @@ mod tests {
                 ],
                 "valid container fences must close and resume recognition"
             );
+        }
+    }
+
+    fn transcript_container_code_literals(newline: &str) -> Vec<String> {
+        let uri = "file:///D:/f.txt";
+        let mut literals = Vec::new();
+        for payload in [
+            format!("[@f]({uri})"),
+            transcript_attachment(uri, "captured", newline),
+        ] {
+            for prefix in [
+                ">     ",
+                "> >     ",
+                "- >     ",
+                "> - >     ",
+                "1. >     ",
+                "> \t  ",
+            ] {
+                literals.push(format!(
+                    "{prefix}{}",
+                    payload.replace(newline, &format!("{newline}{prefix}"))
+                ));
+            }
+            for marker in ["~~~", "````"] {
+                for (opening, continuation) in [
+                    ("- > ", "  > "),
+                    ("1. > ", "   > "),
+                    ("> - > ", ">   > "),
+                    ("- > - ", "  >   "),
+                    ("> - > - ", ">   >   "),
+                ] {
+                    literals.push(format!(
+                        "{opening}{marker}text{newline}{continuation}{}{newline}{continuation}{marker}",
+                        payload.replace(newline, &format!("{newline}{continuation}")),
+                    ));
+                }
+            }
+        }
+        literals
+    }
+
+    fn transcript_fence_whitespace_code_literals(newline: &str) -> Vec<String> {
+        let uri = "file:///D:/f.txt";
+        let mut literals = Vec::new();
+        for payload in [
+            format!("[@f]({uri})"),
+            transcript_attachment(uri, "captured", newline),
+        ] {
+            for marker in ["~~~", "````"] {
+                for suffix in ["\u{a0}", "\u{b}", "\u{c}", "\t"] {
+                    literals.push(format!(
+                        "{marker}text{newline}{marker}{suffix}{newline}{payload}{newline}{marker}"
+                    ));
+                }
+            }
+        }
+        literals
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_code_in_nested_containers_stays_literal() {
+        for newline in ["\n", "\r\n"] {
+            for code in transcript_container_code_literals(newline) {
+                assert_eq!(
+                    normalize_transcript_message(&[code.clone().into()], PathStyle::Windows),
+                    vec![code.clone().into()],
+                    "must preserve nested container code {code:?}"
+                );
+                assert_eq!(
+                    normalize_transcript_message(
+                        &[format!("{code}{newline}{newline}[@outside](file:///D:/f.txt)").into()],
+                        PathStyle::Windows,
+                    ),
+                    vec![
+                        format!("{code}{newline}{newline}").into(),
+                        acp_v2::ContentBlock::ResourceLink(acp_v2::ResourceLink::new(
+                            "outside",
+                            "file:///D:/f.txt"
+                        )),
+                    ],
+                    "recognition must resume outside nested container code {code:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_closing_fence_rejects_non_space_suffixes() {
+        let fence = super::transcript_code_fence("~~~text").expect("opening fence");
+        for suffix in ["\u{a0}", "\u{b}", "\u{c}", "\t", "\r ", "\r\r"] {
+            assert!(!fence.is_closed_by(&format!("~~~{suffix}")));
+        }
+        for suffix in ["", " ", "   ", "\r", "   \r"] {
+            assert!(fence.is_closed_by(&format!("~~~{suffix}")));
+        }
+        for newline in ["\n", "\r\n"] {
+            for code in transcript_fence_whitespace_code_literals(newline) {
+                assert_eq!(
+                    normalize_transcript_message(
+                        &[format!("{code}{newline}[@outside](file:///D:/f.txt)").into()],
+                        PathStyle::Windows,
+                    ),
+                    vec![
+                        format!("{code}{newline}").into(),
+                        acp_v2::ContentBlock::ResourceLink(acp_v2::ResourceLink::new(
+                            "outside",
+                            "file:///D:/f.txt"
+                        )),
+                    ],
+                    "only the actual closing fence may resume recognition {code:?}"
+                );
+            }
         }
     }
 
@@ -6663,6 +6793,35 @@ mod tests {
                 .expect("serialize literal historical envelope");
             assert_eq!(serialized, vec![replay.into()]);
             assert!(tracked_buffers.is_empty());
+        }
+    }
+
+    #[gpui::test]
+    async fn test_transcript_markdown_code_regeneration_stays_literal(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (message_editor, cx) = setup_message_editor(cx).await;
+        for newline in ["\n", "\r\n"] {
+            for replay in transcript_container_code_literals(newline)
+                .into_iter()
+                .chain(transcript_fence_whitespace_code_literals(newline))
+            {
+                let expected = replay.replace("\r\n", "\n");
+                message_editor.update_in(cx, |editor, window, cx| {
+                    editor.session_capabilities.write().set_prompt_capabilities(
+                        acp_v2::PromptCapabilities::new()
+                            .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
+                    );
+                    editor.set_transcript_message(vec![replay.into()], window, cx);
+                    assert_eq!(editor.text(cx), expected);
+                    assert!(editor.mention_set.read(cx).is_empty());
+                });
+                let (serialized, tracked_buffers) = message_editor
+                    .update(cx, |editor, cx| editor.contents(false, cx))
+                    .await
+                    .expect("serialize Markdown code literal");
+                assert_eq!(serialized, vec![expected.into()]);
+                assert!(tracked_buffers.is_empty());
+            }
         }
     }
 
