@@ -2,7 +2,7 @@ use std::{ops::Range, sync::Arc};
 
 use acp_thread::{AcpThread, AgentThreadEntry, AssistantMessageChunk, ToolCall};
 use agent::ThreadStore;
-use agent_client_protocol::schema::v2 as acp_v2;
+use agent_client_protocol::schema::v1 as acp_v1;
 use agent_settings::AgentSettings;
 use collections::{HashMap, HashSet};
 use editor::{
@@ -23,11 +23,9 @@ use theme_settings::ThemeSettings;
 use ui::{Context, TextSize};
 use workspace::Workspace;
 
-use crate::message_editor::{MessageEditor, MessageEditorEvent, SharedSessionCapabilities};
+use crate::conversation_view::response_model::{SourceReference, TurnIdentity};
 
-/// Top padding, in rems, inside agent terminals. The tool card adds it to the
-/// scrollable terminal's height so the number of visible rows doesn't change.
-pub(crate) const TERMINAL_CONTENT_TOP_PADDING: f32 = 0.5;
+use crate::message_editor::{MessageEditor, MessageEditorEvent, SharedSessionCapabilities};
 
 /// Maps an entry index through the removal of `removed` (a contiguous range of
 /// entries), returning `None` if the index referred to a removed entry.
@@ -52,7 +50,8 @@ pub struct EntryViewState {
     auto_expanded_thinking_block: Option<(usize, usize)>,
     user_toggled_thinking_blocks: HashSet<(usize, usize)>,
     expanded_compactions: HashSet<usize>,
-    expanded_tool_calls: HashSet<acp_v2::ToolCallId>,
+    expanded_tool_calls: HashSet<acp_v1::ToolCallId>,
+    expanded_activity_groups: collections::HashMap<TurnIdentity, Option<SourceReference>>,
 }
 
 impl EntryViewState {
@@ -75,10 +74,58 @@ impl EntryViewState {
             user_toggled_thinking_blocks: HashSet::default(),
             expanded_compactions: HashSet::default(),
             expanded_tool_calls: HashSet::default(),
+            expanded_activity_groups: collections::HashMap::default(),
         }
     }
 
-    pub(crate) fn is_tool_call_expanded(&self, tool_call_id: &acp_v2::ToolCallId) -> bool {
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(crate) fn sync_new_entries(
+        &mut self,
+        thread: &Entity<AcpThread>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        for index in self.entries.len()..thread.read(cx).entries().len() {
+            self.sync_entry(index, thread, window, cx);
+        }
+    }
+
+    pub(crate) fn activity_group_expanded(&self, identity: &TurnIdentity) -> bool {
+        self.expanded_activity_groups.contains_key(identity)
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Outer disclosure interactions are wired in the activity panel task."
+        )
+    )]
+    pub(crate) fn set_activity_group_expanded(
+        &mut self,
+        identity: TurnIdentity,
+        anchor: Option<SourceReference>,
+        expanded: bool,
+    ) {
+        if expanded {
+            self.expanded_activity_groups.insert(identity, anchor);
+        } else {
+            self.expanded_activity_groups.remove(&identity);
+        }
+    }
+
+    pub(crate) fn retain_activity_groups(
+        &mut self,
+        turns: &[crate::conversation_view::response_model::ClassifiedTurn],
+    ) {
+        self.expanded_activity_groups
+            .retain(|identity, _| turns.iter().any(|turn| &turn.identity == identity));
+    }
+
+    pub(crate) fn is_tool_call_expanded(&self, tool_call_id: &acp_v1::ToolCallId) -> bool {
         self.expanded_tool_calls.contains(tool_call_id)
     }
 
@@ -86,15 +133,15 @@ impl EntryViewState {
         self.is_tool_call_expanded(&tool_call.id) || tool_call.authorization_id().is_some()
     }
 
-    pub(crate) fn expand_tool_call(&mut self, tool_call_id: acp_v2::ToolCallId) {
+    pub(crate) fn expand_tool_call(&mut self, tool_call_id: acp_v1::ToolCallId) {
         self.expanded_tool_calls.insert(tool_call_id);
     }
 
-    pub(crate) fn collapse_tool_call(&mut self, tool_call_id: &acp_v2::ToolCallId) {
+    pub(crate) fn collapse_tool_call(&mut self, tool_call_id: &acp_v1::ToolCallId) {
         self.expanded_tool_calls.remove(tool_call_id);
     }
 
-    pub(crate) fn toggle_tool_call_expansion(&mut self, tool_call_id: &acp_v2::ToolCallId) {
+    pub(crate) fn toggle_tool_call_expansion(&mut self, tool_call_id: &acp_v1::ToolCallId) {
         if !self.expanded_tool_calls.remove(tool_call_id) {
             self.expanded_tool_calls.insert(tool_call_id.clone());
         }
@@ -498,6 +545,19 @@ impl EntryViewState {
 
     pub fn remove(&mut self, range: Range<usize>) {
         self.entries.drain(range.clone());
+        self.expanded_activity_groups = self
+            .expanded_activity_groups
+            .drain()
+            .filter_map(|(mut identity, mut anchor)| {
+                if let Some(source) = &mut anchor {
+                    source.entry_index = reindex_after_removal(source.entry_index, &range)?;
+                }
+                if let TurnIdentity::Prompt(source) = &mut identity {
+                    source.entry_index = reindex_after_removal(source.entry_index, &range)?;
+                }
+                Some((identity, anchor))
+            })
+            .collect();
 
         self.expanded_compactions = self
             .expanded_compactions
@@ -557,9 +617,9 @@ pub struct EntryViewEvent {
 }
 
 pub enum ViewEvent {
-    NewDiff(acp_v2::ToolCallId),
-    NewTerminal(acp_v2::ToolCallId),
-    TerminalMovedToBackground(acp_v2::ToolCallId),
+    NewDiff(acp_v1::ToolCallId),
+    NewTerminal(acp_v1::ToolCallId),
+    TerminalMovedToBackground(acp_v1::ToolCallId),
     MessageEditorEvent(Entity<MessageEditor>, MessageEditorEvent),
     OpenDiffLocation {
         path: String,
@@ -743,7 +803,6 @@ fn create_terminal(
             cx,
         );
 
-        view.set_content_top_padding(gpui::rems(TERMINAL_CONTENT_TOP_PADDING), cx);
         view.set_embedded_mode(Some(1000), cx);
         view
     })
@@ -850,7 +909,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_legacy_diff_sync(cx: &mut TestAppContext) {
+    async fn test_diff_sync(cx: &mut TestAppContext) {
         init_test(cx);
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree(
@@ -984,7 +1043,9 @@ mod tests {
                 .request_elicitation(
                     acp_v2::CreateElicitationRequest::new(
                         acp_v2::ElicitationFormMode::new(
-                            acp_v2::ElicitationSessionScope::new(session_id.clone()),
+                            acp_v2::ElicitationSessionScope::new(acp_v2::SessionId::new(
+                                session_id.0.clone(),
+                            )),
                             acp_v2::ElicitationSchema::new().string("name", true),
                         ),
                         "Provide a name",
@@ -993,14 +1054,14 @@ mod tests {
                 )
                 .unwrap()
         });
-        thread.update(cx, |thread, cx| {
-            thread
-                .append_message_chunk(
-                    acp_thread::MessageKind::Assistant,
-                    acp_v2::ContentChunk::new("hello".into(), "after-elicitation"),
-                    cx,
-                )
-                .expect("append current message after elicitation");
+        cx.update(|_, cx| {
+            connection.send_update(
+                session_id,
+                acp_v1::SessionUpdate::AgentMessageChunk(acp_v1::ContentChunk::new(
+                    acp_v1::ContentBlock::Text(acp_v1::TextContent::new("hello")),
+                )),
+                cx,
+            );
         });
 
         let view_state = cx.new(|_cx| {

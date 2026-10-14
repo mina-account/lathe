@@ -110,9 +110,10 @@ const TOKEN_THRESHOLD: u64 = 250;
 
 pub(crate) const DRAFT_PROMPT_PERSIST_DEBOUNCE: Duration = Duration::from_millis(250);
 
+mod display_rows;
 pub(crate) mod elicitation;
 mod message_queue;
-mod response_model;
+pub(crate) mod response_model;
 mod thread_search_bar;
 mod thread_view;
 pub use message_queue::*;
@@ -1582,17 +1583,7 @@ impl ConversationView {
             for ix in 0..count {
                 view_state.sync_entry(ix, &thread, window, cx);
             }
-            list_state.splice_focusable(
-                0..0,
-                (0..count).map(|ix| view_state.entry(ix)?.focus_handle(cx)),
-            );
         });
-
-        if let Some(scroll_position) = thread.read(cx).ui_scroll_position() {
-            list_state.scroll_to(scroll_position);
-        } else {
-            list_state.scroll_to_end();
-        }
 
         AgentDiff::set_active_thread(&self.workspace, thread.clone(), window, cx);
 
@@ -1964,15 +1955,9 @@ impl ConversationView {
                 let index = len - 1;
                 if let Some(active) = self.thread_view(&session_id) {
                     let entry_view_state = active.read(cx).entry_view_state.clone();
-                    let list_state = active.read(cx).list_state.clone();
                     entry_view_state.update(cx, |view_state, cx| {
+                        view_state.sync_new_entries(thread, window, cx);
                         view_state.sync_entry(index, thread, window, cx);
-                        list_state.splice_focusable(
-                            index..index,
-                            [view_state
-                                .entry(index)
-                                .and_then(|entry| entry.focus_handle(cx))],
-                        );
                     });
                     active.update(cx, |active, cx| {
                         active.sync_elicitation_state_for_entry(index, window, cx);
@@ -1984,11 +1969,9 @@ impl ConversationView {
             AcpThreadEvent::EntryUpdated(index) => {
                 if let Some(active) = self.thread_view(&session_id) {
                     let entry_view_state = active.read(cx).entry_view_state.clone();
-                    let list_state = active.read(cx).list_state.clone();
                     entry_view_state.update(cx, |view_state, cx| {
                         view_state.sync_entry(*index, thread, window, cx);
                     });
-                    list_state.remeasure_items(*index..*index + 1);
                     active.update(cx, |active, cx| {
                         if active.editing_message == Some(*index)
                             && !active.can_edit_user_message(*index, cx)
@@ -2005,17 +1988,18 @@ impl ConversationView {
             AcpThreadEvent::EntriesRemoved(range) => {
                 if let Some(active) = self.thread_view(&session_id) {
                     let entry_view_state = active.read(cx).entry_view_state.clone();
-                    let list_state = active.read(cx).list_state.clone();
                     entry_view_state.update(cx, |view_state, _cx| view_state.remove(range.clone()));
-                    list_state.splice(range.clone(), 0);
                     active.update(cx, |active, cx| {
                         active.sync_editor_mode(cx);
                     });
                 }
             }
-            AcpThreadEvent::SubagentSpawned(subagent_session_id) => {
-                self.load_subagent_session(subagent_session_id.clone(), session_id, window, cx)
-            }
+            AcpThreadEvent::SubagentSpawned(subagent_session_id) => self.load_subagent_session(
+                subagent_session_id.clone(),
+                session_id.clone(),
+                window,
+                cx,
+            ),
             AcpThreadEvent::ToolAuthorizationRequested(_) => {
                 self.notify_with_sound("Waiting for tool confirmation", IconName::Info, window, cx);
             }
@@ -2315,6 +2299,20 @@ impl ConversationView {
                 }
                 cx.notify();
             }
+        }
+        if let Some(active) = self.thread_view(&session_id) {
+            active.update(cx, |active, cx| {
+                if matches!(event, AcpThreadEvent::EntriesRemoved(_)) {
+                    active.cancel_content_scroll();
+                }
+                let updated = if let AcpThreadEvent::EntryUpdated(index) = event {
+                    Some(*index)
+                } else {
+                    None
+                };
+                active.sync_display_rows(updated, cx);
+                cx.notify();
+            });
         }
         cx.notify();
     }
@@ -13342,6 +13340,573 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_content_scroll_batched_entries_initialize_source_resources(
+        cx: &mut TestAppContext,
+    ) {
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("batched-prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("prompt");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("batched-answer").content(vec!["Answer".into()]),
+                    cx,
+                )
+                .expect("answer");
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.list_state.item_count(), 2);
+            assert!(view.entry_view_state.read(cx).entry(0).is_some());
+            assert!(view.entry_view_state.read(cx).entry(1).is_some());
+        });
+    }
+
+    async fn setup_content_scroll_fixture(
+        cx: &mut TestAppContext,
+    ) -> (Entity<ConversationView>, &mut VisualTestContext) {
+        let connection = StubAgentConnection::new();
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        for index in 0..8 {
+            connection.set_next_prompt_updates(vec![
+                acp_v1::SessionUpdate::AgentThoughtChunk(acp_v1::ContentChunk::new(
+                    "A thought before the answer".into(),
+                )),
+                acp_v1::SessionUpdate::AgentMessageChunk(acp_v1::ContentChunk::new(
+                    format!("Answer {index}\n\nMore answer text").into(),
+                )),
+            ]);
+            thread
+                .update(cx, |thread, cx| {
+                    thread.send_raw(&format!("Prompt {index}"), cx)
+                })
+                .await
+                .expect("send prompt");
+            cx.run_until_parked();
+        }
+        (conversation, cx)
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_aligns_response_inside_shared_row(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            view.entry_view_state.update(cx, |state, cx| {
+                state.toggle_thinking_block_expansion((1, 0), cx)
+            });
+            let source = view
+                .response_model
+                .turns
+                .first()
+                .and_then(|turn| turn.response.first())
+                .expect("first response")
+                .clone();
+            let target = view
+                .target_for_source(&source, true, cx)
+                .expect("response target");
+            view.scroll_to_content(target, cx);
+        });
+        cx.run_until_parked();
+        let response = cx
+            .debug_bounds("message-content-1-1-0")
+            .expect("response body");
+        let viewport = view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+        assert!(
+            (response.top() - viewport.top()).abs() < px(1.),
+            "response {:?} must align with viewport {:?}",
+            response,
+            viewport
+        );
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_modes_preserve_current_viewport_and_tail(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        for mode in [
+            DisplayMode::Normal,
+            DisplayMode::Compact,
+            DisplayMode::Normal,
+        ] {
+            view.update(cx, |view, cx| {
+                view.set_display_mode(mode, cx);
+                let source = view
+                    .response_model
+                    .turns
+                    .first()
+                    .and_then(|turn| turn.response.first())
+                    .expect("first response")
+                    .clone();
+                let target = view.target_for_source(&source, true, cx).expect("target");
+                view.scroll_to_content(target, cx);
+            });
+            cx.run_until_parked();
+            let body = cx
+                .debug_bounds("message-content-1-1-0")
+                .expect("first response body");
+            let viewport = view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+            assert!(
+                (body.top() - viewport.top()).abs() < px(1.),
+                "{mode:?}: {body:?} {viewport:?}"
+            );
+        }
+        view.update(cx, |view, cx| {
+            let source = view
+                .response_model
+                .turns
+                .get(2)
+                .and_then(|turn| turn.response.first())
+                .expect("third response")
+                .clone();
+            let target = view
+                .target_for_source(&source, true, cx)
+                .expect("third target");
+            view.scroll_to_content(target, cx);
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.list_state.scroll_by(px(20.));
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let before = cx
+            .debug_bounds("message-content-5-1-0")
+            .expect("manually scrolled third response");
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        cx.run_until_parked();
+        let after = cx
+            .debug_bounds("message-content-5-1-0")
+            .expect("same third response after mode switch");
+        assert!(
+            (after.top() - before.top()).abs() < px(1.),
+            "manual viewport moved: {before:?} {after:?}"
+        );
+        let (identity, anchor) = view.read_with(cx, |view, _| {
+            let turn = view.response_model.turns.get(2).expect("third turn");
+            (turn.identity.clone(), turn.prompt.clone())
+        });
+        for expanded in [true, false] {
+            view.update(cx, |view, cx| {
+                view.entry_view_state.update(cx, |state, _| {
+                    state.set_activity_group_expanded(identity.clone(), anchor.clone(), expanded)
+                });
+                view.sync_display_rows(None, cx);
+                cx.notify();
+            });
+            cx.run_until_parked();
+            let body = cx
+                .debug_bounds("message-content-5-1-0")
+                .expect("response after expansion change");
+            assert!(
+                (body.top() - before.top()).abs() < px(1.),
+                "expansion moved response: {before:?} {body:?}"
+            );
+        }
+        view.update(cx, |view, cx| view.scroll_to_end(cx));
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Normal, cx)
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| assert!(view.list_state.is_following_tail()));
+        let thought = view.update(cx, |view, cx| {
+            view.entry_view_state.update(cx, |state, cx| {
+                state.toggle_thinking_block_expansion((1, 0), cx)
+            });
+            let source = view
+                .response_model
+                .turns
+                .first()
+                .and_then(|turn| turn.activity.first())
+                .expect("thought")
+                .clone();
+            let target = view
+                .target_for_source(&source, false, cx)
+                .expect("thought target");
+            view.scroll_to_content(target, cx);
+            source
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.list_state.scroll_by(px(10.));
+            cx.notify();
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            let row = view
+                .display_rows
+                .row_for_source(&thought)
+                .expect("hidden thought header");
+            assert!(matches!(
+                view.display_rows.rows.get(row),
+                Some(super::display_rows::DisplayRow::ActivityHeader(_))
+            ));
+            let header = view
+                .list_state
+                .bounds_for_item(row)
+                .expect("materialized header");
+            let viewport = view.list_state.viewport_bounds();
+            assert!(
+                header.top() <= viewport.top() && header.bottom() > viewport.top(),
+                "hidden anchor must fall back to its header: {header:?} {viewport:?}"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_search_targets_message_beyond_expanded_thought(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        view.update_in(cx, |view, window, cx| {
+            view.entry_view_state.update(cx, |state, cx| {
+                state.toggle_thinking_block_expansion((1, 0), cx)
+            });
+            view.toggle_search(&crate::ToggleSearch, window, cx);
+        });
+        cx.run_until_parked();
+        let bar = view
+            .read_with(cx, |view, _| view.thread_search_bar.clone())
+            .expect("search bar");
+        bar.update_in(cx, |bar, window, cx| {
+            bar.query_editor
+                .update(cx, |editor, cx| editor.set_text("Answer 0", window, cx));
+            bar.update_matches(window, cx);
+        });
+        cx.run_until_parked();
+        let body = cx
+            .debug_bounds("message-content-1-1-0")
+            .expect("matching response body");
+        let viewport = view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+        assert!(
+            body.top() >= viewport.top() && body.bottom() <= viewport.bottom(),
+            "matching text must be visible with search context: {body:?} {viewport:?}"
+        );
+        assert!(
+            body.top() - viewport.top() <= px(80.),
+            "match should retain nearby context"
+        );
+        view.read_with(cx, |view, _| {
+            assert!(
+                view.list_state.logical_scroll_top().offset_in_item > px(0.),
+                "search must scroll inside the shared row"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_search_after_empty_thought(cx: &mut TestAppContext) {
+        assert_search_scroll_after_empty_assistant_chunk(true, cx).await;
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_search_after_empty_message(cx: &mut TestAppContext) {
+        assert_search_scroll_after_empty_assistant_chunk(false, cx).await;
+    }
+
+    async fn assert_search_scroll_after_empty_assistant_chunk(
+        thought: bool,
+        cx: &mut TestAppContext,
+    ) {
+        use agent_client_protocol::schema::v2 as acp_v2;
+
+        init_test(cx);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::default_response(), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let answer = format!("{}Search needle", "Long answer paragraph.\n\n".repeat(100));
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("prompt");
+            if thought {
+                thread
+                    .upsert_thought(acp_v2::AgentThought::new("empty").content(vec![]), cx)
+                    .expect("empty thought");
+            } else {
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new("empty").content(vec![]),
+                        cx,
+                    )
+                    .expect("empty message");
+            }
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer").content(vec![answer.into()]),
+                    cx,
+                )
+                .expect("long answer");
+        });
+        cx.run_until_parked();
+        view.update_in(cx, |view, window, cx| {
+            let turn = view.response_model.turns.first().expect("turn");
+            assert_eq!(
+                turn.activity.first().expect("empty chunk").chunk_index,
+                Some(0)
+            );
+            assert_eq!(
+                turn.response.first().expect("answer chunk").chunk_index,
+                Some(1)
+            );
+            view.toggle_search(&crate::ToggleSearch, window, cx);
+        });
+        cx.run_until_parked();
+        let bar = view
+            .read_with(cx, |view, _| view.thread_search_bar.clone())
+            .expect("search bar");
+        bar.update_in(cx, |bar, window, cx| {
+            bar.query_editor.update(cx, |editor, cx| {
+                editor.set_text("Search needle", window, cx)
+            });
+            bar.update_matches(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 1);
+        let body = cx
+            .debug_bounds("message-content-1-1-0")
+            .expect("matching answer body");
+        view.read_with(cx, |view, _| {
+            let viewport = view.list_state.viewport_bounds();
+            assert!(body.size.height > viewport.size.height * 2.);
+            assert!(
+                body.bottom() > viewport.top() && body.bottom() <= viewport.bottom(),
+                "the final matching line must be visible: {body:?} {viewport:?}"
+            );
+            assert!(body.top() < viewport.top());
+            assert!(
+                view.pending_content_scroll.is_none(),
+                "the answer anchor must complete the pending search scroll"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_new_request_supersedes_materialization(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        view.update(cx, |view, cx| {
+            for turn in [0, 2] {
+                let source = view
+                    .response_model
+                    .turns
+                    .get(turn)
+                    .and_then(|turn| turn.response.first())
+                    .expect("response")
+                    .clone();
+                let target = view.target_for_source(&source, true, cx).expect("target");
+                view.scroll_to_content(target, cx);
+            }
+        });
+        cx.run_until_parked();
+        let body = cx
+            .debug_bounds("message-content-5-1-0")
+            .expect("new target body");
+        let viewport = view.read_with(cx, |view, _| view.list_state.viewport_bounds());
+        assert!((body.top() - viewport.top()).abs() < px(1.));
+        view.read_with(cx, |view, _| assert!(view.pending_content_scroll.is_none()));
+        view.update_in(cx, |view, window, cx| {
+            view.message_editor.focus_handle(cx).focus(window, cx);
+            let source = view
+                .response_model
+                .turns
+                .first()
+                .and_then(|turn| turn.response.first())
+                .expect("first response")
+                .clone();
+            let target = view
+                .target_for_source(&source, true, cx)
+                .expect("first target");
+            view.scroll_to_content(target, cx);
+        });
+        cx.dispatch_action(crate::ScrollOutputLineDown);
+        view.read_with(cx, |view, _| {
+            assert!(
+                view.pending_content_scroll.is_none(),
+                "manual navigation supersedes materialization"
+            )
+        });
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_resumption_and_permission_cancel_pending_target(
+        cx: &mut TestAppContext,
+    ) {
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("prompt");
+        });
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer").content(vec!["Answer".into()]),
+                    cx,
+                )
+                .expect("answer");
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("settled");
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            let source = view
+                .response_model
+                .turns
+                .first()
+                .and_then(|turn| turn.response.first())
+                .expect("settled answer")
+                .clone();
+            let target = view.target_for_source(&source, true, cx).expect("target");
+            view.scroll_to_content(target, cx);
+        });
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("resumed");
+        });
+        view.update(cx, |view, cx| {
+            view.sync_response_model(Some(&AcpThreadEvent::StatusChanged), cx);
+            view.sync_display_rows(None, cx);
+            assert!(
+                view.pending_content_scroll.is_none(),
+                "resumed answer must cancel before layout"
+            );
+        });
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("settled again");
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            let source = view
+                .response_model
+                .turns
+                .first()
+                .and_then(|turn| turn.response.first())
+                .expect("answer again")
+                .clone();
+            let target = view.target_for_source(&source, true, cx).expect("target");
+            view.scroll_to_content(target, cx);
+        });
+        let request = generic_permission_prompt(&thread, None, cx);
+        let (_request, response) = request_test_generic_permission(&thread, request, cx);
+        view.update(cx, |view, cx| {
+            view.sync_response_model(None, cx);
+            view.sync_display_rows(None, cx);
+            assert!(
+                view.pending_content_scroll.is_none(),
+                "permission must cancel before layout"
+            );
+        });
+        cx.run_until_parked();
+        drop(response);
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_removal_cancels_pending_target(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        view.update(cx, |view, cx| {
+            let source = view
+                .response_model
+                .turns
+                .get(2)
+                .and_then(|turn| turn.response.first())
+                .expect("response")
+                .clone();
+            let target = view.target_for_source(&source, true, cx).expect("target");
+            view.scroll_to_content(target, cx);
+            assert!(view.pending_content_scroll.is_some());
+        });
+        let client_id = thread.read_with(cx, |thread, _| {
+            match thread.entries().first().expect("prompt") {
+                AgentThreadEntry::UserMessage(message) => {
+                    message.client_id.clone().expect("client identity")
+                }
+                _ => panic!("expected prompt"),
+            }
+        });
+        thread
+            .update(cx, |thread, cx| thread.rewind(client_id, cx))
+            .await
+            .expect("rewind");
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert!(view.pending_content_scroll.is_none());
+            assert_eq!(view.list_state.item_count(), 0);
+        });
+    }
+
+    #[gpui::test]
     async fn test_scroll_to_most_recent_user_prompt(cx: &mut TestAppContext) {
         init_test(cx);
 
@@ -15510,7 +16075,9 @@ pub(crate) mod tests {
 
         let entry_view_state = active_thread(&conversation_view, cx)
             .read_with(cx, |view, _| view.entry_view_state.clone());
-        let on_activate_match: Arc<dyn Fn(usize, &mut Window, &mut App)> = Arc::new(|_, _, _| {});
+        let on_activate_match: Arc<
+            dyn Fn(super::thread_search_bar::SearchActivation, &mut Window, &mut App),
+        > = Arc::new(|_, _, _| {});
         let bar = cx.update(|window, cx| {
             cx.new(|cx| {
                 super::thread_search_bar::ThreadSearchBar::new(
