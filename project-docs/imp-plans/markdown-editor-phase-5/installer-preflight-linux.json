@@ -1,0 +1,10 @@
+{
+  "kind": "synthetic installer preflight only",
+  "root": "/home/an/.cache/lathe-phase5-installer-fixture-9f45d43c-32bc-404e-98ed-325b5d8ec3e1",
+  "missing_resource_rejected": true,
+  "existing_installation_preserved_before_validation": true,
+  "valid_staging_installed": true,
+  "shell_integration": false,
+  "missing_stderr": "Markdown runtime missing resources.pak. Reinstall a complete Lathe package.\n",
+  "valid_stdout": "=== Installing Lathe Beta ===\n  From: /home/an/.cache/lathe-phase5-installer-fixture-9f45d43c-32bc-404e-98ed-325b5d8ec3e1/valid.tar.gz\n  To:   /home/an/.cache/lathe-phase5-installer-fixture-9f45d43c-32bc-404e-98ed-325b5d8ec3e1/installation\nlibcef.so: OK\nicudtl.dat: OK\nresources.pak: OK\nchrome_100_percent.pak: OK\nchrome_200_percent.pak: OK\nv8_context_snapshot.bin: OK\nlocales/en-US.pak: OK\nCEF-LICENSE.txt: OK\nmarkdown-editor-notices/NOTICES.md: OK\nRemoving existing installation...\nInstalled Lathe Beta at /home/an/.cache/lathe-phase5-installer-fixture-9f45d43c-32bc-404e-98ed-325b5d8ec3e1/installation without shell integration.\n"
+}

@@ -1,0 +1,242 @@
+{
+  "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb",
+  "verification_status": "complete for Phase5 authorized scope; Phase6 manual pending",
+  "checks": [
+    {
+      "name": "windows_native_regressions_application",
+      "log": "C:/tmp/lathe-phase5-raster-final-windows.log",
+      "log_sha256": "60ddaa7a1fa78abce06d9577135bf7871891247ed067a4533de76b2da59d2abe",
+      "rust_test_groups": [
+        {
+          "passed": 90,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 13,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 32,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 25,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 49,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0
+        }
+      ],
+      "has_rust_errors": false
+    },
+    {
+      "name": "linux_native_regressions_application",
+      "log": "C:/tmp/lathe-phase5-raster-final-linux.log",
+      "log_sha256": "a0474e3293227a4ed9d4e12341cf13261ee974eb6f20d35cd0c65045f4e3d278",
+      "rust_test_groups": [
+        {
+          "passed": 89,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 13,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 32,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 26,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 49,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0
+        }
+      ],
+      "has_rust_errors": false
+    },
+    {
+      "name": "windows_scoped_wrapper_lint",
+      "log": "C:/tmp/lathe-phase5-raster-lint-windows.log",
+      "log_sha256": "7796fd0fffb69201833ea4d5adf9e2e013032d915c6556fa8566a938fcf6d46c",
+      "rust_test_groups": [],
+      "has_rust_errors": false
+    },
+    {
+      "name": "linux_scoped_wrapper_lint",
+      "log": "C:/tmp/lathe-phase5-raster-lint-linux.log",
+      "log_sha256": "3f1b914cb7b3f0ee90d573e0846e3dea68a909a5469da76f8b1c83fe2943449d",
+      "rust_test_groups": [],
+      "has_rust_errors": false
+    },
+    {
+      "name": "frontend_browser",
+      "log": "C:/tmp/lathe-phase5-browser.log",
+      "log_sha256": "f2469274c24b21430fed85207753c289aadedd711386575ba53e4bad6679f7f6",
+      "rust_test_groups": [],
+      "has_rust_errors": false
+    },
+    {
+      "name": "frontend_bridge",
+      "log": "C:/tmp/lathe-phase5-bridge.log",
+      "log_sha256": "adfe6cd111d8781a39d405470ea571ca47ca8023ff8767b620fcd527ebc8edba",
+      "rust_test_groups": [],
+      "has_rust_errors": false
+    },
+    {
+      "name": "runtime_staging",
+      "log": "C:/tmp/lathe-phase5-runtime-tests.log",
+      "log_sha256": "231b215ed857d58d480528265d1ee38018e4f6c8cdc7ff2d58efe8820e8fec2b",
+      "rust_test_groups": [],
+      "has_rust_errors": false
+    }
+  ],
+  "baseline_exceptions": {
+    "linux_visual_test_mock": {
+      "command": "cargo check --locked -p zed --all-targets --features visual-tests",
+      "error": "E0063 SourceMetadata.kind in livekit_client/src/mock_client/participant.rs:216",
+      "baseline_and_current_git_blob": "f24e343b71b842a588f3245d78a96fcbfc721c3d",
+      "supported_production_checks": "default and markdown-browser pass"
+    },
+    "windows_portable_sibling_save": "Unchanged drive-less /work fixture;25 scoped save cases pass versus26 Linux",
+    "whole_repository_format": "Unchanged baseline; modified files checked with scoped rustfmt skip_children and JSONC/Markdown Prettier"
+  },
+  "limits": [
+    "Phase6 full native/manual UI acceptance remains with the user",
+    "macOS/accessibility/pixel checks excluded",
+    "CEF uses application/data confinement with no_sandbox=1; no OS sandbox claim",
+    "Installed proxy conditions do not claim machine-wide firewall disconnection",
+    "PlantUML remains an explicit network service"
+  ],
+  "installed_artifacts": {
+    "windows": {
+      "archive": "C:\\tmp\\markdown-browser-probe-target\\release\\Lathe-1.10.2-x86_64-windows.zip",
+      "archive_sha256": "DA665F416611EE7449B8371C87F7EDCF00C725261F29FB5B959DCF5D0D66863D",
+      "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit/application/libexec/lathe-editor.exe",
+      "executable_sha256": "559E007AA1C9A87585ABC87985E8047F84DEB12C99FFE271FD9F986301A4CA9B",
+      "runtime_files": 234,
+      "backends": [
+        "normal",
+        "missing-runtime"
+      ],
+      "inno": {
+        "path": "C:\\tmp\\markdown-browser-probe-target\\release\\Lathe-1.10.2-x86_64-windows-setup.exe",
+        "bytes": 226304831,
+        "sha256": "81f80812d454f8ef6950e36fe2dbef14756d6aaa9008f54110c69222cfba5c3c",
+        "installation_exercised": "ZIP installer with NoShellIntegration; Inno built locally"
+      },
+      "surviving_installed_processes": []
+    },
+    "linux": {
+      "archive": "/home/an/.cache/lathe-browser-probe-target/release/Lathe-1.10.2-x86_64-linux.tar.gz",
+      "archive_sha256": "c5ae09bba66f82b497462866770b7f9bb4362bf442b7d221832e86e8d7036081",
+      "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+      "executable_sha256": "a8f79163c02b39c7005329644813687254ea673bdb304c893fdce78a663a6c08",
+      "runtime_files": 230,
+      "backends": [
+        "wayland",
+        "x11",
+        "missing-runtime"
+      ],
+      "surviving_installed_processes": []
+    }
+  },
+  "native_counts": {
+    "windows": 90,
+    "linux": 89,
+    "protocol_each": 13,
+    "native_preview_each": 32,
+    "workspace_save_windows": 25,
+    "workspace_save_linux": 26,
+    "workspace_close_each": 49,
+    "workspace_open_each": 9,
+    "project_panel_menu_each": 8,
+    "project_panel_open_each": 2
+  },
+  "frontend_counts": {
+    "browser": 62,
+    "bridge": 17,
+    "runtime_staging": 2,
+    "pinned_dependencies": 332,
+    "generated_resources": 347
+  },
+  "build_package_results": {
+    "windows_release_native_exit": 0,
+    "linux_release_native_exit": 0,
+    "windows_zip_inno_package_native_exit": 0,
+    "linux_package_native_exit": 0,
+    "windows_installed_native_exit": 0,
+    "linux_installed_native_exit": 0,
+    "signing": "Local Windows signing not configured; unsigned test artifacts; signing hooks preserved",
+    "outer_shell_provenance": "Earlier PowerShell5 stderr redirections promoted native compiler progress to outer tool exit1. Final build/package/install commands explicitly exit LASTEXITCODE, and report native exit0."
+  },
+  "qa_settings": {
+    "auto_update": false,
+    "disable_ai": true,
+    "auto_install_extensions": {
+      "html": false
+    },
+    "Markdown_language_servers": [],
+    "Markdown_formatter": "none",
+    "Markdown_prettier_allowed": false,
+    "default_open_mode": "editor",
+    "legacy_preview": true
+  },
+  "shutdown_provenance": "Windows unchanged app_will_quit timeout log under automated quit; retained process handles confirm child exit0 and installed helper processes are gone. Manual shutdown/UI acceptance remains Phase6.",
+  "process_check": "Read-only Win32_Process executable-path query and Linux /proc/exe query after final jobs; no surviving primary/helper process under either final isolated installation.",
+  "final_source_identity": {
+    "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb",
+    "canonical_input_files_unchanged": 41,
+    "evidence_only_change": "Plan status and this evidence directory; production/build/runtime inputs match the recorded implementation commit."
+  },
+  "final_scoped_validation": {
+    "rustfmt": "pass; edition2024 skip_children=true on changed Rust files; workspace.rs only11-line existing-format typed seam, baseline whole-file format excluded",
+    "prettier": "pass docs/src/languages/markdown.md, evidence README, both keymaps with JSONC parser",
+    "json": "all9 evidence JSON files parse",
+    "qa_helpers": "PowerShell parser and Python AST parse pass",
+    "git_diff_check": "pass; repeated after staging"
+  }
+}

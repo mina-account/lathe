@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Phases 0 through 4 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the shared-buffer Item provides confined, source-preserving Vditor 3.11.2 modes, viewer, project images, local renderers, themes, and CSS. Phase 4 merged in [PR 6](https://github.com/mina-account/lathe/pull/6) after independent review 13 reported clean. Phase 5 opening/settings/install/packaging and the user's Phase 6 full native/manual acceptance run remain pending.
+Status: Phases 0 through 4 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the shared-buffer Item provides confined, source-preserving Vditor 3.11.2 modes, viewer, project images, local renderers, themes, and CSS. Phase 4 merged in [PR 6](https://github.com/mina-account/lathe/pull/6) after independent review 13 reported clean. Phase 5 opening/settings/persistence/install/packaging is complete with actual installed Windows/X11/Wayland evidence. The user's Phase 6 full native/manual acceptance run remains pending.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 
@@ -253,12 +253,14 @@ Phase 4 evidence: [implementation, behavior-to-test and expected-red matrix, exa
 
 Depends on Phases 2-4.
 
-- [ ] Add palette actions, platform keymaps, project-panel/tab menus, editor selection, and configurable defaults with legacy-preview precedence.
-- [ ] Register settings and restore buffer identity, item path, mode, themes, outline, and reading position across reopen/restart.
-- [ ] Integrate locked frontend builds, CEF runtime/helper processes/notices, and assets into Windows/Linux build and packaging scripts; verify missing-runtime/install behavior and packaged installations without Node and without network access for local features.
-- [ ] Add user documentation covering modes, image destinations, settings, defaults, shortcuts, and renderer service requirements.
+- [x] Add palette actions, platform keymaps, project-panel/tab menus, editor selection, and configurable defaults with legacy-preview precedence.
+- [x] Register settings and restore buffer identity, item path, mode, themes, outline, and reading position across reopen/restart.
+- [x] Integrate locked frontend builds, CEF runtime/helper processes/notices, and assets into Windows/Linux build and packaging scripts; verify missing-runtime/install behavior and packaged installations without Node and without network access for local features.
+- [x] Add user documentation covering modes, image destinations, settings, defaults, shortcuts, and renderer service requirements.
 
 Exit: P13 and remaining lifecycle/settings requirements are implemented, installed-build/package checks pass, and automated routing regressions cover native preview and unrelated file opening. Full native/manual UI acceptance remains for Phase 6.
+
+Phase 5 evidence: [opening precedence, typed actions/menus/settings, persistence, expected-red regressions, locked build/license/runtime integration, exact source/artifact hashes, final Windows/X11/Wayland installed entrypoint checks and limits](markdown-editor-phase-5/README.md). Native suites pass 90/90 on Windows and 89/89 on Linux, protocol 13 each, browser 62, bridge 17 and staging 2 pass. Final packages contain CEF 154.0.34, bindings 154.5.0 and installed main-executable helpers; all four presentations/local renderers work with Node absent from PATH and unreachable proxies. PlantUML remains an explicit service. Missing-resource installs fail before replacement; incomplete-runtime application runs preserve source. Final default Windows large/high-DPI rendering stays within the existing 16 MiB raster budget. Scoped application/lint/format/routing/save/close checks pass with the documented unchanged baseline exceptions. Full native/manual Phase 6 remains for the user.
 
 ### Phase 6: Release validation
 

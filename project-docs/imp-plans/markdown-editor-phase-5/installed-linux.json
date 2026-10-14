@@ -1,0 +1,810 @@
+{
+  "archive": "/home/an/.cache/lathe-browser-probe-target/release/Lathe-1.10.2-x86_64-linux.tar.gz",
+  "archive_sha256": "c5ae09bba66f82b497462866770b7f9bb4362bf442b7d221832e86e8d7036081",
+  "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+  "executable_sha256": "a8f79163c02b39c7005329644813687254ea673bdb304c893fdce78a663a6c08",
+  "node_on_path": false,
+  "proxy": "http://127.0.0.1:9",
+  "cef_override_normal": null,
+  "runtime_files_verified": 230,
+  "ldd": "\tlinux-vdso.so.1 (0x00007fffe0397000)\n\tlibcef.so => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/libcef.so (0x00007fe473dfa000)\n\tlibxcb.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libxcb.so.1 (0x00007fe473dd1000)\n\tlibxkbcommon.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libxkbcommon.so.0 (0x00007fe473d88000)\n\tlibxkbcommon-x11.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libxkbcommon-x11.so.0 (0x00007fe473d7e000)\n\tlibgio-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgio-2.0.so.0 (0x00007fe473bac000)\n\tlibgobject-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgobject-2.0.so.0 (0x00007fe473b49000)\n\tlibglib-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libglib-2.0.so.0 (0x00007fe473a00000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007fe473917000)\n\tlibstdc++.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libstdc++.so.6 (0x00007fe473699000)\n\tlibasound.so.2 => /usr/lib/x86_64-linux-gnu/libasound.so.2 (0x00007fe47358d000)\n\tlibX11-xcb.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libX11-xcb.so.1 (0x00007fe473588000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007fe47355a000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007fe473347000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007fe498bb3000)\n\tlibdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007fe473339000)\n\tlibpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007fe473332000)\n\tlibnspr4.so => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libnspr4.so (0x00007fe4732f3000)\n\tlibnss3.so => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libnss3.so (0x00007fe4731c4000)\n\tlibnssutil3.so => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libnssutil3.so (0x00007fe473192000)\n\tlibsmime3.so => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libsmime3.so (0x00007fe473169000)\n\tlibatk-1.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libatk-1.0.so.0 (0x00007fe47313f000)\n\tlibatk-bridge-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libatk-bridge-2.0.so.0 (0x00007fe473101000)\n\tlibdbus-1.so.3 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libdbus-1.so.3 (0x00007fe4730b2000)\n\tlibcups.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libcups.so.2 (0x00007fe473011000)\n\tlibX11.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libX11.so.6 (0x00007fe472ed3000)\n\tlibXcomposite.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libXcomposite.so.1 (0x00007fe472ece000)\n\tlibXdamage.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libXdamage.so.1 (0x00007fe472ec7000)\n\tlibXext.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libXext.so.6 (0x00007fe472eb3000)\n\tlibXfixes.so.3 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libXfixes.so.3 (0x00007fe472eab000)\n\tlibXrandr.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libXrandr.so.2 (0x00007fe472e9e000)\n\tlibgbm.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libgbm.so.1 (0x00007fe472e97000)\n\tlibexpat.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libexpat.so.1 (0x00007fe472e67000)\n\tlibcairo.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libcairo.so.2 (0x00007fe472d23000)\n\tlibpango-1.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libpango-1.0.so.0 (0x00007fe472cb8000)\n\tlibudev.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libudev.so.1 (0x00007fe472c85000)\n\tlibatspi.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/lib/libatspi.so.0 (0x00007fe472c4b000)\n\tlibXau.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libXau.so.6 (0x00007fe472c43000)\n\tlibXdmcp.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libXdmcp.so.6 (0x00007fe472c3b000)\n\tlibxcb-xkb.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libxcb-xkb.so.1 (0x00007fe472c1d000)\n\tlibgmodule-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgmodule-2.0.so.0 (0x00007fe472c16000)\n\tlibz.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libz.so.1 (0x00007fe472bfa000)\n\tlibmount.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libmount.so.1 (0x00007fe472bab000)\n\tlibselinux.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libselinux.so.1 (0x00007fe472b7e000)\n\tlibffi.so.8 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libffi.so.8 (0x00007fe472b72000)\n\tlibpcre2-8.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libpcre2-8.so.0 (0x00007fe472ad8000)\n\tlibplc4.so => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libplc4.so (0x00007fe472ad1000)\n\tlibplds4.so => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libplds4.so (0x00007fe472aca000)\n\tlibsystemd.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libsystemd.so.0 (0x00007fe4729ea000)\n\tlibgssapi_krb5.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgssapi_krb5.so.2 (0x00007fe472996000)\n\tlibavahi-common.so.3 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libavahi-common.so.3 (0x00007fe472988000)\n\tlibavahi-client.so.3 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libavahi-client.so.3 (0x00007fe472975000)\n\tlibgnutls.so.30 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgnutls.so.30 (0x00007fe472778000)\n\tlibXrender.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libXrender.so.1 (0x00007fe47276c000)\n\tlibdrm.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libdrm.so.2 (0x00007fe472755000)\n\tlibpng16.so.16 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libpng16.so.16 (0x00007fe47271d000)\n\tlibfontconfig.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libfontconfig.so.1 (0x00007fe4726cc000)\n\tlibfreetype.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libfreetype.so.6 (0x00007fe4725fe000)\n\tlibxcb-render.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libxcb-render.so.0 (0x00007fe4725ef000)\n\tlibxcb-shm.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libxcb-shm.so.0 (0x00007fe4725ea000)\n\tlibpixman-1.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libpixman-1.so.0 (0x00007fe47253b000)\n\tlibfribidi.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libfribidi.so.0 (0x00007fe47251d000)\n\tlibthai.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libthai.so.0 (0x00007fe472510000)\n\tlibharfbuzz.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libharfbuzz.so.0 (0x00007fe472403000)\n\tlibcap.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libcap.so.2 (0x00007fe4723f6000)\n\tlibXi.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libXi.so.6 (0x00007fe4723e3000)\n\tlibbsd.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libbsd.so.0 (0x00007fe4723cd000)\n\tlibblkid.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libblkid.so.1 (0x00007fe472390000)\n\tlibgcrypt.so.20 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgcrypt.so.20 (0x00007fe472247000)\n\tliblz4.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/liblz4.so.1 (0x00007fe472225000)\n\tliblzma.so.5 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/liblzma.so.5 (0x00007fe4721f3000)\n\tlibzstd.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libzstd.so.1 (0x00007fe472139000)\n\tlibkrb5.so.3 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libkrb5.so.3 (0x00007fe47206e000)\n\tlibk5crypto.so.3 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libk5crypto.so.3 (0x00007fe472042000)\n\tlibcom_err.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libcom_err.so.2 (0x00007fe47203c000)\n\tlibkrb5support.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libkrb5support.so.0 (0x00007fe47202f000)\n\tlibp11-kit.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libp11-kit.so.0 (0x00007fe471e8b000)\n\tlibidn2.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libidn2.so.0 (0x00007fe471e67000)\n\tlibunistring.so.5 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libunistring.so.5 (0x00007fe471cba000)\n\tlibtasn1.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libtasn1.so.6 (0x00007fe471ca4000)\n\tlibnettle.so.8 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libnettle.so.8 (0x00007fe471c4f000)\n\tlibhogweed.so.6 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libhogweed.so.6 (0x00007fe471c07000)\n\tlibgmp.so.10 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgmp.so.10 (0x00007fe471b81000)\n\tlibbz2.so.1.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libbz2.so.1.0 (0x00007fe471b6d000)\n\tlibbrotlidec.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libbrotlidec.so.1 (0x00007fe471b5f000)\n\tlibdatrie.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libdatrie.so.1 (0x00007fe471b56000)\n\tlibgraphite2.so.3 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgraphite2.so.3 (0x00007fe471b30000)\n\tlibmd.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libmd.so.0 (0x00007fe471b1f000)\n\tlibgpg-error.so.0 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libgpg-error.so.0 (0x00007fe471afa000)\n\tlibkeyutils.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libkeyutils.so.1 (0x00007fe471af3000)\n\tlibresolv.so.2 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libresolv.so.2 (0x00007fe471ae1000)\n\tlibbrotlicommon.so.1 => /home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/../lib/libbrotlicommon.so.1 (0x00007fe471abc000)\n",
+  "runs": [
+    {
+      "name": "wayland",
+      "result": {
+        "success": true,
+        "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+        "process_id": 119666,
+        "cef": "154.0.34",
+        "modes": [
+          {
+            "version": "3.11.2",
+            "mode": "ir",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "wysiwyg",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "sv",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "preview",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": true,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          }
+        ],
+        "source_preserved": true
+      },
+      "exit_code": 0,
+      "processes": [
+        {
+          "process_id": 119666,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-phase5-installed-linux-b7-exit/wayland/user-data /home/an/.cache/lathe-phase5-installed-linux-b7-exit/wayland/fixture.md "
+        },
+        {
+          "process_id": 120151,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-119666 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 120152,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-119666 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 120172,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-119666 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 120181,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-119666 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,12642065630148027058,13228061674699749157,524288 --field-trial-handle=3,i,17309930890868303274,13529069174315366853,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=7,i,12765774859186506986,13991703491543435535,4 --trace-process-track-uuid=3190708989122997041 "
+        },
+        {
+          "process_id": 120182,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-119666 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 120207,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-119666 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 120208,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-119666 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        }
+      ],
+      "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+      "display": null,
+      "wayland_display": "/run/user/1000/wayland-0",
+      "session_type": "wayland"
+    },
+    {
+      "name": "x11",
+      "result": {
+        "success": true,
+        "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+        "process_id": 120538,
+        "cef": "154.0.34",
+        "modes": [
+          {
+            "version": "3.11.2",
+            "mode": "ir",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "wysiwyg",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "sv",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "preview",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": true,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2\u200bO"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Rapha\u00ebl 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          }
+        ],
+        "source_preserved": true
+      },
+      "exit_code": 0,
+      "processes": [
+        {
+          "process_id": 120538,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-phase5-installed-linux-b7-exit/x11/user-data /home/an/.cache/lathe-phase5-installed-linux-b7-exit/x11/fixture.md "
+        },
+        {
+          "process_id": 121015,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --printenv "
+        },
+        {
+          "process_id": 121025,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-120538 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 121026,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-120538 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 121046,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-120538 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 121050,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-120538 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,2429197943142926445,4090630533048759693,524288 --field-trial-handle=3,i,1213088672911942983,12943011387206838958,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=7,i,8653295685690185815,16255806732987307114,4 --trace-process-track-uuid=3190708989122997041 "
+        },
+        {
+          "process_id": 121056,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-120538 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 121081,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-120538 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 121082,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-120538 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec "
+        },
+        {
+          "process_id": 121399,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --printenv "
+        }
+      ],
+      "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+      "display": ":0",
+      "wayland_display": "",
+      "session_type": "x11"
+    },
+    {
+      "name": "missing-runtime",
+      "result": {
+        "success": false,
+        "error": "Markdown editor runtime is incomplete: missing libcef.so in /home/an/.cache/lathe-phase5-installed-linux-b7-exit/missing-runtime/incomplete-runtime. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true
+      },
+      "exit_code": 0,
+      "processes": [
+        {
+          "process_id": 121412,
+          "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-phase5-installed-linux-b7-exit/missing-runtime/user-data /home/an/.cache/lathe-phase5-installed-linux-b7-exit/missing-runtime/fixture.md "
+        }
+      ],
+      "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+      "display": null,
+      "wayland_display": "/run/user/1000/wayland-0",
+      "session_type": "wayland"
+    }
+  ],
+  "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb"
+}

@@ -1,0 +1,262 @@
+{
+  "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb",
+  "base_commit": "165aee9c781e7eb52eb579606a1a54eb4e77b9fc",
+  "rust": "1.98.1",
+  "frontend_node": "24.16.0",
+  "cef": "154.0.34",
+  "bindings": "154.5.0",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 596,
+      "sha256": "0b8e4c0f71bb507d500c6c4fbb510b540b4b5496ae84b00e8d37a05ee4cc1474",
+      "canonical_sha256": "78724013bb4dcdbd87a58fdf2240e0f6dfaf997f7e891202029c2ab9b4ba075a"
+    },
+    {
+      "path": ".github/workflows/release_fork.yml",
+      "bytes": 30087,
+      "sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20",
+      "canonical_sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20"
+    },
+    {
+      "path": "Cargo.lock",
+      "bytes": 499861,
+      "sha256": "25a57cf2ff9088f1161d88bd9d15fccb0a877724b2988eb34432e0eb4307b081",
+      "canonical_sha256": "25a57cf2ff9088f1161d88bd9d15fccb0a877724b2988eb34432e0eb4307b081"
+    },
+    {
+      "path": "assets/keymaps/default-linux.json",
+      "bytes": 61853,
+      "sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7",
+      "canonical_sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7"
+    },
+    {
+      "path": "assets/keymaps/default-windows.json",
+      "bytes": 61689,
+      "sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747",
+      "canonical_sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747"
+    },
+    {
+      "path": "assets/settings/default.json",
+      "bytes": 128155,
+      "sha256": "b1b47e692810c785503ce2eae726d44b7b704f000cd7c2e2607527d2d990dc44",
+      "canonical_sha256": "5b276d658f44f1498328739bae780e09460ab50068192a9dc1bf35b63372da40"
+    },
+    {
+      "path": "crates/lathe_hooks/src/lathe_hooks.rs",
+      "bytes": 3090,
+      "sha256": "6b462c56e40ebbaedb6341c093581a1cee6f947038460c4478f8ca786d9412c3",
+      "canonical_sha256": "69589b26808c52ea9bccaa9c1358d357ef1d622a8b1805d7483b4e9891fc251d"
+    },
+    {
+      "path": "crates/markdown_editor/CEF-LICENSE.txt",
+      "bytes": 1691,
+      "sha256": "2e69c36a7eaa4fa153426eab635c607ea0356cbc7a68a70f42a49e8ab8eb8106",
+      "canonical_sha256": "058c3827ffb827ff3edda471ae7e1bb1d1aa5931985f0126043ccd33409e792f"
+    },
+    {
+      "path": "crates/markdown_editor/Cargo.toml",
+      "bytes": 2612,
+      "sha256": "64c22b988b543c7beb26656c1066b62e816d7e4806ce70bd858eafd0c6673664",
+      "canonical_sha256": "19b7df80e224c31d8d72d6ef95de83cf7c41c9c7ee49f2ace07596466ed7530c"
+    },
+    {
+      "path": "crates/markdown_editor/NOTICES.md",
+      "bytes": 69693,
+      "sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae",
+      "canonical_sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae"
+    },
+    {
+      "path": "crates/markdown_editor/frontend/package-lock.json",
+      "bytes": 3361,
+      "sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
+      "canonical_sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797"
+    },
+    {
+      "path": "crates/markdown_editor/frontend/vendor/manifest.json",
+      "bytes": 60417,
+      "sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804",
+      "canonical_sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804"
+    },
+    {
+      "path": "crates/markdown_editor/installed-fixture.md",
+      "bytes": 507,
+      "sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+      "canonical_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7"
+    },
+    {
+      "path": "crates/markdown_editor/src/browser.rs",
+      "bytes": 43478,
+      "sha256": "9128f829f33a10a4abcf86239e9bc1865e61b1d79fb1cfea3726787e7bdce093",
+      "canonical_sha256": "9128f829f33a10a4abcf86239e9bc1865e61b1d79fb1cfea3726787e7bdce093"
+    },
+    {
+      "path": "crates/markdown_editor/src/installation_check.rs",
+      "bytes": 8616,
+      "sha256": "05275252a4ba0c32981204abc69590a8b52b2d5d61dd09d62552594c1df3b4fe",
+      "canonical_sha256": "05275252a4ba0c32981204abc69590a8b52b2d5d61dd09d62552594c1df3b4fe"
+    },
+    {
+      "path": "crates/markdown_editor/src/item.rs",
+      "bytes": 155638,
+      "sha256": "5e2a4f1ec68b885fa9e869ed37eec34e730ff31cf0ad5dada21e1df9f0fe56bf",
+      "canonical_sha256": "5e2a4f1ec68b885fa9e869ed37eec34e730ff31cf0ad5dada21e1df9f0fe56bf"
+    },
+    {
+      "path": "crates/markdown_editor/src/markdown_editor.rs",
+      "bytes": 749,
+      "sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161",
+      "canonical_sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161"
+    },
+    {
+      "path": "crates/markdown_editor/src/opening.rs",
+      "bytes": 34144,
+      "sha256": "6f70690295809a403056871e233ac4f7dd7d85908a6425b0e1b87003e6e2d4ea",
+      "canonical_sha256": "6f70690295809a403056871e233ac4f7dd7d85908a6425b0e1b87003e6e2d4ea"
+    },
+    {
+      "path": "crates/markdown_editor/src/packaged_resources.rs",
+      "bytes": 60384,
+      "sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194",
+      "canonical_sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194"
+    },
+    {
+      "path": "crates/markdown_editor/src/settings.rs",
+      "bytes": 1421,
+      "sha256": "b4d9726cc9d70c5ddee3a0e16862798b15cca1216cc65046a11bc6d69d4a2c28",
+      "canonical_sha256": "d86bfeff4806e425ebae78abf08ec37f130c6237f10cf545d60c95618c2184ba"
+    },
+    {
+      "path": "crates/markdown_preview/Cargo.toml",
+      "bytes": 1058,
+      "sha256": "6906333b8b01b1a95173a6dd3f8d1ed7a3af8d1a4c5542c97449f502f15fed21",
+      "canonical_sha256": "b9e523c870e1ddb2d9187692043bb1a616a550b3601240ea869558ca190f513f"
+    },
+    {
+      "path": "crates/markdown_preview/src/markdown_preview_view.rs",
+      "bytes": 168132,
+      "sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789",
+      "canonical_sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789"
+    },
+    {
+      "path": "crates/project_panel/Cargo.toml",
+      "bytes": 1669,
+      "sha256": "0017de97913ae58c78d233124510d9358111566e664246a0fd605eb94b99aded",
+      "canonical_sha256": "d71b044e6b4c12c22b8684abfc1161524344cfc8770d984cdc6f96fc6cdedd69"
+    },
+    {
+      "path": "crates/project_panel/src/project_panel.rs",
+      "bytes": 347230,
+      "sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29",
+      "canonical_sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29"
+    },
+    {
+      "path": "crates/settings_content/src/settings_content.rs",
+      "bytes": 55383,
+      "sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f",
+      "canonical_sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f"
+    },
+    {
+      "path": "crates/settings_ui/src/page_data.rs",
+      "bytes": 546883,
+      "sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c",
+      "canonical_sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c"
+    },
+    {
+      "path": "crates/settings_ui/src/settings_ui.rs",
+      "bytes": 299543,
+      "sha256": "057d671c249ea044c49da2335f8c9ed3a0a43ae7a31e6fa6b73eda134132ddb4",
+      "canonical_sha256": "aa5d168d3c4e522ee507482cb89e94d66093a0f3e780fc3f7d9fb3ebf5e4e26c"
+    },
+    {
+      "path": "crates/workspace/Cargo.toml",
+      "bytes": 2401,
+      "sha256": "caa4294d4087ef4a4742a42d213c00e99b34c3cda95ace43c19acf5674b433bd",
+      "canonical_sha256": "6875d8488fe2c425d60e02fa0b18bf8601829af29e7077fc3cbc530f0be5eefc"
+    },
+    {
+      "path": "crates/workspace/src/pane.rs",
+      "bytes": 364595,
+      "sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0",
+      "canonical_sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0"
+    },
+    {
+      "path": "crates/workspace/src/workspace.rs",
+      "bytes": 813090,
+      "sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d",
+      "canonical_sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d"
+    },
+    {
+      "path": "docs/src/languages/markdown.md",
+      "bytes": 8343,
+      "sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6",
+      "canonical_sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6"
+    },
+    {
+      "path": "project-docs/imp-plans/markdown-viewer-editor.md",
+      "bytes": 44959,
+      "sha256": "26b50e6b5e16865a5f5d75c252714e9d08771e13ab3a0c4adf374b177b0568da",
+      "canonical_sha256": "67ec596f5f344673c8a2c68c4fa27a36652b562cd08a4f7cb74d6a98b8a0fa97"
+    },
+    {
+      "path": "script/build-fork-linux",
+      "bytes": 3405,
+      "sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b",
+      "canonical_sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b"
+    },
+    {
+      "path": "script/build-fork-windows.ps1",
+      "bytes": 10146,
+      "sha256": "b308ea82eb4f4e1b34cbbae6343d1a96c67deb6e145c6851d41b3ea5766c9e93",
+      "canonical_sha256": "a59e27c4b685fb360c0d57fc4d8d40527447128d73ef193cb13c1cc598c5809a"
+    },
+    {
+      "path": "script/build-markdown-frontend",
+      "bytes": 212,
+      "sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede",
+      "canonical_sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede"
+    },
+    {
+      "path": "script/build-markdown-frontend.ps1",
+      "bytes": 615,
+      "sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9",
+      "canonical_sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9"
+    },
+    {
+      "path": "script/install-fork-linux",
+      "bytes": 4299,
+      "sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6",
+      "canonical_sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6"
+    },
+    {
+      "path": "script/install-fork-windows.ps1",
+      "bytes": 6917,
+      "sha256": "e0b1b34cebe7eae03f6bbd9306fedb17faa5c2611c55d61b34366b3cdf756e0c",
+      "canonical_sha256": "6e18d32a87920fa4c848e8c5adfad29bb2e9f0ee4b3be85cc8b842d421bbf22f"
+    },
+    {
+      "path": "script/package-fork-linux",
+      "bytes": 4653,
+      "sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e",
+      "canonical_sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e"
+    },
+    {
+      "path": "script/package-fork-windows.ps1",
+      "bytes": 13215,
+      "sha256": "e25a5ef1d38a22ebab9f9cff3d4875501f21026ddd086ccc0c1332fc2f90a748",
+      "canonical_sha256": "db04b70e022e3c0c080e1cd6e0fc71e9bc13c17ea38a05b5c7acb03ae382168c"
+    },
+    {
+      "path": "script/package-markdown-runtime.mjs",
+      "bytes": 3785,
+      "sha256": "a06d1fd498e3b4deb5d22deace6724de8903cff874e83b5e7b752179fbfee35c",
+      "canonical_sha256": "a06d1fd498e3b4deb5d22deace6724de8903cff874e83b5e7b752179fbfee35c"
+    },
+    {
+      "path": "script/test-markdown-runtime.mjs",
+      "bytes": 2788,
+      "sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398",
+      "canonical_sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398"
+    }
+  ]
+}
