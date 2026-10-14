@@ -1,7 +1,7 @@
 {
   "date": "2026-10-13",
   "frontendBridge": 17,
-  "frontendRealBrowser": 54,
+  "frontendRealBrowser": 57,
   "windowsNative": 74,
   "linuxNative": 73,
   "windowsProtocol": 13,
@@ -396,6 +396,125 @@
         "reason": "Frontend/generated/protocol/Fs/project/worktree/server/workspace/preview/routing source remains unchanged. Fresh full native/pump/asset suites, app checks, scoped wrapper lint, three actual smokes and generator/asset verifiers cover changed decode scheduling and evidence behavior."
       },
       "reason": "Native image/protocol/Fs/project/worktree/server/workspace/preview/routing production source is unchanged. Fresh full packaged-browser/bridge, native request/pump suites, protocol, application checks, scoped wrapper lint, locked reconstruction and three actual smokes cover the caret fix and its final embedded bytes."
+    },
+    "additionalCacheCleanup": false,
+    "confidentialTransportProbes": false
+  },
+  "reviewFixPass7": {
+    "reviewedHead": "5c949e6769f9e8b051575e7e3e3d1031bd711589",
+    "findingsFixed": 1,
+    "browserExpectedRed": {
+      "tests": 2,
+      "passed": 1,
+      "failed": 1,
+      "readerScroll": 577,
+      "afterLateStylesheet": 0,
+      "log": "C:/tmp/lathe-phase4-fixes7-browser-red-final.log"
+    },
+    "scrollRaceExpectedRed": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "actualPosition": 0,
+      "expectedPosition": 600,
+      "log": "C:/tmp/lathe-phase4-fixes7-scroll-race-red.log"
+    },
+    "queuedScrollBeforeEventModes": 4,
+    "synchronousPanePositionGuard": true,
+    "focusedBrowserGreen": 6,
+    "fullBrowserGreen": 57,
+    "bridgeGreen": 17,
+    "delayedReaderScenarios": 9,
+    "noLaterReaderScenarios": 4,
+    "readerModes": [
+      "ir",
+      "wysiwyg",
+      "sv",
+      "preview"
+    ],
+    "viewerSpaceRetained": true,
+    "directScrollRetained": true,
+    "outlineNavigationRetained": true,
+    "savedScrollRetained": true,
+    "adapterOwnedScrollDistinguished": true,
+    "exactSourceAndNoHistoryMessages": true,
+    "secondFullBrowser": {
+      "passed": 55,
+      "failed": 1,
+      "log": "C:/tmp/lathe-phase4-fixes7-browser-final-complete.log",
+      "reason": "Direct preview scroll was overwritten before its scroll event; shared completion guard now checks the actual current position synchronously and pane identity"
+    },
+    "initialFullBrowser": {
+      "passed": 55,
+      "failed": 1,
+      "log": "C:/tmp/lathe-phase4-fixes7-browser-final.log",
+      "reason": "Initial reader movement timed out before releasing the delayed stylesheet; final fixture explicitly fronts the page and final code retains Space pre-scroll intent cancellation"
+    },
+    "fixtureBoundary": "Disable native layout anchoring only in delayed-reader cases so CSS heading geometry does not obscure numeric adapter-restoration assertions; measure split outline navigation in its real preview pane",
+    "restoration": "Actual scroll events cancel pending appearance/image restoration; completion also checks actual position and captured pane identity before writing, because scroll events can still be queued. Adapter writes record clamped positions to identify their later events",
+    "freshBackendSmokeExits": {
+      "windows": 0,
+      "wayland": 0,
+      "x11": 0
+    },
+    "nativeProductionChanged": false,
+    "currentLogs": [
+      "C:/tmp/lathe-phase4-fixes7-browser-final-verified.log",
+      "C:/tmp/lathe-phase4-fixes7-bridge-final-verified.log",
+      "C:/tmp/lathe-phase4-fixes7-windows-final-verified.log",
+      "C:/tmp/lathe-phase4-fixes7-linux-final-verified.log",
+      "C:/tmp/lathe-phase4-fixes7-assets-final-verified.log"
+    ],
+    "reusedVerification": {
+      "sourceCommit": "5c949e6769f9e8b051575e7e3e3d1031bd711589",
+      "report": "C:/tmp/lathe-phase4-fixes-6.md",
+      "previousVerification": {
+        "sourceCommit": "548c863ba00a06b4646fa8150e91fe902ee61166",
+        "report": "C:/tmp/lathe-phase4-fixes-5.md",
+        "checks": [
+          "Fs23 each and Linux direct SSH resource/import1 retain pass4 ef69587de52180dfb4e6435f5c202e40e2baa741 provenance",
+          "Historical unaffected transport/workspace/preview/routing and other lint groups retain pass2 a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d provenance"
+        ],
+        "previousVerification": {
+          "sourceCommit": "ef69587de52180dfb4e6435f5c202e40e2baa741",
+          "report": "C:/tmp/lathe-phase4-fixes-4.md",
+          "checks": [
+            "browser53 and bridge17",
+            "isolated347 assets/332 hashes reconstruction",
+            "Fs23 each",
+            "Linux direct SSH resource/import1"
+          ],
+          "logs": [
+            "C:/tmp/lathe-phase4-fixes4-browser-final.log",
+            "C:/tmp/lathe-phase4-fixes4-bridge-final.log",
+            "C:/tmp/lathe-phase4-fixes4-assets-final.log",
+            "C:/tmp/lathe-phase4-fixes4-windows-final.log",
+            "C:/tmp/lathe-phase4-fixes4-linux-final.log"
+          ],
+          "historicalBroadGroups": {
+            "sourceCommit": "a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d",
+            "report": "C:/tmp/lathe-phase4-fixes-2.md",
+            "windowsLog": "C:/tmp/lathe-phase4-fixes2-windows-final.log",
+            "linuxLog": "C:/tmp/lathe-phase4-fixes2-linux-final.log",
+            "previousCurrentPassReport": "C:/tmp/lathe-phase4-fixes-3.md",
+            "previousCurrentPassCommit": "6530c95413dc34d69f6cd2420dbb9d84d68e15bb",
+            "checks": [
+              "Windows direct SSH resource/import1",
+              "Windows collaborative local/shared-SSH1 each",
+              "preview32 each",
+              "saveWindows25/Linux26",
+              "close49 each",
+              "routingWorkspace1/terminal15 each",
+              "Project/Worktree/Settings and RemoteServer wrapper lints each",
+              "Windows Zed/Collab wrapper lints"
+            ],
+            "reason": "No project/worktree/protocol/server/workspace/preview/routing production source changed. Fresh native/pump/import, protocol, app, Fs, Markdown/Workspace/Fs lint, browser and actual backend smokes cover current bytes; existing benign Linux direct-SSH fixture is fresh. FakeFs instrumentation is test-support only with unchanged zero-delay behavior."
+          },
+          "reason": "Frontend/generated/protocol/Fs/project/worktree/server/workspace/preview/routing source remains unchanged. Fresh full native/pump/asset suites, app checks, scoped wrapper lint, three actual smokes and generator/asset verifiers cover changed decode scheduling and evidence behavior."
+        },
+        "reason": "Native image/protocol/Fs/project/worktree/server/workspace/preview/routing production source is unchanged. Fresh full packaged-browser/bridge, native request/pump suites, protocol, application checks, scoped wrapper lint, locked reconstruction and three actual smokes cover the caret fix and its final embedded bytes."
+      },
+      "reason": "Native/protocol/Fs/project/worktree/server/workspace/preview/routing production source remains unchanged. Fs23 each and benign Linux SSH1 retain pass4 ef69587de52180dfb4e6435f5c202e40e2baa741 provenance; other unaffected broad tests/lint groups retain explicit pass2 a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d provenance. Fresh packaged-browser/bridge, native and protocol suites, apps, scoped wrappers, locked reconstruction and 3 actual smokes cover final frontend embedded bytes."
     },
     "additionalCacheCleanup": false,
     "confidentialTransportProbes": false

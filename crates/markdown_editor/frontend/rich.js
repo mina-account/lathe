@@ -29,6 +29,7 @@ const imageUrls=new Set        ();
 let resourceRequest=0;
 let resourceGeneration=0;
 let readingGeneration=0;
+const restoredScrollPositions=new WeakMap                    ();
 const forbiddenTags = ["script","style","iframe","object","embed","svg","math","template","form","input","button","select","textarea","audio","video","source","base","meta","link"];
 const imageSources=new WeakMap                ();
 DOMPurify.addHook("uponSanitizeElement",(node        ,_data    ,configuration    )=>{
@@ -128,8 +129,7 @@ bridge.receive = message => {
 };
 
 function applyAppearance() {
-    const scroll=ready?scrollElement().scrollTop:0,reading=readingGeneration;
-    const restore=()=>{if(ready && readingGeneration===reading)scrollElement().scrollTop=scroll;};
+    const restore=scrollRestoration();
     contentStyle.onload=codeStyle.onload=restore;
     const content=preferences.content_theme ?? appearance.content_theme ?? (appearance.dark?"dark":"light");
     const code=preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github");
@@ -166,8 +166,7 @@ async function loadImages(root            ) {
             const result=await requestResource("resource",url);
             if (!element.isConnected || generation!==resourceGeneration) continue;
             const bytes=Uint8Array.from(atob(result.bytes),character=>character.charCodeAt(0));
-            const scroll=scrollElement().scrollTop,reading=readingGeneration;
-            element.onload=()=>{if(reading===readingGeneration)scrollElement().scrollTop=scroll;};
+            element.onload=scrollRestoration();
             const object=URL.createObjectURL(new Blob([bytes],{type:result.mime})); imageUrls.add(object); element.src=object;
         } catch(error) { if (element.isConnected) { element.classList.add("resource-error");status.textContent=`Image unavailable: ${String(error)}`; } }
     }
@@ -246,6 +245,21 @@ async function importFiles(files       ) {
 function active()              { return preferences.mode === "preview" ? viewer : editor?.vditor[editor.getCurrentMode()].element ?? container; }
 function renderedRoot()             { return preferences.mode==="sv" ? editor.vditor.preview.previewElement : active(); }
 function scrollElement()              { return preferences.mode === "preview" ? viewer : active(); }
+function restoreScroll(position       ) {
+    const element=scrollElement();
+    element.scrollTop=position;
+    // Scroll events arrive later, and the browser may clamp the requested position.
+    restoredScrollPositions.set(element,element.scrollTop);
+}
+function scrollRestoration() {
+    const element=scrollElement(),position=element.scrollTop,reading=readingGeneration;
+    return ()=>{
+        if(!ready || reading!==readingGeneration || element!==scrollElement())return;
+        // A resource completion can run before the scroll event for a newer position.
+        if(element.scrollTop!==position){readingGeneration++;return;}
+        restoreScroll(position);
+    };
+}
 function permissions() {
     if (!ready) return;
     const writable = bridge.writable && !bridge.blocked && preferences.mode !== "preview";
@@ -306,7 +320,7 @@ function show(text        ) {
         lastSerialized = editor.getValue(); projection.reset(text,lastSerialized);
         renderViewer(); renderOutline(); renderSourceBlocks(); updateFind();
         void loadImages(renderedRoot()); lineNumbers();
-        restoreSelection(selected,oldText); scrollElement().scrollTop = scroll;
+        restoreSelection(selected,oldText); restoreScroll(scroll);
     } catch (error) { status.textContent = String(error); bridge.blocked = true; }
     finally { projecting = false; permissions(); }
 }
@@ -502,7 +516,7 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
             container.hidden = preferences.mode === "preview"; viewer.hidden = preferences.mode !== "preview";
             document.body.classList.toggle("nowrap",!preferences.wrap); outline.hidden = !preferences.outline;
             renderViewer(); renderOutline(); renderSourceBlocks(); permissions();
-            restoreSelection(selected,oldText); scrollElement().scrollTop = preferences.scroll;
+            restoreSelection(selected,oldText); restoreScroll(preferences.scroll);
             applyAppearance(); void loadImages(renderedRoot());
             status.textContent = bridge.blocked ? "Visual draft retained; use Recover Draft." : "Markdown Editor";
             updateFind();
@@ -839,15 +853,20 @@ document.addEventListener("selectionchange",() => {
 document.addEventListener("focusout",event=>{
     if(active().contains(event.target        ))rememberImageCaret();
 },true);
-document.addEventListener("scroll",() => {
+document.addEventListener("scroll",event => {
     if (!ready || projecting) return;
+    const target=event.target;
+    if(target instanceof HTMLElement && (container.contains(target) || viewer.contains(target))) {
+        if(restoredScrollPositions.get(target)!==target.scrollTop)readingGeneration++;
+        restoredScrollPositions.delete(target);
+    }
     const scroll = Math.min(100_000_000,Math.round(Math.max(0,scrollElement().scrollTop)));
     if (scroll !== preferences.scroll) { preferences.scroll = scroll; persist(); }
     lineNumbers();
 },true);
 document.addEventListener("wheel",()=>readingGeneration++,true);
 document.addEventListener("touchmove",()=>readingGeneration++,true);
-document.addEventListener("keydown",event=>{if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"].includes(event.key))readingGeneration++;},true);
+document.addEventListener("keydown",event=>{if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"," "].includes(event.key))readingGeneration++;},true);
 
 const findBar = get("find"), query = get("query")                    , matchCase = get("case")                    ;
 let matches          = [], currentMatch = -1;

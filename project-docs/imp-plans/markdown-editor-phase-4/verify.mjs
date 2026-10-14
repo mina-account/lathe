@@ -63,7 +63,7 @@ for(const [file,hash] of Object.entries(runtime.nativeSourceHashesNormalizedLF))
 }
 const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
 assert.equal(checks.frontendBridge,17);
-assert.equal(checks.frontendRealBrowser,54);
+assert.equal(checks.frontendRealBrowser,57);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
 assert.equal(checks.windowsNative,74);assert.equal(checks.linuxNative,73);
@@ -85,5 +85,14 @@ assert.equal(checks.reviewFixPass6.focusedBrowserGreen,3);
 assert.equal(checks.reviewFixPass6.pointerPathPreserved,true);
 assert.equal(checks.reviewFixPass6.hostReplacementPositionBounded,true);
 assert.equal(checks.reviewFixPass6.nativeSourceCaretSaveUndo,true);
+assert.equal(checks.reviewFixPass7.findingsFixed,1);
+assert.equal(checks.reviewFixPass7.focusedBrowserGreen,6);
+assert.equal(checks.reviewFixPass7.queuedScrollBeforeEventModes,4);
+assert.equal(checks.reviewFixPass7.synchronousPanePositionGuard,true);
+assert.equal(checks.reviewFixPass7.delayedReaderScenarios,9);
+assert.equal(checks.reviewFixPass7.noLaterReaderScenarios,4);
+assert.equal(checks.reviewFixPass7.viewerSpaceRetained,true);
+assert.equal(checks.reviewFixPass7.outlineNavigationRetained,true);
+assert.equal(checks.reviewFixPass7.savedScrollRetained,true);
 assert.equal(checks.windowsWorkspaceSave,25);assert.equal(checks.linuxWorkspaceSave,26);
 console.log("Verified recorded Phase4 renderer, resource, preservation and final-asset checks");

@@ -1099,3 +1099,71 @@ test("every offered content and code stylesheet loads in every presentation",asy
         await page.evaluate(()=>window.latheRich.commit());assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);await context.close();
     }
 });
+
+test("delayed theme completion retains subsequent reader scrolling and heading navigation",async()=>{
+    const source=Array.from({length:200},(_,index)=>`${index%40===0?'## Heading '+index+'\n\n':''}Paragraph ${index}`).join('\n\n');
+    for(const [mode,action] of [['preview','Space'],...['preview','ir','wysiwyg','sv'].flatMap(mode=>[[mode,'scroll'],[mode,'outline']])]){
+        const {page,context}=await open(source,mode);
+        await page.waitForFunction(()=>[...document.styleSheets].some(sheet=>sheet.href?.endsWith('/light.css')));
+        // Theme geometry can trigger browser layout anchoring independently of the adapter's restoration.
+        await page.evaluate(({mode,action})=>{const editor=window.latheRich.editor;window.readingTestElement=mode==='sv' && action==='outline'?editor.vditor.preview.element:document.querySelector('#viewer').hidden?editor.vditor[editor.getCurrentMode()].element:document.querySelector('#viewer');window.readingTestElement.style.overflowAnchor='none';},{mode,action});
+        await page.evaluate(()=>{window.readingEvents=[];window.readingTestElement.addEventListener('scroll',()=>window.readingEvents.push(['scroll',window.readingTestElement.scrollTop]));document.addEventListener('load',event=>{if(event.target instanceof HTMLLinkElement)window.readingEvents.push(['stylesheet',event.target.href,window.readingTestElement.scrollTop]);},true);});
+        if(action==='outline')await page.click('#outline-toggle');
+        let release,requested;const delay=new Promise(resolve=>release=resolve),request=new Promise(resolve=>requested=resolve);
+        await page.route('**/content-theme/dark.css',async route=>{requested();await delay;await route.continue();});
+        await page.selectOption('#content-theme','dark');await request;
+        if(action==='Space'){await page.bringToFront();await page.locator('#viewer').focus();await page.keyboard.press('Space');}
+        else if(action==='scroll')assert.equal(await page.evaluate(()=>{window.readingTestElement.scrollTop=600;window.readingEvents.push(['reader-assignment',window.readingTestElement.scrollTop]);return window.readingTestElement.scrollTop;}),600,`${mode}: direct scroll assignment`);
+        else await page.locator('#outline button').filter({hasText:'Heading 120'}).click();
+        try{await page.waitForFunction(()=>window.readingTestElement.scrollTop>100);}
+        catch(error){throw new Error(`${mode}/${action}: ${JSON.stringify(await page.evaluate(()=>({scroll:window.readingTestElement.scrollTop,height:window.readingTestElement.clientHeight,total:window.readingTestElement.scrollHeight,focus:document.activeElement?.id,documentFocused:document.hasFocus(),events:window.readingEvents})))}`,{cause:error});}
+        await page.waitForTimeout(450);
+        const before=await page.evaluate(()=>window.readingTestElement.scrollTop);
+        release();await page.waitForFunction(()=>[...document.styleSheets].some(sheet=>sheet.href?.endsWith('/dark.css')));await page.waitForTimeout(100);
+        const after=await page.evaluate(()=>window.readingTestElement.scrollTop);
+        assert.equal(after,before,`${mode}/${action}: late theme must retain reader position`);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>['draft','edit','history'].includes(message.kind)).length),0);
+        await context.close();
+    }
+});
+
+test("delayed theme completion preserves saved scroll without later reader navigation",async()=>{
+    const source=Array.from({length:200},(_,index)=>`Paragraph ${index}`).join('\n\n');
+    for(const mode of ['ir','wysiwyg','sv','preview']){
+        const {page,context}=await open(source,mode);
+        await page.waitForFunction(()=>[...document.styleSheets].some(sheet=>sheet.href?.endsWith('/light.css')));
+        await page.evaluate(()=>{const editor=window.latheRich.editor;const reading=document.querySelector('#viewer').hidden?editor.vditor[editor.getCurrentMode()].element:document.querySelector('#viewer');reading.scrollTop=600;});
+        await page.waitForTimeout(100);
+        let release,requested;const delay=new Promise(resolve=>release=resolve),request=new Promise(resolve=>requested=resolve);
+        await page.route('**/content-theme/dark.css',async route=>{requested();await delay;await route.continue();});
+        await page.selectOption('#content-theme','dark');await request;
+        release();await page.waitForFunction(()=>[...document.styleSheets].some(sheet=>sheet.href?.endsWith('/dark.css')));await page.waitForTimeout(100);
+        assert.equal(await page.evaluate(()=>{const editor=window.latheRich.editor;return (document.querySelector('#viewer').hidden?editor.vditor[editor.getCurrentMode()].element:document.querySelector('#viewer')).scrollTop;}),600,`${mode}: saved scroll`);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>['draft','edit','history'].includes(message.kind)).length),0);
+        await context.close();
+    }
+});
+
+test("theme completion preserves real navigation before its queued scroll event",async()=>{
+    const source=Array.from({length:200},(_,index)=>`Paragraph ${index}`).join('\n\n');
+    for(const mode of ['ir','wysiwyg','sv','preview']){
+        const {page,context}=await open(source,mode);
+        await page.waitForFunction(()=>[...document.styleSheets].some(sheet=>sheet.href?.endsWith('/light.css')));
+        let release,requested;const delay=new Promise(resolve=>release=resolve),request=new Promise(resolve=>requested=resolve);
+        await page.route('**/content-theme/dark.css',async route=>{requested();await delay;await route.continue();});
+        await page.evaluate(()=>{
+            window.readerAssignment=null;
+            document.addEventListener('load',event=>{
+                if(!(event.target instanceof HTMLLinkElement) || !event.target.href.endsWith('/dark.css'))return;
+                const editor=window.latheRich.editor,reading=document.querySelector('#viewer').hidden?editor.vditor[editor.getCurrentMode()].element:document.querySelector('#viewer');
+                reading.scrollTop=600;window.readerAssignment=reading.scrollTop;
+            },true);
+        });
+        await page.selectOption('#content-theme','dark');await request;
+        release();await page.waitForFunction(()=>window.readerAssignment!==null);
+        assert.equal(await page.evaluate(()=>window.readerAssignment),600,`${mode}: actual direct navigation`);
+        assert.equal(await page.evaluate(()=>{const editor=window.latheRich.editor;return (document.querySelector('#viewer').hidden?editor.vditor[editor.getCurrentMode()].element:document.querySelector('#viewer')).scrollTop;}),600,`${mode}: completion must not beat queued scroll event`);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>['draft','edit','history'].includes(message.kind)).length),0);
+        await context.close();
+    }
+});
