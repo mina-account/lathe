@@ -10849,6 +10849,7 @@ name = "markdown_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "cef",
  "db",
  "editor",
@@ -10856,9 +10857,12 @@ dependencies = [
  "futures 0.3.34",
  "gpui",
  "gpui_platform",
+ "http_client",
  "image",
  "language",
  "log",
+ "path",
+ "png 0.18.0",
  "project",
  "pulldown-cmark 0.13.4",
  "raw-window-handle",
@@ -10866,9 +10870,11 @@ dependencies = [
  "serde_json",
  "settings",
  "sysinfo 0.39.6",
+ "theme",
  "ui",
  "urlencoding",
  "util",
+ "uuid",
  "workspace",
 ]
 

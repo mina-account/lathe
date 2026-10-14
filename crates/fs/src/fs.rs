@@ -1451,6 +1451,34 @@ pub struct FakeFs {
 }
 
 #[cfg(feature = "test-support")]
+struct FakeFsReader {
+    cursor: io::Cursor<Vec<u8>>,
+    path: PathBuf,
+    state: Arc<Mutex<FakeFsState>>,
+}
+
+#[cfg(feature = "test-support")]
+impl io::Read for FakeFsReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let count = self.cursor.read(buffer)?;
+        *self
+            .state
+            .lock()
+            .path_read_bytes
+            .entry(self.path.clone())
+            .or_default() += count;
+        Ok(count)
+    }
+}
+
+#[cfg(feature = "test-support")]
+impl io::Seek for FakeFsReader {
+    fn seek(&mut self, position: io::SeekFrom) -> io::Result<u64> {
+        self.cursor.seek(position)
+    }
+}
+
+#[cfg(feature = "test-support")]
 struct FakeFsState {
     root: FakeFsEntry,
     next_inode: u64,
@@ -1463,6 +1491,10 @@ struct FakeFsState {
     metadata_call_count: usize,
     read_dir_call_count: usize,
     path_write_counts: std::collections::HashMap<PathBuf, usize>,
+    path_open_counts: std::collections::HashMap<PathBuf, usize>,
+    path_read_bytes: std::collections::HashMap<PathBuf, usize>,
+    create_file_delay: Duration,
+    pending_file_creations: usize,
     job_event_subscribers: Arc<Mutex<Vec<JobEventSender>>>,
     trash: Mutex<SlotMap<TrashId, (TrashedEntry, FakeFsEntry)>>,
     remove_dir_errors: std::collections::HashMap<PathBuf, String>,
@@ -1858,6 +1890,10 @@ impl FakeFs {
             read_dir_call_count: 0,
             metadata_call_count: 0,
             path_write_counts: Default::default(),
+            path_open_counts: Default::default(),
+            path_read_bytes: Default::default(),
+            create_file_delay: Duration::ZERO,
+            pending_file_creations: 0,
             job_event_subscribers: Arc::new(Mutex::new(Vec::new())),
             trash: Mutex::new(SlotMap::with_key()),
             remove_dir_errors: Default::default(),
@@ -2811,6 +2847,32 @@ impl FakeFs {
         self.state.lock().emit_event(std::iter::once((path, event)));
     }
 
+    pub fn open_count_for_path(&self, path: impl AsRef<Path>) -> usize {
+        self.state
+            .lock()
+            .path_open_counts
+            .get(&normalize_path(path.as_ref()))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn bytes_read_for_path(&self, path: impl AsRef<Path>) -> usize {
+        self.state
+            .lock()
+            .path_read_bytes
+            .get(&normalize_path(path.as_ref()))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn set_create_file_delay(&self, delay: Duration) {
+        self.state.lock().create_file_delay = delay;
+    }
+
+    pub fn pending_file_creations(&self) -> usize {
+        self.state.lock().pending_file_creations
+    }
+
     fn simulate_random_delay(&self) -> impl futures::Future<Output = ()> {
         self.executor.simulate_random_delay()
     }
@@ -3015,7 +3077,16 @@ impl Fs for FakeFs {
 
     async fn create_file(&self, path: &Path, options: CreateOptions) -> Result<()> {
         self.simulate_random_delay().await;
+        let delay = {
+            let mut state = self.state.lock();
+            state.pending_file_creations += 1;
+            state.create_file_delay
+        };
+        if !delay.is_zero() {
+            self.executor.timer(delay).await;
+        }
         let mut state = self.state.lock();
+        state.pending_file_creations -= 1;
         let inode = state.get_and_increment_inode();
         let mtime = state.get_and_increment_mtime();
         let file = FakeFsEntry::File {
@@ -3254,8 +3325,18 @@ impl Fs for FakeFs {
     }
 
     async fn open_sync(&self, path: &Path) -> Result<Box<dyn ReadSeek + Send + Sync>> {
+        *self
+            .state
+            .lock()
+            .path_open_counts
+            .entry(normalize_path(path))
+            .or_default() += 1;
         let bytes = self.load_internal(path).await?;
-        Ok(Box::new(io::Cursor::new(bytes)))
+        Ok(Box::new(FakeFsReader {
+            cursor: io::Cursor::new(bytes),
+            path: normalize_path(path),
+            state: self.state.clone(),
+        }))
     }
 
     async fn open_handle(&self, path: &Path) -> Result<Arc<dyn FileHandle>> {

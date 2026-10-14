@@ -114,6 +114,16 @@
     "unit": "binary",
   },
   // Markdown preview settings
+  "markdown_editor": {
+    "image_save_folder": "assets",
+    "use_app_theme_colors": true,
+    "show_line_numbers": true,
+    "default_open_outline": false,
+    "custom_css": "",
+    "content_theme": null,
+    "code_theme": null,
+    "plantuml_service": null,
+  },
   "markdown_preview": {
     // The default font size for the markdown preview. Falls back to the UI font size if unset.
     "font_size": null,

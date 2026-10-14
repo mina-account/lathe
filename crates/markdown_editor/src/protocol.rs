@@ -56,6 +56,10 @@ pub struct ViewPreferences {
     pub outline: bool,
     pub wrap: bool,
     pub scroll: u32,
+    #[serde(default)]
+    pub content_theme: Option<String>,
+    #[serde(default)]
+    pub code_theme: Option<String>,
 }
 
 impl Default for ViewPreferences {
@@ -65,6 +69,8 @@ impl Default for ViewPreferences {
             outline: false,
             wrap: true,
             scroll: 0,
+            content_theme: None,
+            code_theme: None,
         }
     }
 }
@@ -72,6 +78,38 @@ impl Default for ViewPreferences {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClientMessage {
+    Resource {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        request: u64,
+        url: String,
+    },
+    Plantuml {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        request: u64,
+        encoded: String,
+    },
+    ImportImages {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        base_revision: u64,
+        position: usize,
+        images: Vec<ImportedImage>,
+    },
+    PickImages {
+        session: String,
+        #[serde(with = "document_identifier")]
+        document: u64,
+        base_revision: u64,
+        position: usize,
+        clipboard: bool,
+        #[serde(default)]
+        drop: bool,
+    },
     InputState {
         session: String,
         #[serde(with = "document_identifier")]
@@ -153,6 +191,25 @@ pub enum ClientMessage {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum HostMessage {
+    ResourcesReset,
+    Resource {
+        request: u64,
+        mime: String,
+        bytes: String,
+        error: Option<String>,
+    },
+    Appearance {
+        background: String,
+        foreground: String,
+        accent: String,
+        dark: bool,
+        use_app_theme_colors: bool,
+        show_line_numbers: bool,
+        custom_css: String,
+        content_theme: Option<String>,
+        code_theme: Option<String>,
+        plantuml_service: Option<String>,
+    },
     Notice {
         text: String,
     },
@@ -225,7 +282,19 @@ pub fn decode(origin: &str, body: &str, session: &str, document: u64) -> Result<
     }
     let message: ClientMessage = serde_json::from_str(body)?;
     let (actual_session, actual_document) = match &message {
-        ClientMessage::Ready { session, document }
+        ClientMessage::Resource {
+            session, document, ..
+        }
+        | ClientMessage::Plantuml {
+            session, document, ..
+        }
+        | ClientMessage::ImportImages {
+            session, document, ..
+        }
+        | ClientMessage::PickImages {
+            session, document, ..
+        }
+        | ClientMessage::Ready { session, document }
         | ClientMessage::Preferences {
             session, document, ..
         }
@@ -261,6 +330,28 @@ pub fn decode(origin: &str, body: &str, session: &str, document: u64) -> Result<
         bail!("Foreign Markdown document/session");
     }
     match &message {
+        ClientMessage::Resource { url, .. }
+            if url.len() > 8192 || url.chars().any(char::is_control) =>
+        {
+            bail!("Invalid image resource URL")
+        }
+        ClientMessage::Plantuml { encoded, .. }
+            if encoded.len() > 256 * 1024
+                || !encoded.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || character == '-' || character == '_'
+                }) =>
+        {
+            bail!("Invalid PlantUML service payload")
+        }
+        ClientMessage::ImportImages { images, .. }
+            if images.is_empty()
+                || images.len() > 16
+                || images
+                    .iter()
+                    .any(|image| image.name.len() > 255 || image.bytes.len() > 6 * 1024 * 1024) =>
+        {
+            bail!("Image import exceeds its limits")
+        }
         ClientMessage::InputState {
             text, start, end, ..
         } => {
@@ -293,6 +384,13 @@ pub fn decode(origin: &str, body: &str, session: &str, document: u64) -> Result<
         _ => {}
     }
     Ok(message)
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ImportedImage {
+    pub name: String,
+    pub bytes: String,
 }
 
 pub fn utf16_to_byte(text: &str, offset: usize) -> Result<usize> {

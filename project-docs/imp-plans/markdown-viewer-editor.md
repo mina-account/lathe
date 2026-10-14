@@ -240,12 +240,14 @@ Phase 3 evidence: [implementation, source mapping, rich confinement, reproductio
 
 Depends on Phase 3.
 
-- [ ] Implement project-aware image selection, paste, drop, destination settings, error feedback, and resource serving.
-- [ ] Bundle and verify every Phase 0 renderer, math engine, code/content theme, and runtime dependency.
-- [ ] Connect Lathe theme updates and custom CSS without document reinitialization or history loss.
-- [ ] Run offline and remote-project fixtures, malformed-renderer cases, resource confinement, and document-HTML isolation checks.
+- [x] Implement project-aware image selection, paste, drop, destination settings, error feedback, and resource serving.
+- [x] Bundle and verify every Phase 0 renderer, math engine, code/content theme, and runtime dependency.
+- [x] Connect Lathe theme updates and custom CSS without document reinitialization or history loss.
+- [x] Run offline and remote-project fixtures, malformed-renderer cases, resource confinement, and document-HTML isolation checks.
 
 Exit: P09-P12, P16-P17, and P19 have automated correctness evidence; every renderer has a recorded result and any service dependency is explicit. Full native/manual UI acceptance remains for Phase 6.
+
+Phase 4 evidence: [implementation, behavior-to-test and expected-red matrix, exact dependency/generated hashes, reproducible checks, service limits, and actual Win32/X11/Wayland traces](markdown-editor-phase-4/README.md). Packaged browser correctness passes 62/62 groups and bridge tests 17/17; native suites pass 78/78 on Windows and 77/77 on Linux, with protocol-only suites 13/13 on both platforms. Local, SSH, collaborative local-host, and shared-SSH byte adapters support project images/imports; actual RPC fixtures verify completion, exclusivity, privacy, and disconnection. All exposed finite renderers have valid/malformed fixtures, math renders inline/block in every presentation with pinned KaTeX 0.16.9/mhchem identity, and theme/CSS changes retain source and editor identity. PlantUML explicitly requires a configured network service. All 347 generated resources reproduce exactly, with 332 pinned dependency hashes. Fresh backend smokes retain the source/history/flush/crash guarantees and assert renderer semantics. Application/lint/format/regression checks pass in scoped configurations; the evidence records the unchanged Windows portable-workspace fixture exception (25 save cases versus Linux 26), unrelated root-format/feature-mock exceptions, and the absence of hardware/manual UI proof. Phase 5 packaging/opening and Phase 6 full manual acceptance remain outstanding.
 
 ### Phase 5: Opening workflows, persistence, and packaging
 

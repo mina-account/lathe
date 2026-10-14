@@ -83,6 +83,190 @@ use util::{
 };
 
 #[gpui::test]
+async fn test_project_binary_resources_complete_remote_chunks_and_preserve_exclusive_writes(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let filesystem = FakeFs::new(server_cx.executor());
+    filesystem
+        .insert_tree(path!("/code/project"), json!({"assets":{"empty.bin":""}}))
+        .await;
+    let bytes = (0..(2 * 1024 * 1024 + 17))
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    filesystem
+        .write(path!("/code/project/assets/中 #.bin").as_ref(), &bytes)
+        .await
+        .expect("binary fixture");
+    let (project, _headless) = init_test(&filesystem, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project"), true, cx)
+        })
+        .await
+        .expect("remote worktree");
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let path: ProjectPath = (worktree_id, rel_path("assets/中 #.bin")).into();
+    let first = project.update(cx, |project, cx| {
+        project.load_binary_resource(path.clone(), 4 * 1024 * 1024, cx)
+    });
+    let second = project.update(cx, |project, cx| {
+        project.load_binary_resource(path.clone(), 4 * 1024 * 1024, cx)
+    });
+    assert_eq!(first.await.expect("all first chunks"), bytes);
+    assert_eq!(second.await.expect("all concurrent chunks"), bytes);
+    assert_eq!(
+        project
+            .update(cx, |project, cx| project.load_shared_binary_resource(
+                path.clone(),
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .expect("benign authorized SSH resource"),
+        bytes
+    );
+    worktree
+        .update(cx, |worktree, cx| {
+            worktree.create_directory_confined(rel_path("assets/nested/safe").into(), cx)
+        })
+        .await
+        .expect("confined remote directories");
+    assert!(
+        filesystem
+            .is_dir(path!("/code/project/assets/nested/safe").as_ref())
+            .await
+    );
+    assert!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                path.clone(),
+                16,
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    filesystem
+        .insert_tree(
+            path!("/standalone"),
+            json!({"doc.md":"standalone", "assets":{"existing.png":"image bytes"}}),
+        )
+        .await;
+    let (standalone, relative) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/standalone/doc.md"), true, cx)
+        })
+        .await
+        .expect("SSH standalone document");
+    assert!(relative.is_empty());
+    assert!(standalone.read_with(cx, |worktree, _| worktree.is_single_file()));
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((standalone.read(cx).id(), relative), cx)
+        })
+        .await
+        .expect("standalone buffer");
+    let (parent, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/standalone"), false, cx)
+        })
+        .await
+        .expect("SSH parent resource worktree");
+    let parent_id = parent.read_with(cx, |worktree, _| worktree.id());
+    assert_eq!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                (parent_id, rel_path("assets/existing.png")).into(),
+                4096,
+                cx
+            ))
+            .await
+            .expect("standalone relative resource"),
+        b"image bytes"
+    );
+    parent
+        .update(cx, |worktree, cx| {
+            worktree.create_entry_exclusive(
+                rel_path("assets/import.png").into(),
+                b"imported image".to_vec(),
+                cx,
+            )
+        })
+        .await
+        .expect("standalone remote import");
+    assert_eq!(
+        filesystem
+            .load_bytes(path!("/standalone/assets/import.png").as_ref())
+            .await
+            .expect("remote sibling image"),
+        b"imported image"
+    );
+    assert_eq!(
+        buffer.read_with(cx, |buffer, cx| buffer
+            .file()
+            .expect("file")
+            .worktree_id(cx)),
+        standalone.read_with(cx, |worktree, _| worktree.id())
+    );
+    let empty: ProjectPath = (worktree_id, rel_path("assets/empty.bin")).into();
+    assert!(
+        project
+            .update(cx, |project, cx| project
+                .load_binary_resource(empty, 16, cx))
+            .await
+            .expect("empty resource")
+            .is_empty()
+    );
+    assert!(
+        worktree
+            .update(cx, |worktree, cx| worktree.create_entry_exclusive(
+                rel_path("assets/中 #.bin").into(),
+                b"overwrite".to_vec(),
+                cx
+            ))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        filesystem
+            .load_bytes(path!("/code/project/assets/中 #.bin").as_ref())
+            .await
+            .expect("unchanged remote file"),
+        bytes
+    );
+    worktree
+        .update(cx, |worktree, cx| {
+            worktree.create_entry_exclusive(rel_path("assets/upload.bin").into(), bytes.clone(), cx)
+        })
+        .await
+        .expect("remote exclusive import");
+    let uploaded: ProjectPath = (worktree_id, rel_path("assets/upload.bin")).into();
+    assert_eq!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                uploaded,
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .expect("remote imported resource"),
+        bytes
+    );
+    let missing: ProjectPath = (worktree_id, rel_path("assets/missing.bin")).into();
+    assert!(
+        project
+            .update(cx, |project, cx| project.load_binary_resource(
+                missing,
+                4 * 1024 * 1024,
+                cx
+            ))
+            .await
+            .is_err()
+    );
+}
+
+#[gpui::test]
 async fn test_basic_remote_editing(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
     let fs = FakeFs::new(server_cx.executor());
     fs.insert_tree(

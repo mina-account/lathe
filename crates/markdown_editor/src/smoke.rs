@@ -22,7 +22,67 @@ mod supported {
         time::{Duration, Instant},
     };
 
-    const RUNTIME_IDENTITY: &str = "window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({version:window.latheRich.editor.version,mode:window.latheRich.editor.getCurrentMode(),presentation:document.getElementById('mode').value,source:window.latheRich.projection.source,viewer:!document.getElementById('viewer').hidden})})";
+    const RUNTIME_IDENTITY: &str = "window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({version:window.latheRich.editor.version,mode:window.latheRich.editor.getCurrentMode(),presentation:document.getElementById('mode').value,source:window.latheRich.projection.source,viewer:!document.getElementById('viewer').hidden,mathVersion:window.katex?.version,codeHighlighted:!!document.querySelector('#document pre code.hljs .hljs-keyword,#viewer pre code.hljs .hljs-keyword'),codeThemeLoaded:[...document.styleSheets].some(sheet=>sheet.href?.includes('/highlight.js/styles/')&&sheet.href.endsWith('.min.css')),renderers:[...document.querySelectorAll('[data-renderer]')].map(element=>({language:element.dataset.renderer,state:element.dataset.state,text:element.textContent}))})})";
+    const RENDERER_FIXTURE: &str = r#"
+Inline $2x+1$ and $\ce{H2O}$.
+
+```mermaid
+graph TD; A-->B
+```
+
+```graphviz
+digraph G { a -> b; }
+```
+
+```echarts
+{"xAxis":{"data":["A","B"]},"yAxis":{},"series":[{"type":"bar","data":[1,2]}]}
+```
+
+```abc
+X:1
+T:Example
+K:C
+CDEF|
+```
+
+```flowchart
+st=>start: Start
+e=>end: End
+st->e
+```
+
+```markmap
+# Root
+- Child
+```
+
+```mindmap
+- Root
+    - Child
+```
+
+```smiles
+CCO
+```
+
+```math
+x^2
+```
+
+```plantuml
+@startuml
+Alice -> Bob: Hello
+@enduml
+```
+
+~~~mermaid
+graph TD; C-->D
+~~~
+
+```rust
+fn main() { let answer = 42; }
+```
+"#;
     const DOM_INPUT: &str = "window.latheSmokeInput=(before,after)=>{const editor=window.latheRich.editor,root=editor.vditor[editor.getCurrentMode()].element,walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);root.focus();while(walker.nextNode()){const node=walker.currentNode,start=node.data.indexOf(before);if(start<0)continue;window.getSelection().setBaseAndExtent(node,start,node,start+before.length);root.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));if(!document.execCommand('insertText',false,after))throw new Error('DOM input failed');return;}throw new Error('DOM input target unavailable');};";
 
     fn assert_runtime(item: &MarkdownEditor, mode: &str, text: &str) -> Result<()> {
@@ -41,6 +101,54 @@ mod supported {
         if mode == "preview" && identity["viewer"] != true {
             bail!("Viewer presentation is not mounted");
         }
+        let renderers = identity["renderers"]
+            .as_array()
+            .ok_or_else(|| anyhow!("Native renderer identity missing"))?;
+        for language in [
+            "mermaid",
+            "graphviz",
+            "echarts",
+            "abc",
+            "flowchart",
+            "markmap",
+            "mindmap",
+            "smiles",
+            "math",
+        ] {
+            if !renderers
+                .iter()
+                .any(|renderer| renderer["language"] == language && renderer["state"] == "ready")
+            {
+                bail!("Native renderer {language} was not ready: {renderers:?}");
+            }
+        }
+        for language in ["markmap", "mindmap"] {
+            if !renderers.iter().any(|renderer| {
+                renderer["language"] == language
+                    && renderer["text"]
+                        .as_str()
+                        .is_some_and(|text| text.contains("Root") && text.contains("Child"))
+            }) {
+                bail!("Native {language} labels missing");
+            }
+        }
+        if identity["mathVersion"] != "0.16.9"
+            || identity["codeHighlighted"] != true
+            || identity["codeThemeLoaded"] != true
+            || !renderers.iter().any(|renderer| {
+                renderer["language"] == "plantuml"
+                    && renderer["state"] == "error"
+                    && renderer["text"]
+                        .as_str()
+                        .is_some_and(|text| text.contains("cannot render offline"))
+            })
+        {
+            bail!("Native math/service boundary mismatch: {identity}");
+        }
+        println!(
+            "{}",
+            serde_json::json!({"event":"phase4_renderers","mode":mode,"renderers":renderers,"math_version":identity["mathVersion"],"code_highlighted":true,"code_theme_loaded":true,"source_preserved":true})
+        );
         println!(
             "{}",
             serde_json::json!({"event":"rich_runtime", "version":"3.11.2", "mode":mode, "source_preserved":true})
@@ -69,7 +177,8 @@ mod supported {
         let window = cx.open_window(WindowOptions { window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(800.), px(600.)), cx))), ..Default::default() }, |window, cx| {
             window.set_window_title("Shared Markdown Item automated smoke");
             println!("{}", serde_json::json!({"event":"gpui_backend", "handle":window.window_handle().map(|handle| format!("{:?}", handle.as_raw())).unwrap_or_else(|error| format!("unavailable: {error}")), "scale":window.scale_factor()}));
-            let buffer = cx.new(|cx| Buffer::local("# shared 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n0123456789", cx));
+            let text=format!("# shared 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n{RENDERER_FIXTURE}\n0123456789");
+            let buffer = cx.new(|cx| Buffer::local(&text, cx));
             let source = cx.new(|cx| Editor::for_buffer(buffer.clone(), None, window, cx));
             let item = cx.new(|cx| MarkdownEditor::new(source, buffer, window, cx));
             item.update(cx, |item, cx| item.start_browser(cx));
@@ -89,11 +198,19 @@ mod supported {
                             let finished = window.update(cx, |item, _, cx| -> Result<bool> {
                                 if stage != 8 { if let Some(error) = item.error() { bail!("Markdown Item: {error}"); } }
                                 let text = item.buffer.read(cx).snapshot().text();
+                                if matches!(stage,20|25|26|27|29) && phase_started.elapsed()>Duration::from_millis(200) {
+                                    let identity:serde_json::Value=serde_json::from_str(item.copied_text.as_deref().unwrap_or("{}"))?;
+                                    if identity["source"]!=text || identity["presentation"]!=serde_json::to_value(item.preferences.mode)? || identity["renderers"].as_array().is_none_or(|renderers|renderers.iter().any(|renderer|renderer["state"]=="pending")) {
+                                        item.browser_script(RUNTIME_IDENTITY)?;phase_started=Instant::now();return Ok(false);
+                                    }
+                                }
                                 match stage {
                                     0 if item.browser_ready && phase_started.elapsed() > Duration::from_millis(200) => {
                                         item.browser_script(RUNTIME_IDENTITY)?; phase_started = Instant::now(); stage = 20;
                                     }
                                     20 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        let identity:serde_json::Value=serde_json::from_str(item.copied_text.as_deref().unwrap_or("{}"))?;
+                                        if identity["renderers"].as_array().is_some_and(|renderers|renderers.iter().any(|renderer|renderer["state"]=="pending")) { item.browser_script(RUNTIME_IDENTITY)?;phase_started=Instant::now();return Ok(false); }
                                         assert_runtime(item,"ir",&text)?;
                                         item.browser_script("window.latheRich.mode('wysiwyg')")?; phase_started = Instant::now(); stage = 24;
                                     }

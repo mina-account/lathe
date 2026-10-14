@@ -14,7 +14,7 @@ pub fn page_url(session: &str, document: u64) -> String {
     adapter::application_url(session, document)
 }
 
-pub const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'none'; font-src 'none'; worker-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+pub const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; font-src 'self'; worker-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 pub fn resource(url: &str, session: &str, document: u64) -> Option<(&'static str, &'static [u8])> {
     if url == page_url(session, document) {
@@ -48,7 +48,7 @@ pub fn resource(url: &str, session: &str, document: u64) -> Option<(&'static str
             "text/javascript",
             include_bytes!("../frontend/vendor/purify.js"),
         )),
-        _ => None,
+        path => crate::packaged_resources::resource(path),
     }
 }
 
