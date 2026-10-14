@@ -2406,9 +2406,61 @@ fn normalize_transcript_text(
     path_style: PathStyle,
     normalized: &mut Vec<acp_v2::ContentBlock>,
 ) {
-    let mut code_ranges = markdown::parser::code_source_ranges(text)
+    // Snapshot Markdown is not authored prompt Markdown. Find envelopes with
+    // the conservative guards first, then parse only the visible projection.
+    // Retain an offset map because removing bodies also removes line breaks.
+    let mut provisional = Vec::new();
+    let context_ranges =
+        normalize_transcript_text_with_code_ranges(text, path_style, &mut provisional, Vec::new());
+    let mut code_source = String::with_capacity(text.len());
+    let mut source_segments = Vec::new();
+    let mut cursor = 0;
+    for range in context_ranges {
+        let start = code_source.len();
+        code_source.push_str(&text[cursor..range.start]);
+        source_segments.push((start..code_source.len(), cursor));
+        cursor = range.end;
+    }
+    let start = code_source.len();
+    code_source.push_str(&text[cursor..]);
+    source_segments.push((start..code_source.len(), cursor));
+
+    let mut start_segments = source_segments.iter().peekable();
+    let mut end_segments = source_segments.iter().peekable();
+    let code_ranges = markdown::parser::code_source_ranges(&code_source)
         .into_iter()
-        .peekable();
+        .filter_map(|range| {
+            while start_segments
+                .peek()
+                .is_some_and(|(segment, _)| segment.end <= range.start)
+            {
+                start_segments.next();
+            }
+            while end_segments
+                .peek()
+                .is_some_and(|(segment, _)| segment.end < range.end)
+            {
+                end_segments.next();
+            }
+            let (start_segment, original_start) = start_segments.peek()?;
+            let (end_segment, original_end) = end_segments.peek()?;
+            Some(
+                original_start + range.start - start_segment.start
+                    ..original_end + range.end - end_segment.start,
+            )
+        })
+        .collect();
+    normalize_transcript_text_with_code_ranges(text, path_style, normalized, code_ranges);
+}
+
+fn normalize_transcript_text_with_code_ranges(
+    text: &str,
+    path_style: PathStyle,
+    normalized: &mut Vec<acp_v2::ContentBlock>,
+    code_ranges: Vec<Range<usize>>,
+) -> Vec<Range<usize>> {
+    let mut code_ranges = code_ranges.into_iter().peekable();
+    let mut context_ranges = Vec::new();
     let mut cursor = 0;
     let mut plain_start = 0;
     let mut pending_context_attachment = None;
@@ -2583,6 +2635,7 @@ fn normalize_transcript_text(
             // A later unpaired context tag can reveal that the first closing
             // tag belonged to captured text, so keep this conversion reversible.
             pending_context_attachment = Some((normalized.len(), plain_start));
+            context_ranges.push(link_end..end);
             context_validation = TranscriptContextValidation {
                 cursor: end,
                 depth: 0,
@@ -2608,11 +2661,13 @@ fn normalize_transcript_text(
             || context_validation.depth > 0)
     {
         normalized.truncate(block_index);
+        context_ranges.retain(|range| range.end <= text_start);
         plain_start = text_start;
     }
     if plain_start < text.len() {
         normalized.push(text[plain_start..].to_owned().into());
     }
+    context_ranges
 }
 
 #[derive(Default)]
@@ -2933,6 +2988,76 @@ mod tests {
                     normalize_transcript_message(&normalized, PathStyle::Windows),
                     normalized
                 );
+            }
+        }
+    }
+
+    fn transcript_snapshot_code_bodies(newline: &str) -> Vec<String> {
+        [
+            "\n~~~text\nCaptured first",
+            "\n````text\nCaptured first",
+            "\n- > ~~~text\n  > Captured first",
+            "\n>     Captured first",
+            "`Captured first",
+            "\n    Captured first\n",
+            "\nCaptured \u{96ea}\n~~~text\n",
+        ]
+        .into_iter()
+        .map(|body| body.replace('\n', newline))
+        .collect()
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_snapshot_code_does_not_hide_later_attachments() {
+        let first_uri = "file:///D:/first.txt";
+        let second_uri = "file:///D:/second.txt";
+        for newline in ["\n", "\r\n"] {
+            for body in transcript_snapshot_code_bodies(newline) {
+                let first = transcript_attachment(first_uri, &body, newline);
+                let second = transcript_attachment(second_uri, "Captured second", newline);
+                let replay = format!("{first}{newline}{second} request");
+                let original: Vec<acp_v2::ContentBlock> = vec![replay.clone().into()];
+                let normalized = normalize_transcript_message(&original, PathStyle::Windows);
+                let resources = captured_resources(&normalized);
+                assert_eq!(resources.len(), 2, "snapshot body {body:?}");
+                assert_eq!(resources.first().expect("first resource").uri, first_uri);
+                assert_eq!(resources.first().expect("first resource").text, body);
+                assert_eq!(resources.get(1).expect("second resource").uri, second_uri);
+                assert_eq!(
+                    resources.get(1).expect("second resource").text,
+                    "Captured second"
+                );
+                assert_eq!(normalized.get(1), Some(&newline.into()));
+                assert_eq!(normalized.last(), Some(&" request".into()));
+                assert_eq!(original, vec![replay.into()]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_authored_code_after_snapshot_stays_literal() {
+        let uri = "file:///D:/first.txt";
+        for newline in ["\n", "\r\n"] {
+            for body in transcript_snapshot_code_bodies(newline) {
+                let first = transcript_attachment(uri, &body, newline);
+                for code in transcript_container_code_literals(newline)
+                    .into_iter()
+                    .chain(transcript_fence_whitespace_code_literals(newline))
+                {
+                    let suffix = format!("{newline}{newline}{code}{newline}{newline}");
+                    let replay = format!("{first}{suffix}[@outside](file:///D:/outside.txt)");
+                    let normalized =
+                        normalize_transcript_message(&[replay.into()], PathStyle::Windows);
+                    assert_eq!(normalized.len(), 3, "snapshot {body:?}, authored {code:?}");
+                    assert_eq!(captured_resources(&normalized).len(), 1);
+                    assert_eq!(normalized.get(1), Some(&suffix.into()));
+                    assert_eq!(
+                        normalized.last(),
+                        Some(&acp_v2::ContentBlock::ResourceLink(
+                            acp_v2::ResourceLink::new("outside", "file:///D:/outside.txt")
+                        ))
+                    );
+                }
             }
         }
     }
@@ -6793,6 +6918,71 @@ mod tests {
                 .expect("serialize literal historical envelope");
             assert_eq!(serialized, vec![replay.into()]);
             assert!(tracked_buffers.is_empty());
+        }
+    }
+
+    #[gpui::test]
+    async fn test_transcript_snapshot_code_regeneration_retains_multiple_resources(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (message_editor, cx) = setup_message_editor(cx).await;
+        let first_uri = "file:///D:/first.txt";
+        let second_uri = "file:///D:/second.txt";
+        for newline in ["\n", "\r\n"] {
+            for body in transcript_snapshot_code_bodies(newline) {
+                let first = transcript_attachment(first_uri, &body, newline);
+                let second = transcript_attachment(second_uri, "Captured second", newline);
+                let literal = format!(
+                    "{newline}{newline}- > ~~~text{newline}  > [@literal](file:///D:/literal.txt){newline}  > ~~~{newline} request"
+                );
+                let replay = format!("{first}{newline}{second}{literal}");
+                let source = vec![acp_v2::ContentBlock::Text(
+                    acp_v2::TextContent::new(replay.clone())
+                        .meta(acp_v2::Meta::from_iter([("fixture".into(), json!(true))])),
+                )];
+                message_editor.update_in(cx, |editor, window, cx| {
+                    editor.session_capabilities.write().set_prompt_capabilities(
+                        acp_v2::PromptCapabilities::new()
+                            .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
+                    );
+                    editor.set_transcript_message(source.clone(), window, cx);
+                    assert_eq!(editor.mention_set.read(cx).creases().len(), 2);
+                    assert_eq!(
+                        editor.text(cx),
+                        format!(
+                            "[@first.txt]({first_uri})\n[@second.txt]({second_uri}){}",
+                            literal.replace("\r\n", "\n")
+                        )
+                    );
+                    assert_eq!(
+                        source,
+                        vec![acp_v2::ContentBlock::Text(
+                            acp_v2::TextContent::new(replay.clone())
+                                .meta(acp_v2::Meta::from_iter([("fixture".into(), json!(true))]))
+                        )]
+                    );
+                });
+                let (serialized, tracked_buffers) = message_editor
+                    .update(cx, |editor, cx| editor.contents(false, cx))
+                    .await
+                    .expect("serialize historical snapshots with code");
+                let resources = captured_resources(&serialized);
+                assert_eq!(resources.len(), 2);
+                assert_eq!(
+                    resources.first().expect("first captured resource").text,
+                    body
+                );
+                assert_eq!(
+                    resources.get(1).expect("second captured resource").text,
+                    "Captured second"
+                );
+                assert_eq!(
+                    serialized.last(),
+                    Some(&literal.replace("\r\n", "\n").into())
+                );
+                assert!(tracked_buffers.is_empty());
+            }
         }
     }
 

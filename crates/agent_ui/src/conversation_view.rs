@@ -17777,13 +17777,18 @@ pub(crate) mod tests {
         let thread_view = active_thread(&conversation_view, cx);
         let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
         let uri = "file:///D:/sample/raw-materials/01-overview.txt";
-        let captured = "Synthetic captured context.\n".repeat(40);
+        let captured = format!("\n~~~text\n{}", "Synthetic captured context.\n".repeat(40));
+        let second_uri = "file:///D:/sample/second.txt";
+        let second_captured = "Synthetic second captured context.";
         let replay = format!(
-            "I add [@01-overview.txt]({uri})\n<context ref=\"{uri}\">\n{captured}\n</context>, please create concise quizzes"
+            "I add [@01-overview.txt]({uri})\n<context ref=\"{uri}\">\n{captured}\n</context>\n[@second.txt]({second_uri})\n<context ref=\"{second_uri}\">\n{second_captured}\n</context>\n\n- > ~~~text\n  > [@literal](file:///D:/literal.txt)\n  > ~~~\n\n, please create concise quizzes"
         );
         let split = replay.find("</context>").expect("fixture close tag") + 3;
         let source = vec![
-            acp_v2::ContentBlock::Text(acp_v2::TextContent::new(&replay[..split])),
+            acp_v2::ContentBlock::Text(
+                acp_v2::TextContent::new(&replay[..split])
+                    .meta(acp_v2::Meta::from_iter([("fixture".into(), json!(true))])),
+            ),
             acp_v2::ContentBlock::Text(acp_v2::TextContent::new(&replay[split..])),
         ];
         thread.update(cx, |thread, cx| {
@@ -17817,6 +17822,12 @@ pub(crate) mod tests {
                 "fresh replay must hide the adapter envelope"
             );
             assert!(editor.text(cx).ends_with(", please create concise quizzes"));
+            assert!(
+                editor
+                    .text(cx)
+                    .contains("  > [@literal](file:///D:/literal.txt)")
+            );
+            assert_eq!(editor.mention_set().read(cx).creases().len(), 2);
         });
         thread.read_with(cx, |thread, _| {
             assert_eq!(
@@ -17845,8 +17856,12 @@ pub(crate) mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(resources.len(), 1);
+        assert_eq!(resources.len(), 2);
         assert_eq!(resources.first().expect("captured resource").text, captured);
+        assert_eq!(
+            resources.get(1).expect("second captured resource").text,
+            second_captured
+        );
         let original_text = editor.read_with(cx, |editor, cx| editor.text(cx));
         let original_export = thread.read_with(cx, |thread, cx| thread.to_markdown(cx));
         assert!(original_export.contains(&captured));
@@ -17900,7 +17915,7 @@ pub(crate) mod tests {
                     .iter()
                     .filter(|block| matches!(block, acp_v2::ContentBlock::Resource(_)))
                     .count(),
-                1
+                2
             );
         }
         thread_view.update_in(cx, |view, window, cx| {
