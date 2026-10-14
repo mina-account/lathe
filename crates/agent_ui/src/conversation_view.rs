@@ -12218,6 +12218,98 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_content_scroll_search_after_empty_thought(cx: &mut TestAppContext) {
+        assert_search_scroll_after_empty_assistant_chunk(true, cx).await;
+    }
+
+    #[gpui::test]
+    async fn test_content_scroll_search_after_empty_message(cx: &mut TestAppContext) {
+        assert_search_scroll_after_empty_assistant_chunk(false, cx).await;
+    }
+
+    async fn assert_search_scroll_after_empty_assistant_chunk(
+        thought: bool,
+        cx: &mut TestAppContext,
+    ) {
+        use agent_client_protocol::schema::v2 as acp_v2;
+
+        init_test(cx);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::default_response(), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let answer = format!("{}Search needle", "Long answer paragraph.\n\n".repeat(100));
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("prompt").content(vec!["Prompt".into()]),
+                    cx,
+                )
+                .expect("prompt");
+            if thought {
+                thread
+                    .upsert_thought(acp_v2::AgentThought::new("empty").content(vec![]), cx)
+                    .expect("empty thought");
+            } else {
+                thread
+                    .upsert_assistant_message(
+                        acp_v2::AgentMessage::new("empty").content(vec![]),
+                        cx,
+                    )
+                    .expect("empty message");
+            }
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("answer").content(vec![answer.into()]),
+                    cx,
+                )
+                .expect("long answer");
+        });
+        cx.run_until_parked();
+        view.update_in(cx, |view, window, cx| {
+            let turn = view.response_model.turns.first().expect("turn");
+            assert_eq!(
+                turn.activity.first().expect("empty chunk").chunk_index,
+                Some(0)
+            );
+            assert_eq!(
+                turn.response.first().expect("answer chunk").chunk_index,
+                Some(1)
+            );
+            view.toggle_search(&crate::ToggleSearch, window, cx);
+        });
+        cx.run_until_parked();
+        let bar = view
+            .read_with(cx, |view, _| view.thread_search_bar.clone())
+            .expect("search bar");
+        bar.update_in(cx, |bar, window, cx| {
+            bar.query_editor.update(cx, |editor, cx| {
+                editor.set_text("Search needle", window, cx)
+            });
+            bar.update_matches(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(bar.read_with(cx, |bar, _| bar.match_count()), 1);
+        let body = cx
+            .debug_bounds("message-content-1-1-0")
+            .expect("matching answer body");
+        view.read_with(cx, |view, _| {
+            let viewport = view.list_state.viewport_bounds();
+            assert!(body.size.height > viewport.size.height * 2.);
+            assert!(
+                body.bottom() > viewport.top() && body.bottom() <= viewport.bottom(),
+                "the final matching line must be visible: {body:?} {viewport:?}"
+            );
+            assert!(body.top() < viewport.top());
+            assert!(
+                view.pending_content_scroll.is_none(),
+                "the answer anchor must complete the pending search scroll"
+            );
+        });
+    }
+
+    #[gpui::test]
     async fn test_content_scroll_new_request_supersedes_materialization(cx: &mut TestAppContext) {
         init_test(cx);
         let (conversation, cx) = setup_content_scroll_fixture(cx).await;

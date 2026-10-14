@@ -7279,7 +7279,7 @@ impl ThreadView {
                     }
                 }
             }
-            if self.source_contains_entity(source, entity, cx) {
+            if source.chunk_index.is_none() && self.source_contains_entity(source, entity, cx) {
                 let mut target = self.target_for_source(source, false, cx)?;
                 target.block_index = None;
                 target.block_identity = Some(ContentBlockIdentity::Entity(entity));
