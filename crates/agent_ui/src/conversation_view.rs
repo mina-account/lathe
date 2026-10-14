@@ -12521,6 +12521,149 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_agent_activity_file_write_without_transcript_activity(cx: &mut TestAppContext) {
+        use super::display_rows::{DisplayMode, DisplayRow};
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let (thread, project) = view.read_with(cx, |view, _| {
+            (
+                view.thread.clone(),
+                view.project.upgrade().expect("project"),
+            )
+        });
+        connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+            acp_v1::ContentChunk::new("The file is ready".into()),
+        )]);
+        thread
+            .update(cx, |thread, cx| thread.send_raw("Write the file", cx))
+            .await
+            .expect("prompt");
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        cx.run_until_parked();
+        assert!(!view.read_with(cx, |view, _| {
+            view.display_rows
+                .rows
+                .iter()
+                .any(|row| matches!(row, DisplayRow::ActivityHeader(_)))
+        }));
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.create_dir(Path::new("/project"))
+            .await
+            .expect("directory");
+        fs.atomic_write("/project/private-file.rs".into(), "original".into())
+            .await
+            .expect("file");
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree("/project", true, cx)
+            })
+            .await
+            .expect("worktree");
+        project
+            .update(cx, |project, cx| {
+                project.open_local_buffer("/project/private-file.rs", cx)
+            })
+            .await
+            .expect("buffer");
+        let count = thread.read_with(cx, |thread, _| thread.entries().len());
+        thread
+            .update(cx, |thread, cx| {
+                thread.write_text_file("/project/private-file.rs".into(), "changed".into(), cx)
+            })
+            .await
+            .expect("ACP file write");
+        cx.run_until_parked();
+        assert_eq!(
+            thread.read_with(cx, |thread, _| thread.entries().len()),
+            count
+        );
+        assert!(thread.read_with(cx, |thread, _| thread.plan().is_none()));
+        thread.read_with(cx, |thread, cx| {
+            assert_eq!(thread.action_log().read(cx).changed_buffers(cx).count(), 1)
+        });
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+        let identity = view.read_with(cx, |view, _| {
+            view.response_model
+                .turns
+                .last()
+                .expect("turn")
+                .identity
+                .clone()
+        });
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        let header = cx
+            .debug_bounds(selector)
+            .expect("file-only activity disclosure");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        let edits = cx.debug_bounds("edits-container").expect("edit summary");
+        cx.simulate_click(edits.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_some());
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        let header = cx.debug_bounds(selector).expect("open file activity");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+    }
+
+    #[gpui::test]
+    async fn test_agent_activity_closed_terminal_keeps_work_indicator(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayMode;
+        use agent_client_protocol::schema::v2 as acp_v2;
+        init_test(cx);
+        let connection = StubAgentConnection::new().with_receipt_submissions(true);
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::ToolCall(
+                        acp_v1::ToolCall::new("running-command", "Private command")
+                            .kind(acp_v1::ToolKind::Execute)
+                            .status(acp_v1::ToolCallStatus::InProgress),
+                    ),
+                    cx,
+                )
+                .expect("terminal call");
+        });
+        cx.run_until_parked();
+        assert!(!cx.read(|cx| AgentSettings::get_global(cx).show_turn_stats));
+        assert!(
+            cx.debug_bounds("agent-generating-dots").is_none(),
+            "normal terminal card supplies progress"
+        );
+        view.update(cx, |view, cx| {
+            view.set_display_mode(DisplayMode::Compact, cx)
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-activity-source-0-0").is_none());
+        assert!(
+            cx.debug_bounds("agent-generating-dots").is_some(),
+            "closed terminal activity must still indicate ongoing work"
+        );
+    }
+
+    #[gpui::test]
     async fn test_agent_activity_bottom_bar_hides_routine_details_but_preserves_review(
         cx: &mut TestAppContext,
     ) {
@@ -12837,6 +12980,17 @@ pub(crate) mod tests {
             "metadata update moved the row within its viewport: {before:?} {before_viewport:?} {after:?} {after_viewport:?}"
         );
         thread.update(cx, |thread, cx| thread.clear_plan(cx));
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert!(matches!(
+                view.display_rows.rows.as_slice(),
+                [DisplayRow::ActivityHeader(_)]
+            ))
+        });
+        assert!(cx.debug_bounds("plan_summary").is_none());
+        assert!(cx.debug_bounds("agent-edited-files-list").is_some());
+        let action_log = thread.read_with(cx, |thread, _| thread.action_log().clone());
+        action_log.update(cx, |log, cx| log.keep_all_edits(None, cx));
         cx.run_until_parked();
         view.read_with(cx, |view, _| assert!(view.display_rows.rows.is_empty()));
         thread.update(cx, |thread, cx| {

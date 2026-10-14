@@ -63,10 +63,17 @@ struct GroupState {
     expanded: bool,
     inspect_activity: bool,
     plan_entries: Option<usize>,
+    has_metadata: bool,
 }
 
 impl GroupState {
-    fn matches(&self, turn: &ClassifiedTurn, expanded: bool, plan_entries: Option<usize>) -> bool {
+    fn matches(
+        &self,
+        turn: &ClassifiedTurn,
+        expanded: bool,
+        metadata: Option<&(TurnIdentity, u64, Option<usize>)>,
+    ) -> bool {
+        let plan_entries = metadata.and_then(|(_, _, entries)| *entries);
         self.lifecycle == turn.lifecycle
             && self.confidence == turn.confidence
             && self.response == turn.response
@@ -77,6 +84,7 @@ impl GroupState {
             && self.expanded == expanded
             && self.inspect_activity == turn.inspect_activity
             && self.plan_entries == plan_entries
+            && self.has_metadata == metadata.is_some()
     }
 }
 
@@ -91,7 +99,7 @@ pub(super) struct DisplayRows {
     group_rows: HashMap<TurnIdentity, Vec<usize>>,
     groups: HashMap<TurnIdentity, GroupState>,
     header_rows: HashMap<TurnIdentity, usize>,
-    pub plan_activity: Option<(TurnIdentity, u64, usize)>,
+    pub metadata_activity: Option<(TurnIdentity, u64, Option<usize>)>,
 }
 
 impl DisplayRows {
@@ -103,22 +111,22 @@ impl DisplayRows {
         expanded: impl Fn(&TurnIdentity) -> bool,
         generating: bool,
     ) -> Self {
-        Self::with_plan(mode, entry_count, turns, expanded, generating, None)
+        Self::with_metadata(mode, entry_count, turns, expanded, generating, None)
     }
 
-    fn with_plan(
+    fn with_metadata(
         mode: DisplayMode,
         entry_count: usize,
         turns: &[ClassifiedTurn],
         expanded: impl Fn(&TurnIdentity) -> bool,
         generating: bool,
-        plan_activity: Option<(TurnIdentity, u64, usize)>,
+        metadata_activity: Option<(TurnIdentity, u64, Option<usize>)>,
     ) -> Self {
         let mut projection = Self {
             mode,
             entry_count,
             turn_order: turns.iter().map(|turn| turn.identity.clone()).collect(),
-            plan_activity,
+            metadata_activity,
             ..Self::default()
         };
         if mode == DisplayMode::Normal {
@@ -130,11 +138,12 @@ impl DisplayRows {
                 .extend((0..entry_count).map(|index| (index, index)));
         }
         for turn in turns {
-            let plan_entries = projection
-                .plan_activity
+            let metadata = projection
+                .metadata_activity
                 .as_ref()
-                .filter(|(identity, _, _)| identity == &turn.identity)
-                .map(|(_, _, entries)| *entries);
+                .filter(|(identity, _, _)| identity == &turn.identity);
+            let plan_entries = metadata.and_then(|(_, _, entries)| *entries);
+            let has_metadata = metadata.is_some();
             let mut sources = turn.activity.clone();
             sources.extend(turn.response.iter().cloned());
             sources.extend(turn.required_actions.iter().cloned());
@@ -156,6 +165,7 @@ impl DisplayRows {
                     expanded: expanded(&turn.identity),
                     inspect_activity: turn.inspect_activity,
                     plan_entries,
+                    has_metadata,
                 },
             );
             if mode == DisplayMode::Normal {
@@ -181,7 +191,7 @@ impl DisplayRows {
                     !turn.required_actions.contains(source) && !turn.statuses.contains(source)
                 })
                 .collect();
-            if !activity.is_empty() || plan_entries.is_some() {
+            if !activity.is_empty() || has_metadata {
                 let header = projection.rows.len();
                 projection
                     .rows
@@ -390,13 +400,13 @@ impl DisplayRows {
                 .zip(turns)
                 .all(|(identity, turn)| identity == &turn.identity);
         if self.mode != mode || !stable_order || self.entry_count != entry_count {
-            let next = Self::with_plan(
+            let next = Self::with_metadata(
                 mode,
                 entry_count,
                 turns,
                 expanded,
                 generating,
-                self.plan_activity.clone(),
+                self.metadata_activity.clone(),
             );
             let prefix = self
                 .rows
@@ -431,21 +441,20 @@ impl DisplayRows {
                 group.matches(
                     turn,
                     is_expanded,
-                    self.plan_activity
+                    self.metadata_activity
                         .as_ref()
-                        .filter(|(identity, _, _)| identity == &turn.identity)
-                        .map(|(_, _, entries)| *entries),
+                        .filter(|(identity, _, _)| identity == &turn.identity),
                 )
             }) {
                 continue;
             }
-            let fragment = Self::with_plan(
+            let fragment = Self::with_metadata(
                 mode,
                 0,
                 std::slice::from_ref(turn),
                 |_| is_expanded,
                 false,
-                self.plan_activity.clone(),
+                self.metadata_activity.clone(),
             );
             if mode == DisplayMode::Compact {
                 let range = self
@@ -715,13 +724,13 @@ mod tests {
                 Some(entry..entry + 1)
             );
         }
-        let compact = DisplayRows::with_plan(
+        let compact = DisplayRows::with_metadata(
             DisplayMode::Compact,
             3,
             std::slice::from_ref(&turn),
             |_| true,
             false,
-            Some((turn.identity.clone(), 7, 1)),
+            Some((turn.identity.clone(), 7, Some(1))),
         );
         let form_row = compact
             .row_for_source(&accepted_form)

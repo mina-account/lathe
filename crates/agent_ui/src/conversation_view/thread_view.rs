@@ -827,6 +827,11 @@ impl ThreadView {
             this.sync_display_rows(None, cx);
             cx.notify();
         }));
+        let action_log = thread.read(cx).action_log().clone();
+        subscriptions.push(cx.observe(&action_log, |this, _, cx| {
+            this.sync_display_rows(None, cx);
+            cx.notify();
+        }));
         subscriptions.push(cx.observe(&conversation, |_, _, cx| cx.notify()));
         subscriptions.push(cx.observe_global::<SettingsStore>(|this, cx| {
             this.set_display_mode(Self::display_mode_from_settings(cx), cx);
@@ -7134,35 +7139,57 @@ impl ThreadView {
         let thread = self.thread.read(cx);
         let plan = thread.plan().filter(|plan| !plan.is_empty());
         let uses_reported_activity = thread.uses_reported_activity();
-        let turns = if self.response_model.turns.is_empty() && plan.is_some() {
-            std::slice::from_ref(&orphan)
-        } else {
-            &self.response_model.turns
-        };
-        let plan_activity = plan.and_then(|plan| {
-            let turn = turns
-                .iter()
-                .rev()
-                .find(|turn| {
-                    matches!(
-                        turn.lifecycle,
-                        TurnLifecycle::Running | TurnLifecycle::RequiresAction
-                    )
+        let pending_edits = thread
+            .action_log()
+            .read(cx)
+            .changed_buffers(cx)
+            .next()
+            .is_some();
+        // ACP file writes can change the ActionLog without adding transcript activity.
+        let needs_edit_disclosure = pending_edits
+            && plan.is_none()
+            && !self.response_model.turns.iter().any(|turn| {
+                turn.activity.iter().any(|source| {
+                    !turn.required_actions.contains(source)
+                        && !turn.statuses.contains(source)
+                        && self.source_has_visible_content(source, cx)
                 })
-                .or_else(|| turns.last())?;
-            Some((
-                turn.identity.clone(),
-                thread.activity_generation(),
-                if self.plan_expanded {
-                    plan.entries.len()
-                } else {
-                    0
-                },
-            ))
-        });
+            });
+        let turns =
+            if self.response_model.turns.is_empty() && (plan.is_some() || needs_edit_disclosure) {
+                std::slice::from_ref(&orphan)
+            } else {
+                &self.response_model.turns
+            };
+        let metadata_activity = (plan.is_some() || needs_edit_disclosure)
+            .then(|| {
+                let plan_entries = plan.map(|plan| {
+                    if self.plan_expanded {
+                        plan.entries.len()
+                    } else {
+                        0
+                    }
+                });
+                let turn = turns
+                    .iter()
+                    .rev()
+                    .find(|turn| {
+                        matches!(
+                            turn.lifecycle,
+                            TurnLifecycle::Running | TurnLifecycle::RequiresAction
+                        )
+                    })
+                    .or_else(|| turns.last())?;
+                Some((
+                    turn.identity.clone(),
+                    thread.activity_generation(),
+                    plan_entries,
+                ))
+            })
+            .flatten();
         self.entry_view_state.update(cx, |state, _| {
             if let (Some((previous, generation, _)), Some((current, current_generation, _))) =
-                (&self.display_rows.plan_activity, &plan_activity)
+                (&self.display_rows.metadata_activity, &metadata_activity)
                 && uses_reported_activity
                 && generation == current_generation
                 && matches!(previous, response_model::TurnIdentity::Activity(_))
@@ -7177,10 +7204,10 @@ impl ThreadView {
         let offset = self.list_state.logical_scroll_top();
         let metadata_anchor = self.display_rows.rows.get(offset.item_ix).filter(|row| {
             matches!(row, DisplayRow::PlanSummary(_) | DisplayRow::PlanEntry(..))
-                || matches!(row, DisplayRow::ActivityHeader(identity) if self.display_rows.plan_activity.as_ref().is_some_and(|(current, _, _)| current == identity))
+                || matches!(row, DisplayRow::ActivityHeader(identity) if self.display_rows.metadata_activity.as_ref().is_some_and(|(current, _, _)| current == identity))
         }).cloned();
         let saved = self.display_rows.to_transcript_offset(offset, entry_count);
-        self.display_rows.plan_activity = plan_activity;
+        self.display_rows.metadata_activity = metadata_activity;
         let semantic = if following {
             None
         } else {
@@ -7259,7 +7286,7 @@ impl ThreadView {
                     self.display_rows.rows.iter().position(|row| row == &anchor)
                         .map(|row| (row, offset.offset_in_item))
                         .or_else(|| {
-                            let current = &self.display_rows.plan_activity.as_ref()?.0;
+                            let current = &self.display_rows.metadata_activity.as_ref()?.0;
                             self.display_rows.rows.iter().position(|row| matches!(row, DisplayRow::ActivityHeader(identity) if identity == current))
                                 .map(|row| (row, px(0.)))
                         })
@@ -7825,7 +7852,7 @@ impl ThreadView {
                                     last_activity
                                         && self
                                             .display_rows
-                                            .plan_activity
+                                            .metadata_activity
                                             .as_ref()
                                             .is_none_or(|(identity, _, _)| identity != turn),
                                     |body| body.border_b_1().rounded_b_md(),
@@ -7884,12 +7911,12 @@ impl ThreadView {
                     .turns
                     .iter()
                     .find(|turn| &turn.identity == identity);
-                let has_plan = self
+                let has_metadata = self
                     .display_rows
-                    .plan_activity
+                    .metadata_activity
                     .as_ref()
                     .is_some_and(|(current, _, _)| current == identity);
-                if !has_plan
+                if !has_metadata
                     && turn.is_none_or(|turn| {
                         !turn
                             .activity
@@ -7944,9 +7971,9 @@ impl ThreadView {
                                                 .turns
                                                 .iter()
                                                 .find(|turn| turn.identity == identity);
-                                            let has_plan = this
+                                            let has_metadata = this
                                                 .display_rows
-                                                .plan_activity
+                                                .metadata_activity
                                                 .as_ref()
                                                 .is_some_and(|(current, _, _)| {
                                                     current == &identity
@@ -7962,11 +7989,11 @@ impl ThreadView {
                                                         .or_else(|| {
                                                             turn.prompt
                                                                 .as_ref()
-                                                                .filter(|_| has_plan)
+                                                                .filter(|_| has_metadata)
                                                         })
                                                 })
                                                 .cloned();
-                                            if anchor.is_none() && !has_plan {
+                                            if anchor.is_none() && !has_metadata {
                                                 return;
                                             }
                                             let expanded = this
@@ -8022,7 +8049,9 @@ impl ThreadView {
                 }
             }
             DisplayRow::PlanSummary(identity) | DisplayRow::PlanEntry(identity, _) => {
-                let Some((current, _, entries)) = self.display_rows.plan_activity.as_ref() else {
+                let Some((current, _, Some(entries))) =
+                    self.display_rows.metadata_activity.as_ref()
+                else {
                     return Empty.into_any();
                 };
                 if current != identity {
@@ -9389,13 +9418,15 @@ impl ThreadView {
                                 .single_line(),
                         ),
                     )
-                } else if is_blocked_on_terminal_command {
+                } else if is_blocked_on_terminal_command && self.display_mode == DisplayMode::Normal
+                {
                     this
                 } else {
                     this.child(
                         h_flex()
                             .w_2()
                             .justify_center()
+                            .debug_selector(|| "agent-generating-dots".into())
                             .child(GeneratingSpinnerElement::new(SpinnerVariant::Dots)),
                     )
                 }
