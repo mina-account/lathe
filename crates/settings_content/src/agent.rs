@@ -399,6 +399,14 @@ pub struct AgentSettingsContent {
     ///
     /// Default: 4
     pub message_editor_min_lines: Option<usize>,
+    /// Collapse thinking, intermediate messages, and tool activity into one panel per turn.
+    /// Responses appear when the turn ends; open Agent Activity to inspect live output.
+    /// Search includes only revealed content. Pending approval requests remain visible and
+    /// may show commands or file paths. Final response detection is best effort for agents
+    /// without final-answer markers.
+    ///
+    /// Default: false
+    pub super_compact_mode: Option<bool>,
     /// Whether to show turn statistics (elapsed time during generation, final turn duration).
     ///
     /// Default: false
