@@ -23,6 +23,8 @@ use theme_settings::ThemeSettings;
 use ui::{Context, TextSize};
 use workspace::Workspace;
 
+use crate::conversation_view::response_model::{SourceReference, TurnIdentity};
+
 use crate::message_editor::{MessageEditor, MessageEditorEvent, SharedSessionCapabilities};
 
 /// Maps an entry index through the removal of `removed` (a contiguous range of
@@ -49,6 +51,7 @@ pub struct EntryViewState {
     user_toggled_thinking_blocks: HashSet<(usize, usize)>,
     expanded_compactions: HashSet<usize>,
     expanded_tool_calls: HashSet<acp_v1::ToolCallId>,
+    expanded_activity_groups: collections::HashMap<TurnIdentity, Option<SourceReference>>,
 }
 
 impl EntryViewState {
@@ -71,7 +74,55 @@ impl EntryViewState {
             user_toggled_thinking_blocks: HashSet::default(),
             expanded_compactions: HashSet::default(),
             expanded_tool_calls: HashSet::default(),
+            expanded_activity_groups: collections::HashMap::default(),
         }
+    }
+
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(crate) fn sync_new_entries(
+        &mut self,
+        thread: &Entity<AcpThread>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        for index in self.entries.len()..thread.read(cx).entries().len() {
+            self.sync_entry(index, thread, window, cx);
+        }
+    }
+
+    pub(crate) fn activity_group_expanded(&self, identity: &TurnIdentity) -> bool {
+        self.expanded_activity_groups.contains_key(identity)
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Outer disclosure interactions are wired in the activity panel task."
+        )
+    )]
+    pub(crate) fn set_activity_group_expanded(
+        &mut self,
+        identity: TurnIdentity,
+        anchor: Option<SourceReference>,
+        expanded: bool,
+    ) {
+        if expanded {
+            self.expanded_activity_groups.insert(identity, anchor);
+        } else {
+            self.expanded_activity_groups.remove(&identity);
+        }
+    }
+
+    pub(crate) fn retain_activity_groups(
+        &mut self,
+        turns: &[crate::conversation_view::response_model::ClassifiedTurn],
+    ) {
+        self.expanded_activity_groups
+            .retain(|identity, _| turns.iter().any(|turn| &turn.identity == identity));
     }
 
     pub(crate) fn is_tool_call_expanded(&self, tool_call_id: &acp_v1::ToolCallId) -> bool {
@@ -494,6 +545,19 @@ impl EntryViewState {
 
     pub fn remove(&mut self, range: Range<usize>) {
         self.entries.drain(range.clone());
+        self.expanded_activity_groups = self
+            .expanded_activity_groups
+            .drain()
+            .filter_map(|(mut identity, mut anchor)| {
+                if let Some(source) = &mut anchor {
+                    source.entry_index = reindex_after_removal(source.entry_index, &range)?;
+                }
+                if let TurnIdentity::Prompt(source) = &mut identity {
+                    source.entry_index = reindex_after_removal(source.entry_index, &range)?;
+                }
+                Some((identity, anchor))
+            })
+            .collect();
 
         self.expanded_compactions = self
             .expanded_compactions

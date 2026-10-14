@@ -5,7 +5,7 @@ use crate::{
     thread_metadata_store::{ThreadId, ThreadMetadataStore},
 };
 use agent_client_protocol::schema::{v1 as acp_v1, v2 as acp_v2};
-use std::{cell::RefCell, path::Path};
+use std::{cell::RefCell, path::Path, rc::Rc};
 
 use acp_thread::{
     Elicitation, ElicitationEntryId, ElicitationStatus, ForegroundActivity,
@@ -51,13 +51,17 @@ use url::Url;
 use util::markdown::source_position_from_fragment;
 use workspace::{OpenOptions, SERIALIZATION_THROTTLE_TIME};
 
+use super::display_rows::{
+    ContentBlockIdentity, ContentTarget, DisplayMode, DisplayRow, DisplayRows,
+    PendingContentScroll, SourceRole,
+};
 use super::elicitation::{
     ElicitationCard, ElicitationCardHandlers, ElicitationFormState, should_render_elicitation,
 };
 use super::response_model::{
     ActivityPhase, ContentKind, ContentObservation, ObservationEvent, ProviderIdentity,
     ResponseModel, SourceIdentity, SourceReference, SubmissionObservation, SubmissionPhase,
-    ThreadObservation, TurnOutcome,
+    ThreadObservation, TurnLifecycle, TurnOutcome,
 };
 use super::*;
 
@@ -629,6 +633,11 @@ pub struct ThreadView {
     pub hovered_edited_file_buttons: Option<usize>,
     pub current_submission: Option<SubmissionId>,
     pub response_model: ResponseModel,
+    pub(super) display_rows: DisplayRows,
+    display_mode: DisplayMode,
+    content_bounds: Rc<RefCell<HashMap<ContentTarget, gpui::Bounds<Pixels>>>>,
+    pub(super) pending_content_scroll: Option<PendingContentScroll>,
+    content_scroll_request: u64,
     pub _subscriptions: Vec<Subscription>,
     pub message_editor: Entity<MessageEditor>,
     pub add_context_menu_handle: PopoverMenuHandle<ContextMenu>,
@@ -1072,6 +1081,11 @@ impl ThreadView {
             hovered_edited_file_buttons: None,
             current_submission,
             response_model: ResponseModel::default(),
+            display_rows: DisplayRows::default(),
+            display_mode: DisplayMode::Normal,
+            content_bounds: Rc::default(),
+            pending_content_scroll: None,
+            content_scroll_request: 0,
             message_editor,
             add_context_menu_handle: PopoverMenuHandle::default(),
             thinking_effort_menu_handle: PopoverMenuHandle::default(),
@@ -1094,6 +1108,13 @@ impl ThreadView {
         this.sync_response_model(None, cx);
         this.sync_reported_activity(cx);
         this.sync_generating_indicator(cx);
+        this.sync_display_rows(None, cx);
+        if let Some(position) = this.thread.read(cx).ui_scroll_position() {
+            this.list_state
+                .scroll_to(this.display_rows.from_transcript_offset(position));
+        } else {
+            this.list_state.scroll_to_end();
+        }
         this.sync_editor_mode(cx);
         this.sync_existing_elicitation_states(window, cx);
         let list_state_for_scroll = this.list_state.clone();
@@ -1108,14 +1129,21 @@ impl ThreadView {
                 // directly would panic from a double borrow.
                 cx.defer(move |cx| {
                     let scroll_top = list_state.logical_scroll_top();
-                    let _ = thread_view.update(cx, |this, cx| {
-                        if let Some(thread) = this.as_native_thread(cx) {
-                            thread.update(cx, |thread, _cx| {
-                                thread.set_ui_scroll_position(Some(scroll_top));
-                            });
-                        }
-                        this.schedule_save(cx);
-                    });
+                    thread_view
+                        .update(cx, |this, cx| {
+                            this.pending_content_scroll = None;
+                            if let Some(thread) = this.as_native_thread(cx) {
+                                let position = this.display_rows.to_transcript_offset(
+                                    scroll_top,
+                                    this.thread.read(cx).entries().len(),
+                                );
+                                thread.update(cx, |thread, _cx| {
+                                    thread.set_ui_scroll_position(Some(position));
+                                });
+                            }
+                            this.schedule_save(cx);
+                        })
+                        .log_err();
                 });
             });
 
@@ -4498,10 +4526,7 @@ impl ThreadView {
                                     ),
                                 )
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.list_state.scroll_to(ListOffset {
-                                        item_ix: entry_ix,
-                                        offset_in_item: px(0.0),
-                                    });
+                                    this.scroll_to_entry(entry_ix, cx);
                                     cx.notify();
                                 }))
                         },
@@ -4529,9 +4554,10 @@ impl ThreadView {
         let thread = self.thread.read(cx);
         let (entry_ix, tool_call) = thread.tool_call(&tool_call_id)?;
 
-        let scroll_icon = if self.list_state.item_is_above_viewport(entry_ix)? {
+        let display_row = self.display_rows.row_for_entry(entry_ix)?;
+        let scroll_icon = if self.list_state.item_is_above_viewport(display_row)? {
             IconName::ArrowUp
-        } else if self.list_state.item_is_below_viewport(entry_ix)? {
+        } else if self.list_state.item_is_below_viewport(display_row)? {
             IconName::ArrowDown
         } else {
             return None;
@@ -4583,10 +4609,7 @@ impl ThreadView {
                             .color(Color::Default),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.list_state.scroll_to(ListOffset {
-                            item_ix: entry_ix,
-                            offset_in_item: px(0.0),
-                        });
+                        this.scroll_to_entry(entry_ix, cx);
                         cx.notify();
                     })),
             );
@@ -4978,7 +5001,7 @@ impl ThreadView {
         self.entry_view_state.update(cx, |state, _cx| {
             state.toggle_compaction_expansion(entry_ix);
         });
-        self.list_state.remeasure_items(entry_ix..entry_ix + 1);
+        self.remeasure_entry(entry_ix);
         self.refresh_thread_search(window, cx);
         cx.notify();
     }
@@ -7016,6 +7039,7 @@ fn sandbox_network_rows(network: &SandboxNetPolicy) -> Vec<SandboxRow> {
 
 impl ThreadView {
     fn render_entries(&mut self, cx: &mut Context<Self>) -> List {
+        self.content_bounds.borrow_mut().clear();
         let max_content_width = AgentSettings::get_global(cx).max_content_width;
         let centered_container = move |content: AnyElement| {
             h_flex().w_full().justify_center().child(
@@ -7029,22 +7053,685 @@ impl ThreadView {
         list(
             self.list_state.clone(),
             cx.processor(move |this, index: usize, window, cx| {
-                let entries = this.thread.read(cx).entries();
-                if let Some(entry) = entries.get(index) {
-                    let rendered = this.render_entry(index, entries.len(), entry, window, cx);
-                    centered_container(rendered.into_any_element()).into_any_element()
-                } else if this.generating_indicator_in_list {
-                    let confirmation = this.thread.read(cx).is_waiting_for_confirmation()
-                        || this.has_pending_request_elicitation(cx);
-                    let rendered = this.render_generating(confirmation, cx);
-                    centered_container(rendered.into_any_element()).into_any_element()
-                } else {
-                    Empty.into_any()
-                }
+                this.display_rows
+                    .rows
+                    .get(index)
+                    .map(|row| {
+                        centered_container(this.render_display_row(row, window, cx))
+                            .into_any_element()
+                    })
+                    .unwrap_or_else(|| Empty.into_any())
             }),
         )
         .with_sizing_behavior(gpui::ListSizingBehavior::Auto)
         .flex_grow_1()
+    }
+
+    pub(super) fn sync_display_rows(
+        &mut self,
+        updated_entry: Option<usize>,
+        cx: &mut Context<Self>,
+    ) {
+        let entry_count = self.thread.read(cx).entries().len();
+        if self.entry_view_state.read(cx).entry_count() != entry_count {
+            return;
+        }
+        self.entry_view_state.update(cx, |state, _| {
+            state.retain_activity_groups(&self.response_model.turns)
+        });
+        let following = self.list_state.is_following_tail();
+        let offset = self.list_state.logical_scroll_top();
+        let saved = self.display_rows.to_transcript_offset(offset, entry_count);
+        let semantic = if following {
+            None
+        } else {
+            let viewport = self.list_state.viewport_bounds();
+            self.content_bounds
+                .borrow()
+                .iter()
+                .filter(|(target, bounds)| {
+                    self.resolve_content_target(target, cx).is_some()
+                        && self
+                            .resolve_content_target(target, cx)
+                            .and_then(|(_, row)| self.list_state.bounds_for_item(row))
+                            .is_some()
+                        && bounds.bottom() > viewport.top()
+                        && bounds.top() <= viewport.bottom()
+                })
+                .min_by_key(|(_, bounds)| f32::from((bounds.top() - viewport.top()).abs()) as i32)
+                .map(|(target, bounds)| (target.clone(), bounds.top() - viewport.top()))
+        };
+        let state = self.entry_view_state.read(cx);
+        let (edits, remeasure) = self.display_rows.sync(
+            self.display_mode,
+            entry_count,
+            &self.response_model.turns,
+            |identity| state.activity_group_expanded(identity),
+            self.generating_indicator_in_list,
+        );
+        let changed = !edits.is_empty();
+        for (range, rows) in edits {
+            self.list_state.splice_focusable(
+                range,
+                rows.iter().map(|row| {
+                    row.entry_index()
+                        .and_then(|index| state.entry(index))
+                        .and_then(|entry| entry.focus_handle(cx))
+                }),
+            );
+        }
+        for row in remeasure {
+            self.list_state.remeasure_items(row..row + 1);
+        }
+        if let Some(entry) = updated_entry {
+            if self.pending_content_scroll.as_ref().is_some_and(|pending| {
+                pending.target.source.entry_index == entry && pending.target.text_offset.is_some()
+            }) {
+                self.pending_content_scroll = None;
+            }
+            self.remeasure_entry(entry);
+            self.content_bounds
+                .borrow_mut()
+                .retain(|target, _| target.source.entry_index != entry);
+        }
+        if self
+            .pending_content_scroll
+            .as_ref()
+            .is_some_and(|pending| self.resolve_content_target(&pending.target, cx).is_none())
+        {
+            self.pending_content_scroll = None;
+        }
+        if changed {
+            self.content_bounds.borrow_mut().clear();
+            if following {
+                self.list_state.scroll_to_end();
+            } else if let Some(pending) = self.pending_content_scroll.clone() {
+                self.begin_content_scroll(pending.target, pending.relative_offset, cx);
+                if let Some(current) = &mut self.pending_content_scroll {
+                    current.reveal = pending.reveal;
+                }
+            } else {
+                if let Some((target, relative)) = semantic {
+                    self.begin_content_scroll(target, relative, cx);
+                } else {
+                    self.list_state
+                        .scroll_to(self.display_rows.from_transcript_offset(saved));
+                }
+            }
+        }
+    }
+
+    pub(super) fn remeasure_entry(&self, entry: usize) {
+        for (row, display) in self.display_rows.rows.iter().enumerate() {
+            if display.entry_index() == Some(entry) {
+                self.list_state.remeasure_items(row..row + 1);
+            }
+        }
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "The opt-in setting is wired in the following implementation task."
+        )
+    )]
+    pub(super) fn set_display_mode(&mut self, mode: DisplayMode, cx: &mut Context<Self>) {
+        if self.display_mode != mode {
+            self.display_mode = mode;
+            self.sync_display_rows(None, cx);
+            cx.notify();
+        }
+    }
+
+    pub(super) fn target_for_source(
+        &self,
+        source: &SourceReference,
+        response_only: bool,
+        cx: &App,
+    ) -> Option<ContentTarget> {
+        let turn = self.response_model.turns.iter().find(|turn| {
+            turn.prompt.as_ref() == Some(source)
+                || turn.activity.contains(source)
+                || turn.response.contains(source)
+                || turn.required_actions.contains(source)
+                || turn.statuses.contains(source)
+        })?;
+        let mut target = ContentTarget {
+            turn: turn.identity.clone(),
+            source: source.clone(),
+            block_index: None,
+            block_identity: None,
+            text_offset: None,
+            response_only,
+        };
+        if let Some(content) = self.source_message_content(source, cx) {
+            if let Some((index, block)) = content
+                .blocks()
+                .enumerate()
+                .find(|(_, block)| block.visible_content(cx))
+            {
+                target.block_index = Some(index);
+                target.block_identity = Self::content_block_identity(block);
+            }
+        }
+        Some(target)
+    }
+
+    fn content_block_identity(
+        block: acp_thread::ContentBlockView<'_>,
+    ) -> Option<ContentBlockIdentity> {
+        if let Some(markdown) = block.markdown() {
+            return Some(ContentBlockIdentity::Entity(markdown.entity_id()));
+        }
+        if let Some((image, _)) = block.image() {
+            return Some(ContentBlockIdentity::Image(image.id()));
+        }
+        block
+            .resource_link()
+            .map(|link| ContentBlockIdentity::Resource(Arc::from(link.uri.as_str())))
+    }
+
+    fn source_message_content<'a>(
+        &'a self,
+        source: &SourceReference,
+        cx: &'a App,
+    ) -> Option<&'a acp_thread::MessageContent> {
+        match self.thread.read(cx).entries().get(source.entry_index)? {
+            AgentThreadEntry::AssistantMessage(message) => {
+                match message.chunks.get(source.chunk_index?)? {
+                    AssistantMessageChunk::Message { block, .. }
+                    | AssistantMessageChunk::Thought { block, .. } => Some(block),
+                }
+            }
+            AgentThreadEntry::UserMessage(message) => Some(&message.content),
+            _ => None,
+        }
+    }
+
+    fn target_for_search(
+        &self,
+        entry_index: usize,
+        entity: gpui::EntityId,
+        source_index: usize,
+        cx: &App,
+    ) -> Option<ContentTarget> {
+        let sources = self.response_model.turns.iter().flat_map(|turn| {
+            turn.prompt
+                .iter()
+                .chain(&turn.activity)
+                .chain(&turn.response)
+                .chain(&turn.required_actions)
+                .chain(&turn.statuses)
+        });
+        for source in sources.filter(|source| source.entry_index == entry_index) {
+            if let Some(content) = self.source_message_content(source, cx) {
+                for (index, block) in content.blocks().enumerate() {
+                    if block
+                        .markdown()
+                        .is_some_and(|markdown| markdown.entity_id() == entity)
+                    {
+                        let mut target = self.target_for_source(source, false, cx)?;
+                        target.block_index = Some(index);
+                        target.block_identity = Some(ContentBlockIdentity::Entity(entity));
+                        target.text_offset = Some(source_index);
+                        return Some(target);
+                    }
+                }
+            }
+            if self.source_contains_entity(source, entity, cx) {
+                let mut target = self.target_for_source(source, false, cx)?;
+                target.block_index = None;
+                target.block_identity = Some(ContentBlockIdentity::Entity(entity));
+                target.text_offset = Some(source_index);
+                return Some(target);
+            }
+        }
+        None
+    }
+
+    fn source_contains_entity(
+        &self,
+        source: &SourceReference,
+        entity: gpui::EntityId,
+        cx: &App,
+    ) -> bool {
+        let Some(entry) = self.thread.read(cx).entries().get(source.entry_index) else {
+            return false;
+        };
+        let state = self.entry_view_state.read(cx);
+        if super::thread_search_bar::collect_markdowns(source.entry_index, entry, state, cx)
+            .iter()
+            .any(|markdown| markdown.entity_id() == entity)
+        {
+            return true;
+        }
+        if state
+            .entry(source.entry_index)
+            .and_then(|entry| entry.message_editor())
+            .is_some_and(|editor| editor.read(cx).editor().entity_id() == entity)
+        {
+            return true;
+        }
+        if let AgentThreadEntry::ToolCall(tool) = entry {
+            return tool.content().iter().any(|content| {
+                if let ToolCallContent::DiffPatch { render, .. } = content {
+                    render
+                        .files
+                        .iter()
+                        .flat_map(|file| &file.hunks)
+                        .any(|hunk| {
+                            state
+                                .entry(source.entry_index)
+                                .and_then(|entry| entry.editor_for_patch_hunk(&hunk.buffer))
+                                .is_some_and(|editor| editor.entity_id() == entity)
+                        })
+                } else {
+                    false
+                }
+            });
+        }
+        false
+    }
+
+    fn resolve_content_target(
+        &self,
+        target: &ContentTarget,
+        cx: &App,
+    ) -> Option<(ContentTarget, usize)> {
+        let (turn, source) = self
+            .response_model
+            .turns
+            .iter()
+            .filter(|turn| {
+                if turn.identity == target.turn {
+                    return true;
+                }
+                match (&turn.identity, &target.turn) {
+                    (
+                        response_model::TurnIdentity::Prompt(current),
+                        response_model::TurnIdentity::Prompt(previous),
+                    ) => current.identity == previous.identity,
+                    _ => false,
+                }
+            })
+            .find_map(|turn| {
+                turn.prompt
+                    .iter()
+                    .chain(&turn.activity)
+                    .chain(&turn.response)
+                    .chain(&turn.required_actions)
+                    .chain(&turn.statuses)
+                    .find(|source| {
+                        source.identity == target.source.identity
+                            && source.chunk_index == target.source.chunk_index
+                            && (if let Some(index) = target.block_index {
+                                self.source_message_content(source, cx)
+                                    .and_then(|content| content.blocks().nth(index))
+                                    .is_some_and(|block| {
+                                        Self::content_block_identity(block) == target.block_identity
+                                    })
+                            } else {
+                                source.entry_index == target.source.entry_index
+                            })
+                    })
+                    .map(|source| (turn, source))
+            })?;
+        if target.response_only
+            && (!matches!(turn.lifecycle, TurnLifecycle::Settled(_))
+                || !turn.response.contains(source))
+        {
+            return None;
+        }
+        if let Some(index) = target.block_index {
+            let block = self
+                .source_message_content(source, cx)?
+                .blocks()
+                .nth(index)?;
+            if !block.visible_content(cx)
+                || Self::content_block_identity(block) != target.block_identity
+            {
+                return None;
+            }
+        }
+        if target.block_index.is_none()
+            && let Some(ContentBlockIdentity::Entity(entity)) = target.block_identity
+            && !self.source_contains_entity(source, entity, cx)
+        {
+            return None;
+        }
+        let row = self.display_rows.row_for_source(source)?;
+        let mut target = target.clone();
+        target.source = source.clone();
+        target.turn = turn.identity.clone();
+        Some((target, row))
+    }
+
+    pub(super) fn scroll_to_content(&mut self, target: ContentTarget, cx: &mut Context<Self>) {
+        self.begin_content_scroll(target, px(0.), cx);
+        cx.notify();
+    }
+
+    fn begin_content_scroll(&mut self, target: ContentTarget, relative_offset: Pixels, cx: &App) {
+        self.content_scroll_request = self.content_scroll_request.wrapping_add(1);
+        self.pending_content_scroll = None;
+        let Some((target, row)) = self.resolve_content_target(&target, cx) else {
+            return;
+        };
+        let relative_offset = if matches!(
+            self.display_rows.rows.get(row),
+            Some(DisplayRow::ActivityHeader(_))
+        ) {
+            px(0.)
+        } else {
+            relative_offset
+        };
+        self.pending_content_scroll = Some(PendingContentScroll {
+            request: self.content_scroll_request,
+            target,
+            relative_offset,
+            reveal: None,
+        });
+        self.list_state.scroll_to(ListOffset {
+            item_ix: row,
+            offset_in_item: px(0.),
+        });
+    }
+
+    fn measure_content(
+        &self,
+        target: ContentTarget,
+        content: AnyElement,
+        cx: &Context<Self>,
+    ) -> Div {
+        let view = cx.entity().downgrade();
+        let measurements = self.content_bounds.clone();
+        let request = self
+            .pending_content_scroll
+            .as_ref()
+            .map(|pending| pending.request);
+        div()
+            .w_full()
+            .child(content)
+            .on_children_prepainted(move |bounds, window, cx| {
+                let Some(bounds) = bounds.first().copied() else {
+                    return;
+                };
+                measurements.borrow_mut().insert(target.clone(), bounds);
+                if request.is_none() {
+                    return;
+                }
+                let target = target.clone();
+                let view = view.clone();
+                window.defer(cx, move |window, cx| {
+                    let result = view.update(cx, |this, cx| {
+                        let Some(pending) = this.pending_content_scroll.clone() else {
+                            return None;
+                        };
+                        if request != Some(pending.request) {
+                            return None;
+                        }
+                        let Some((resolved, row)) =
+                            this.resolve_content_target(&pending.target, cx)
+                        else {
+                            this.pending_content_scroll = None;
+                            return None;
+                        };
+                        let hidden = matches!(
+                            this.display_rows.rows.get(row),
+                            Some(DisplayRow::ActivityHeader(_))
+                        );
+                        if !hidden
+                            && (resolved.source != target.source
+                                || resolved.block_index != target.block_index)
+                        {
+                            return None;
+                        }
+                        if hidden && this.display_rows.row_for_source(&target.source) != Some(row) {
+                            return None;
+                        }
+                        if let Some(row_bounds) = this.list_state.bounds_for_item(row) {
+                            if this
+                                .pending_content_scroll
+                                .as_ref()
+                                .map(|pending| pending.request)
+                                != Some(pending.request)
+                            {
+                                return None;
+                            }
+                            this.pending_content_scroll = None;
+                            this.list_state.scroll_to(ListOffset {
+                                item_ix: row,
+                                offset_in_item: (bounds.top() - row_bounds.top()).max(px(0.)),
+                            });
+                            this.list_state.scroll_by(-pending.relative_offset);
+                            cx.notify();
+                            return pending.reveal;
+                        }
+                        None
+                    });
+                    match result {
+                        Ok(Some(reveal)) => reveal(window, cx),
+                        Ok(None) => {}
+                        Err(error) => log::error!("Content scroll failed: {error}"),
+                    }
+                });
+            })
+    }
+
+    pub(super) fn cancel_content_scroll(&mut self) {
+        self.pending_content_scroll = None;
+        self.content_bounds.borrow_mut().clear();
+        self.content_scroll_request = self.content_scroll_request.wrapping_add(1);
+    }
+
+    pub(super) fn scroll_to_entry(&mut self, entry: usize, cx: &mut Context<Self>) {
+        self.pending_content_scroll = None;
+        self.content_scroll_request = self.content_scroll_request.wrapping_add(1);
+        if let Some(row) = self.display_rows.row_for_entry(entry) {
+            self.list_state.scroll_to(ListOffset {
+                item_ix: row,
+                offset_in_item: px(0.),
+            });
+            cx.notify();
+        }
+    }
+
+    fn render_source_body(
+        &self,
+        source: &SourceReference,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let Some(entry) = self.thread.read(cx).entries().get(source.entry_index) else {
+            return Empty.into_any();
+        };
+        match entry {
+            AgentThreadEntry::AssistantMessage(message) => {
+                match source
+                    .chunk_index
+                    .and_then(|index| message.chunks.get(index))
+                {
+                    Some(AssistantMessageChunk::Message { block, .. }) => self
+                        .render_message_content(
+                            source.entry_index,
+                            source.chunk_index.unwrap_or(0),
+                            block,
+                            window,
+                            cx,
+                        )
+                        .into_any(),
+                    Some(AssistantMessageChunk::Thought { block, .. }) => self
+                        .render_thinking_block(
+                            source.entry_index,
+                            source.chunk_index.unwrap_or(0),
+                            block,
+                            window,
+                            cx,
+                        ),
+                    None => Empty.into_any(),
+                }
+            }
+            AgentThreadEntry::ToolCall(tool) => self
+                .render_any_tool_call(
+                    self.thread.read(cx).session_id(),
+                    source.entry_index,
+                    tool,
+                    &self.focus_handle(cx),
+                    ToolCallLayout::Standalone,
+                    window,
+                    cx,
+                )
+                .into_any(),
+            AgentThreadEntry::Elicitation(id) => self
+                .thread
+                .read(cx)
+                .elicitation(id)
+                .filter(|(_, elicitation)| should_render_elicitation(elicitation))
+                .map(|(_, elicitation)| {
+                    self.render_elicitation(source.entry_index, elicitation, window, cx)
+                        .into_any()
+                })
+                .unwrap_or_else(|| Empty.into_any()),
+            AgentThreadEntry::ContextCompaction(compaction) => {
+                self.render_context_compaction(source.entry_index, compaction, window, cx)
+            }
+            AgentThreadEntry::UserMessage(_) => self.render_entry(
+                source.entry_index,
+                self.thread.read(cx).entries().len(),
+                entry,
+                window,
+                cx,
+            ),
+        }
+    }
+
+    fn render_display_row(
+        &self,
+        row: &DisplayRow,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        if self.entry_view_state.read(cx).entry_count() != self.thread.read(cx).entries().len() {
+            return Empty.into_any();
+        }
+        match row {
+            DisplayRow::Transcript(index) => {
+                let entries = self.thread.read(cx).entries();
+                let Some(entry) = entries.get(*index) else {
+                    return Empty.into_any();
+                };
+                let body = self.render_entry(*index, entries.len(), entry, window, cx);
+                let source = self.display_rows.row_for_entry(*index).and_then(|row| {
+                    self.display_rows
+                        .sources_for_row(row)
+                        .find(|source| source.chunk_index.is_none())
+                });
+                if let Some(target) =
+                    source.and_then(|source| self.target_for_source(source, false, cx))
+                {
+                    self.measure_content(
+                        ContentTarget {
+                            block_index: None,
+                            block_identity: None,
+                            ..target
+                        },
+                        body,
+                        cx,
+                    )
+                    .into_any()
+                } else {
+                    body
+                }
+            }
+            DisplayRow::Content {
+                source,
+                role,
+                response_end,
+                ..
+            } => {
+                let body = self.render_source_body(source, window, cx);
+                let mut body = v_flex().w_full().px_5().py_1p5().child(body).when_some(
+                    self.entry_view_state
+                        .read(cx)
+                        .entry(source.entry_index)
+                        .and_then(|entry| entry.focus_handle(cx)),
+                    |body, handle| body.track_focus(&handle),
+                );
+                if *role == SourceRole::Activity {
+                    body = body.border_l_1().border_color(cx.theme().colors().border);
+                }
+                if *response_end {
+                    let thread = self.thread.read(cx);
+                    let user_message_index = thread
+                        .entries()
+                        .iter()
+                        .take(source.entry_index)
+                        .rposition(|entry| thread.is_user_authored_scroll_target(entry));
+                    body = body.child(self.render_thread_controls(
+                        &self.thread,
+                        source.entry_index,
+                        Some(source.entry_index),
+                        source.entry_index + 1 == self.thread.read(cx).entries().len(),
+                        user_message_index,
+                        cx,
+                    ));
+                }
+                if let Some(target) = self.target_for_source(source, false, cx) {
+                    self.measure_content(
+                        ContentTarget {
+                            block_index: None,
+                            block_identity: None,
+                            ..target
+                        },
+                        body.into_any(),
+                        cx,
+                    )
+                    .into_any()
+                } else {
+                    body.into_any()
+                }
+            }
+            DisplayRow::ActivityHeader(identity) => {
+                let header = div()
+                    .w_full()
+                    .px_5()
+                    .py_1()
+                    .child(
+                        Label::new("Agent Activity")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .into_any();
+                let source = self
+                    .response_model
+                    .turns
+                    .iter()
+                    .find(|turn| &turn.identity == identity)
+                    .and_then(|turn| turn.activity.first());
+                if let Some(target) =
+                    source.and_then(|source| self.target_for_source(source, false, cx))
+                {
+                    self.measure_content(
+                        ContentTarget {
+                            block_index: None,
+                            block_identity: None,
+                            ..target
+                        },
+                        header,
+                        cx,
+                    )
+                    .into_any()
+                } else {
+                    header
+                }
+            }
+            DisplayRow::Generating => {
+                let confirmation = self.thread.read(cx).is_waiting_for_confirmation()
+                    || self.has_pending_request_elicitation(cx);
+                self.render_generating(confirmation, cx).into_any_element()
+            }
+        }
     }
 
     fn render_entry(
@@ -7953,10 +8640,7 @@ impl ThreadView {
                 .iter()
                 .rposition(|entry| thread.is_user_authored_scroll_target(entry))
         }) {
-            self.list_state.scroll_to(ListOffset {
-                item_ix: ix,
-                offset_in_item: px(0.0),
-            });
+            self.scroll_to_entry(ix, cx);
             cx.notify();
         } else {
             self.scroll_to_end(cx);
@@ -7964,6 +8648,7 @@ impl ThreadView {
     }
 
     pub fn scroll_to_end(&mut self, cx: &mut Context<Self>) {
+        self.pending_content_scroll = None;
         self.list_state.scroll_to_end();
         cx.notify();
     }
@@ -7986,6 +8671,7 @@ impl ThreadView {
     }
 
     pub(crate) fn scroll_to_top(&mut self, cx: &mut Context<Self>) {
+        self.pending_content_scroll = None;
         self.list_state.scroll_to(ListOffset::default());
         cx.notify();
     }
@@ -7996,6 +8682,7 @@ impl ThreadView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pending_content_scroll = None;
         let page_height = self.list_state.viewport_bounds().size.height;
         self.list_state.scroll_by(-page_height * 0.9);
         cx.notify();
@@ -8007,6 +8694,7 @@ impl ThreadView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pending_content_scroll = None;
         let page_height = self.list_state.viewport_bounds().size.height;
         self.list_state.scroll_by(page_height * 0.9);
         cx.notify();
@@ -8018,6 +8706,7 @@ impl ThreadView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pending_content_scroll = None;
         self.list_state.scroll_by(-window.line_height() * 3.);
         cx.notify();
     }
@@ -8028,6 +8717,7 @@ impl ThreadView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pending_content_scroll = None;
         self.list_state.scroll_by(window.line_height() * 3.);
         cx.notify();
     }
@@ -8058,16 +8748,16 @@ impl ThreadView {
     ) {
         let thread = self.thread.read(cx);
         let entries = thread.entries();
-        let current_ix = self.list_state.logical_scroll_top().item_ix;
+        let current_ix = self
+            .display_rows
+            .entry_for_row(self.list_state.logical_scroll_top().item_ix)
+            .unwrap_or(entries.len());
         if let Some(target_ix) = (0..current_ix).rev().find(|&i| {
             entries
                 .get(i)
                 .is_some_and(|entry| thread.is_user_authored_scroll_target(entry))
         }) {
-            self.list_state.scroll_to(ListOffset {
-                item_ix: target_ix,
-                offset_in_item: px(0.),
-            });
+            self.scroll_to_entry(target_ix, cx);
             cx.notify();
         }
     }
@@ -8080,16 +8770,16 @@ impl ThreadView {
     ) {
         let thread = self.thread.read(cx);
         let entries = thread.entries();
-        let current_ix = self.list_state.logical_scroll_top().item_ix;
+        let current_ix = self
+            .display_rows
+            .entry_for_row(self.list_state.logical_scroll_top().item_ix)
+            .unwrap_or(entries.len());
         if let Some(target_ix) = (current_ix + 1..entries.len()).find(|&i| {
             entries
                 .get(i)
                 .is_some_and(|entry| thread.is_user_authored_scroll_target(entry))
         }) {
-            self.list_state.scroll_to(ListOffset {
-                item_ix: target_ix,
-                offset_in_item: px(0.),
-            });
+            self.scroll_to_entry(target_ix, cx);
             cx.notify();
         }
     }
@@ -8133,22 +8823,31 @@ impl ThreadView {
         if self.thread_search_bar.is_none() {
             let thread = self.thread.clone();
             let view = cx.entity().downgrade();
-            let on_activate =
-                Arc::new(move |entry_ix: usize, _window: &mut Window, cx: &mut App| {
+            let on_activate = Arc::new(
+                move |activation: super::thread_search_bar::SearchActivation,
+                      _window: &mut Window,
+                      cx: &mut App| {
                     // Avoid re-entering `ThreadView` when search navigation is forwarded
                     // from a `ThreadView` action handler.
                     let view = view.clone();
                     cx.defer(move |cx| {
                         view.update(cx, |this, cx| {
-                            this.list_state.scroll_to(gpui::ListOffset {
-                                item_ix: entry_ix,
-                                offset_in_item: gpui::px(0.),
-                            });
-                            cx.notify();
+                            if let Some(target) = this.target_for_search(
+                                activation.entry_index,
+                                activation.entity_id,
+                                activation.source_index,
+                                cx,
+                            ) {
+                                this.scroll_to_content(target, cx);
+                                if let Some(pending) = &mut this.pending_content_scroll {
+                                    pending.reveal = Some(activation.reveal);
+                                }
+                            }
                         })
-                        .ok();
+                        .log_err();
                     });
-                });
+                },
+            );
             let search_bar = cx.new(|cx| {
                 ThreadSearchBar::new(
                     thread,
@@ -8242,21 +8941,14 @@ impl ThreadView {
     }
 
     /// Ensures the list item count includes (or excludes) an extra item for the generating indicator
-    pub(crate) fn sync_generating_indicator(&mut self, cx: &App) {
+    pub(crate) fn sync_generating_indicator(&mut self, cx: &mut Context<Self>) {
         let thread = self.thread.read(cx);
 
         let is_generating =
             matches!(thread.status(), ThreadStatus::Generating) && !thread.is_compacting();
 
-        if is_generating && !self.generating_indicator_in_list {
-            let entries_count = self.thread.read(cx).entries().len();
-            self.list_state.splice(entries_count..entries_count, 1);
-            self.generating_indicator_in_list = true;
-        } else if !is_generating && self.generating_indicator_in_list {
-            let entries_count = self.thread.read(cx).entries().len();
-            self.list_state.splice(entries_count..entries_count + 1, 0);
-            self.generating_indicator_in_list = false;
-        }
+        self.generating_indicator_in_list = is_generating;
+        self.sync_display_rows(None, cx);
     }
 
     fn render_generating(&self, confirmation: bool, cx: &App) -> impl IntoElement {
@@ -8398,17 +9090,36 @@ impl ThreadView {
                     let content = self.render_output_content_block(
                         entry_ix, block_ix, block, None, false, window, cx,
                     );
+                    let content = self.render_message_context_menu(
+                        entry_ix,
+                        block.markdown().cloned(),
+                        content,
+                        cx,
+                    );
+                    let source = self
+                        .response_model
+                        .turns
+                        .iter()
+                        .flat_map(|turn| turn.activity.iter().chain(&turn.response))
+                        .find(|source| {
+                            source.entry_index == entry_ix && source.chunk_index == Some(chunk_ix)
+                        });
+                    let content = if let Some(mut target) =
+                        source.and_then(|source| self.target_for_source(source, false, cx))
+                    {
+                        target.block_index = Some(block_ix);
+                        target.block_identity = Self::content_block_identity(block);
+                        self.measure_content(target, content.into_any_element(), cx)
+                            .into_any_element()
+                    } else {
+                        content.into_any_element()
+                    };
                     div()
                         .id(("message-content-block", block_ix))
                         .debug_selector(move || {
                             format!("message-content-{entry_ix}-{chunk_ix}-{block_ix}")
                         })
-                        .child(self.render_message_context_menu(
-                            entry_ix,
-                            block.markdown().cloned(),
-                            content,
-                            cx,
-                        ))
+                        .child(content)
                 }),
         )
     }
@@ -8441,7 +9152,7 @@ impl ThreadView {
 
         let panel_bg = cx.theme().colors().panel_background;
 
-        v_flex()
+        let body = v_flex()
             .id(("thinking-block", chunk_ix))
             .gap_1()
             .child(
@@ -8516,7 +9227,27 @@ impl ThreadView {
                         }),
                 )
             })
+            .into_any_element();
+        let source = self
+            .response_model
+            .turns
+            .iter()
+            .flat_map(|turn| turn.activity.iter())
+            .find(|source| source.entry_index == entry_ix && source.chunk_index == Some(chunk_ix));
+        if let Some(target) = source.and_then(|source| self.target_for_source(source, false, cx)) {
+            self.measure_content(
+                ContentTarget {
+                    block_index: None,
+                    block_identity: None,
+                    ..target
+                },
+                body,
+                cx,
+            )
             .into_any_element()
+        } else {
+            body
+        }
     }
 
     fn render_message_context_menu(
