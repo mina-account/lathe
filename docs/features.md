@@ -82,6 +82,34 @@ Up and down in the agent panel's composer walk back through prompts you've alrea
 
 Archived agent threads show up in Thread History for the current workspace, sorted chronologically. Restoring one puts it back in that workspace's thread list.
 
+### Super compact conversations
+
+Normal conversation display is the default. In the Settings Editor, enable
+**Super Compact Mode** beside **Show Turn Stats**, or add this to your
+settings.json:
+
+```json [settings]
+{
+  "agent": {
+    "super_compact_mode": true
+  }
+}
+```
+
+This setting applies to native Agent and external ACP conversations, including
+already-open conversations, without a restart or changes to the stored transcript.
+Mode changes preserve your place in visible content or its activity header and
+keep following the end when you are already following it. Turn statistics remain
+independent.
+
+Super compact mode collapses thinking, intermediate messages, and tool activity
+into one **Agent Activity** panel per turn. Responses appear when the turn ends;
+open the panel to inspect live output while you wait. Search includes only revealed
+content, including content outside the viewport; expand Agent Activity to search
+its contents. Pending approval requests remain visible and may show commands or
+file paths needed for your decision. Final response detection is best effort for
+agents without final-answer markers.
+
 ### Agent accounts and approval control
 Sign into multiple subscription accounts for the external agents in the Agent Panel (Claude Code, Codex, Gemini) and switch between them from the panel's account chip. Account selection is per-workspace and switching takes effect at runtime, so a work project and a personal project can each sit on their own identity and their own subscription, which keeps plan usage and rate limits from bleeding between them. An approval selector picks each agent's approval / sandbox level; that level is applied when the agent process spawns, so a change lands on the next thread. Agents with their own native approval control keep it and skip the selector.
 

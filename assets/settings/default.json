@@ -1398,6 +1398,10 @@
     //
     // Default: 4
     "message_editor_min_lines": 4,
+    // Collapse thinking, intermediate messages, and tool activity into one panel per turn.
+    //
+    // Default: false
+    "super_compact_mode": false,
     // Whether to show turn statistics (elapsed time during generation, final turn duration).
     //
     // Default: false

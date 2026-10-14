@@ -4042,7 +4042,9 @@ pub(crate) mod tests {
     use editor::actions::Paste;
     use feature_flags::{AcpBetaFeatureFlag, FeatureFlag as _, FeatureFlagAppExt as _};
     use fs::FakeFs;
-    use gpui::{ClipboardItem, EventEmitter, TestAppContext, VisualTestContext, point, size};
+    use gpui::{
+        ClipboardItem, EventEmitter, TestAppContext, UpdateGlobal, VisualTestContext, point, size,
+    };
     use parking_lot::Mutex;
     use project::Project;
     use serde_json::json;
@@ -12030,6 +12032,184 @@ pub(crate) mod tests {
             response,
             viewport
         );
+    }
+
+    #[gpui::test]
+    async fn test_super_compact_settings_apply_to_new_external_view(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayRow;
+
+        init_test(cx);
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(r#"{"agent": {"super_compact_mode": true}}"#, cx)
+                    .expect("settings load");
+            });
+        });
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.thread.read(cx).entries().len(), 16);
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(row, DisplayRow::ActivityHeader(_)))
+                    .count(),
+                8
+            );
+            assert!(view.list_state.is_following_tail());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_super_compact_settings_apply_to_native_view(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayRow;
+
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let server = cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(r#"{"agent": {"super_compact_mode": true}}"#, cx)
+                    .expect("settings load");
+            });
+            language_model::LanguageModelRegistry::test(cx);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+            let thread_store = cx.new(|cx| ThreadStore::new(cx));
+            NativeAgentServer::new(fs, thread_store)
+        });
+        let (conversation, cx) = setup_conversation_view(server, cx).await;
+        add_to_workspace(conversation.clone(), cx);
+        let view = active_thread(&conversation, cx);
+        assert!(view.read_with(cx, |view, cx| view.as_native_thread(cx).is_some()));
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_user_message(acp_v2::UserMessage::new("native-prompt"), cx)
+                .expect("prompt");
+        });
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_thought(
+                    acp_v2::AgentThought::new("native-thought").content(vec!["Thought".into()]),
+                    cx,
+                )
+                .expect("thought");
+        });
+        cx.run_until_parked();
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_assistant_message(
+                    acp_v2::AgentMessage::new("native-answer").content(vec!["Answer".into()]),
+                    cx,
+                )
+                .expect("answer");
+        });
+        cx.run_until_parked();
+        for (content, compact) in [
+            (r#"{"agent": {"super_compact_mode": true}}"#, true),
+            (r#"{"agent": {"super_compact_mode": false}}"#, false),
+            (r#"{"agent": {"super_compact_mode": true}}"#, true),
+            (r#"{"agent": {}}"#, false),
+        ] {
+            cx.update(|_, cx| {
+                SettingsStore::update_global(cx, |store, cx| {
+                    store.set_user_settings(content, cx).expect("settings load");
+                });
+            });
+            cx.run_until_parked();
+            view.read_with(cx, |view, cx| {
+                assert_eq!(
+                    view.display_rows
+                        .rows
+                        .iter()
+                        .any(|row| matches!(row, DisplayRow::ActivityHeader(_))),
+                    compact
+                );
+                assert_eq!(view.thread.read(cx).entries().len(), 2);
+                assert!(view.list_state.is_following_tail());
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn test_super_compact_settings_preserve_open_viewport_and_tail(cx: &mut TestAppContext) {
+        use super::display_rows::DisplayRow;
+
+        init_test(cx);
+        let (conversation, cx) = setup_content_scroll_fixture(cx).await;
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        let original_entries = thread.read_with(cx, |thread, _| format!("{:?}", thread.entries()));
+        view.update(cx, |view, cx| {
+            let source = view
+                .response_model
+                .turns
+                .get(2)
+                .and_then(|turn| turn.response.first())
+                .expect("third response")
+                .clone();
+            let target = view
+                .target_for_source(&source, true, cx)
+                .expect("response target");
+            view.scroll_to_content(target, cx);
+        });
+        cx.run_until_parked();
+        view.update(cx, |view, cx| {
+            view.list_state.scroll_by(px(20.));
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let original_bounds = cx
+            .debug_bounds("message-content-5-1-0")
+            .expect("third response");
+        for compact in [true, false, true] {
+            cx.update(|_, cx| {
+                SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(
+                            &format!(r#"{{"agent": {{"super_compact_mode": {compact}}}}}"#),
+                            cx,
+                        )
+                        .expect("settings load");
+                });
+            });
+            cx.run_until_parked();
+            view.read_with(cx, |view, _| {
+                assert_eq!(
+                    view.display_rows
+                        .rows
+                        .iter()
+                        .any(|row| matches!(row, DisplayRow::ActivityHeader(_))),
+                    compact
+                );
+                assert!(!view.list_state.is_following_tail());
+            });
+            let bounds = cx
+                .debug_bounds("message-content-5-1-0")
+                .expect("same response");
+            assert!(
+                (bounds.top() - original_bounds.top()).abs() < px(1.),
+                "{original_bounds:?} {bounds:?}"
+            );
+            assert_eq!(
+                thread.read_with(cx, |thread, _| format!("{:?}", thread.entries())),
+                original_entries
+            );
+        }
+        view.update(cx, |view, cx| view.scroll_to_end(cx));
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(r#"{"agent": {"super_compact_mode": false}}"#, cx)
+                    .expect("settings load");
+            });
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| assert!(view.list_state.is_following_tail()));
     }
 
     #[gpui::test]

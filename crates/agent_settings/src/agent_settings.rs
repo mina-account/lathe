@@ -247,6 +247,7 @@ pub struct AgentSettings {
     pub cancel_generation_on_terminal_stop: bool,
     pub use_modifier_to_send: bool,
     pub message_editor_min_lines: usize,
+    pub super_compact_mode: bool,
     pub show_turn_stats: bool,
     pub show_merge_conflict_indicator: bool,
     pub tool_permissions: ToolPermissions,
@@ -845,6 +846,7 @@ impl Settings for AgentSettings {
             cancel_generation_on_terminal_stop: agent.cancel_generation_on_terminal_stop.unwrap(),
             use_modifier_to_send: agent.use_modifier_to_send.unwrap(),
             message_editor_min_lines: agent.message_editor_min_lines.unwrap(),
+            super_compact_mode: agent.super_compact_mode.unwrap_or(false),
             show_turn_stats: agent.show_turn_stats.unwrap(),
             show_merge_conflict_indicator: agent.show_merge_conflict_indicator.unwrap(),
             tool_permissions: compile_tool_permissions(agent.tool_permissions),
@@ -1091,6 +1093,37 @@ mod tests {
     fn test_invalid_regex_returns_none() {
         let result = CompiledRegex::new("[invalid(regex", false);
         assert!(result.is_none());
+    }
+
+    #[gpui::test]
+    fn test_super_compact_mode_defaults_off_and_follows_user_settings(cx: &mut gpui::App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        project::DisableAiSettings::register(cx);
+        AgentSettings::register(cx);
+        assert!(!AgentSettings::get_global(cx).super_compact_mode);
+
+        for (content, compact, stats) in [
+            (
+                r#"{"agent": {"super_compact_mode": true, "show_turn_stats": false}}"#,
+                true,
+                false,
+            ),
+            (
+                r#"{"agent": {"super_compact_mode": false, "show_turn_stats": true}}"#,
+                false,
+                true,
+            ),
+            (r#"{"agent": {"super_compact_mode": null}}"#, false, false),
+            (r#"{"agent": {}}"#, false, false),
+        ] {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.set_user_settings(content, cx).expect("settings load");
+            });
+            let settings = AgentSettings::get_global(cx);
+            assert_eq!(settings.super_compact_mode, compact, "{content}");
+            assert_eq!(settings.show_turn_stats, stats, "{content}");
+        }
     }
 
     #[gpui::test]

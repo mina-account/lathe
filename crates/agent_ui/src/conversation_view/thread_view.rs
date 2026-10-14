@@ -825,6 +825,9 @@ impl ThreadView {
 
         subscriptions.push(cx.observe(&thread, |_, _, cx| cx.notify()));
         subscriptions.push(cx.observe(&conversation, |_, _, cx| cx.notify()));
+        subscriptions.push(cx.observe_global::<SettingsStore>(|this, cx| {
+            this.set_display_mode(Self::display_mode_from_settings(cx), cx);
+        }));
 
         let has_slash_completions = session_capabilities.read().has_slash_completions();
         let placeholder = placeholder_text(agent_display_name.as_ref(), has_slash_completions);
@@ -1082,7 +1085,7 @@ impl ThreadView {
             current_submission,
             response_model: ResponseModel::default(),
             display_rows: DisplayRows::default(),
-            display_mode: DisplayMode::Normal,
+            display_mode: Self::display_mode_from_settings(cx),
             content_bounds: Rc::default(),
             pending_content_scroll: None,
             content_scroll_request: 0,
@@ -7169,13 +7172,14 @@ impl ThreadView {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "The opt-in setting is wired in the following implementation task."
-        )
-    )]
+    fn display_mode_from_settings(cx: &App) -> DisplayMode {
+        if AgentSettings::get_global(cx).super_compact_mode {
+            DisplayMode::Compact
+        } else {
+            DisplayMode::Normal
+        }
+    }
+
     pub(super) fn set_display_mode(&mut self, mode: DisplayMode, cx: &mut Context<Self>) {
         if self.display_mode != mode {
             self.display_mode = mode;
