@@ -1,7 +1,7 @@
-{"event":"gpui_backend","handle":"Wayland(WaylandWindowHandle { surface: 0x56510a403f60 })","scale":1.0}
-{"event":"navigation","url":"https://lathe-markdown.invalid/index.html?session=69391-4294967308-1&document=4294967301","allowed":true}
-{"event":"browser_created","session":"69391-4294967308-1"}
-{"event":"resource","url":"https://lathe-markdown.invalid/index.html?session=69391-4294967308-1&document=4294967301","status":200}
+{"event":"gpui_backend","handle":"Wayland(WaylandWindowHandle { surface: 0x55bf15ce6a50 })","scale":1.0}
+{"event":"navigation","url":"https://lathe-markdown.invalid/index.html?session=73308-4294967308-1&document=4294967301","allowed":true}
+{"event":"browser_created","session":"73308-4294967308-1"}
+{"event":"resource","url":"https://lathe-markdown.invalid/index.html?session=73308-4294967308-1&document=4294967301","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/vditor.css","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/application.css","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/katex/katex.min.css","status":200}
@@ -31,8 +31,8 @@
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/highlight.js/third-languages.js","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/graphviz/full.render.js","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/markmap/markmap.min.js","status":200}
-{"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/katex/fonts/KaTeX_Main-Regular.woff2","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/katex/fonts/KaTeX_Math-Italic.woff2","status":200}
+{"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/katex/fonts/KaTeX_Main-Regular.woff2","status":200}
 {"event":"phase4_renderers","mode":"ir","renderers":[{"language":"math","state":"ready","text":"2x+1"},{"language":"math","state":"ready","text":"HX2​O"},{"language":"math","state":"ready","text":"2x+1"},{"language":"math","state":"ready","text":"HX2​O"},{"language":"mermaid","state":"ready","text":"AB"},{"language":"graphviz","state":"ready","text":"\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"},{"language":"echarts","state":"ready","text":"\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"},{"language":"abc","state":"ready","text":"Sheet Music for \"Example\"Example"},{"language":"flowchart","state":"ready","text":"Created with Raphaël 2.3.0StartEnd"},{"language":"markmap","state":"ready","text":"ChildRoot"},{"language":"mindmap","state":"ready","text":"\n\n\n\n\nRoot\nChild\n\n"},{"language":"smiles","state":"ready","text":"HO"},{"language":"math","state":"ready","text":"x2"},{"language":"plantuml","state":"error","text":"plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."},{"language":"mermaid","state":"ready","text":"CD"}],"math_version":"0.16.9","code_highlighted":true,"code_theme_loaded":true,"source_preserved":true}
 {"event":"rich_runtime","version":"3.11.2","mode":"ir","source_preserved":true}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/highlight.js/styles/github-dark.min.css","status":200}
@@ -63,10 +63,10 @@
 {"event":"cancelled_composition_flush","passed":true}
 {"event":"unacknowledged_draft_dirty","native_text":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n~~~mermaid\ngraph TD; C-->D\n~~~\n\n```rust\nfn main() { let answer = 42; }\n```\n\nX1234L678Y","draft":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n~~~mermaid\ngraph TD; C-->D\n~~~\n\n```rust\nfn main() { let answer = 42; }\n```\n\nX1234L678Y retained"}
 {"event":"renderer_crash_retained_draft","error":"Markdown renderer terminated (9): 9","draft":"# mirrored 😀\n<script>globalThis.documentExecuted=1</script>\n[ref]: /a\n```unknown\nx\n```\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n~~~mermaid\ngraph TD; C-->D\n~~~\n\n```rust\nfn main() { let answer = 42; }\n```\n\nX1234L678Y retained"}
-{"event":"navigation","url":"https://lathe-markdown.invalid/index.html?session=69391-4294967308-2&document=4294967301","allowed":true}
-{"event":"browser_created","session":"69391-4294967308-2"}
-{"event":"browser_closed","session":"69391-4294967308-1"}
-{"event":"resource","url":"https://lathe-markdown.invalid/index.html?session=69391-4294967308-2&document=4294967301","status":200}
+{"event":"navigation","url":"https://lathe-markdown.invalid/index.html?session=73308-4294967308-2&document=4294967301","allowed":true}
+{"event":"browser_created","session":"73308-4294967308-2"}
+{"event":"browser_closed","session":"73308-4294967308-1"}
+{"event":"resource","url":"https://lathe-markdown.invalid/index.html?session=73308-4294967308-2&document=4294967301","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/vditor.css","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/application.css","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/katex/katex.min.css","status":200}
@@ -97,4 +97,4 @@
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/katex/mhchem.min.js","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/highlight.js/third-languages.js","status":200}
 {"event":"resource","url":"https://lathe-markdown.invalid/vendor/dist/js/graphviz/full.render.js","status":200}
-{"event":"browser_closed","session":"69391-4294967308-2"}
+{"event":"browser_closed","session":"73308-4294967308-2"}

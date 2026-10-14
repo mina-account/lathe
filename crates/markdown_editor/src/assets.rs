@@ -17,6 +17,7 @@ use std::{io::Cursor, path::PathBuf};
 const MAX_IMAGE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_IMAGE_COUNT: usize = 16;
 const MAX_IMAGE_BATCH_BYTES: usize = 8 * 1024 * 1024;
+const MAX_IMAGE_FILENAME_BYTES: usize = 255;
 type LoadedImage = Result<ValidatedImage>;
 type RawImage = Result<(String, Vec<u8>)>;
 struct ValidatedImage {
@@ -440,6 +441,10 @@ impl MarkdownEditor {
                             worktree.create_directory_confined(folder.clone().into(), cx)
                         });
                         create.await?;
+                        let suffix = format!("-{}.{}", uuid::Uuid::new_v4(), extension);
+                        let mut remaining_bytes = MAX_IMAGE_FILENAME_BYTES
+                            .checked_sub(suffix.len())
+                            .context("Image filename suffix exceeds the filesystem limit")?;
                         let stem = name
                             .rsplit(['\\', '/'])
                             .next()
@@ -452,12 +457,19 @@ impl MarkdownEditor {
                                 character.is_alphanumeric() || [' ', '-', '_'].contains(character)
                             })
                             .take(80)
+                            .take_while(|character| {
+                                let length = character.len_utf8();
+                                if length > remaining_bytes {
+                                    return false;
+                                }
+                                remaining_bytes -= length;
+                                true
+                            })
                             .collect::<String>();
                         let filename = format!(
-                            "{}-{}.{}",
+                            "{}{}",
                             if stem.is_empty() { "image" } else { &stem },
-                            uuid::Uuid::new_v4(),
-                            extension
+                            suffix
                         );
                         let image_path = folder.join(RelPath::from_unix_str(&filename)?.as_ref());
                         let write = worktree.update(cx, |worktree, cx| {
@@ -2312,6 +2324,191 @@ mod tests {
             buffer.read_with(cx, |buffer, _| buffer.snapshot().text()),
             "Standalone"
         );
+    }
+
+    #[gpui::test]
+    async fn unicode_import_filenames_fit_real_filesystem_components(cx: &mut TestAppContext) {
+        use workspace::item::Item as _;
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            cx.set_global(db::AppDatabase::test_new());
+            workspace::AppState::test(cx);
+            editor::init(cx);
+            crate::init(cx);
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{"ensure_final_newline_on_save":false,"format_on_save":"off"}"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("exact source settings");
+            });
+        });
+        let root =
+            std::env::temp_dir().join(format!("lathe-names-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir(&root).expect("native fixture directory");
+        let source = "Before\n\nTail";
+        std::fs::write(root.join("doc.md"), source).expect("native source file");
+        let filesystem = fs::RealFs::new(None, cx.executor());
+        let project = project::Project::test(filesystem, None, cx).await;
+        let (worktree, _) = project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(&root, true, cx)
+            })
+            .await
+            .expect("native worktree");
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_buffer((worktree_id, rel_path("doc.md")), cx)
+            })
+            .await
+            .expect("native buffer");
+        let (visual, cx) = cx.add_window_view(|window, cx| {
+            let source = cx.new(|cx| {
+                editor::Editor::for_buffer(buffer.clone(), Some(project.clone()), window, cx)
+            });
+            MarkdownEditor::new(source, buffer, window, cx)
+        });
+        let (incoming, _) = attach_pump(&visual, cx);
+        let mut imported = std::collections::HashSet::new();
+        for (format, extension) in [
+            (image::ImageFormat::Png, "png"),
+            (image::ImageFormat::Jpeg, "jpeg"),
+            (image::ImageFormat::Gif, "gif"),
+            (image::ImageFormat::WebP, "webp"),
+        ] {
+            let mut bytes = Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(1, 1)
+                .write_to(&mut bytes, format)
+                .expect("valid image");
+            let bytes = bytes.into_inner();
+            for stem in [
+                "中".repeat(75),
+                "𐐀".repeat(61),
+                "😀".repeat(61),
+                "a".repeat(80),
+            ] {
+                let name = format!("{stem}.{extension}");
+                assert!(name.len() <= 255, "valid original basename");
+                let original = root.join(&name);
+                std::fs::write(&original, &bytes).expect("original native image filename");
+                for route in ["encoded", "picker", "drop"] {
+                    let mut notifications = cx.notifications(&visual);
+                    let request = visual.read_with(cx, |item, _| {
+                        if route == "encoded" {
+                            protocol::ClientMessage::ImportImages {
+                                session: item.protocol.session.clone(),
+                                document: item.protocol.document,
+                                base_revision: item.protocol.revision,
+                                position: 8,
+                                images: vec![ImportedImage {
+                                    name: name.clone(),
+                                    bytes: STANDARD.encode(&bytes),
+                                }],
+                            }
+                        } else {
+                            protocol::ClientMessage::PickImages {
+                                session: item.protocol.session.clone(),
+                                document: item.protocol.document,
+                                base_revision: item.protocol.revision,
+                                position: 8,
+                                clipboard: false,
+                                drop: route == "drop",
+                            }
+                        }
+                    });
+                    if route == "drop" {
+                        visual.update(cx, |item, cx| {
+                            item.native_image_drop(
+                                &gpui::ExternalPaths(vec![original.clone()].into()),
+                                cx,
+                            )
+                        });
+                    }
+                    incoming.borrow_mut().push(request);
+                    visual.update(cx, |item, cx| item.pump_browser(cx));
+                    cx.run_until_parked();
+                    if route == "picker" {
+                        assert!(cx.did_prompt_for_paths());
+                        cx.simulate_path_prompt_response(|_| Some(vec![original.clone()]));
+                    }
+                    loop {
+                        let finished = visual.read_with(cx, |item, cx| {
+                            item.error().is_some()
+                                || item.buffer.read(cx).snapshot().text().contains("![image]")
+                        });
+                        if finished {
+                            break;
+                        }
+                        notifications.next().await.expect("import notification");
+                    }
+                    let (text, error) = visual.read_with(cx, |item, cx| {
+                        (
+                            item.buffer.read(cx).snapshot().text(),
+                            item.error().map(str::to_owned),
+                        )
+                    });
+                    assert!(error.is_none(), "{route}/{extension}: {error:?}");
+                    let link = text
+                        .strip_prefix("Before\n\n![image](")
+                        .and_then(|text| text.strip_suffix(")Tail"))
+                        .expect("exact anchored source");
+                    let destination = root.join(
+                        urlencoding::decode(link)
+                            .expect("image destination")
+                            .as_ref(),
+                    );
+                    let filename = destination
+                        .file_name()
+                        .expect("basename")
+                        .to_str()
+                        .expect("UTF-8 basename");
+                    assert!(
+                        filename.len() <= 255,
+                        "{route}/{extension}: {} bytes",
+                        filename.len()
+                    );
+                    assert!(
+                        filename.encode_utf16().count() <= 255,
+                        "Windows component bound"
+                    );
+                    assert!(
+                        imported.insert(destination.clone()),
+                        "UUID destinations stay distinct"
+                    );
+                    assert_eq!(
+                        std::fs::read(&destination).expect("actual imported bytes"),
+                        bytes
+                    );
+                    assert_eq!(
+                        std::fs::read(&original).expect("original bytes retained"),
+                        bytes
+                    );
+                    visual.update(cx, |item, cx| {
+                        item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+                    });
+                    cx.run_until_parked();
+                    assert_eq!(
+                        visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                        source
+                    );
+                    assert!(destination.is_file(), "undo retains the imported asset");
+                }
+            }
+        }
+        assert_eq!(imported.len(), 48);
+        let save = visual.update_in(cx, |item, window, cx| {
+            item.save(Default::default(), project, window, cx)
+        });
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        save.await.expect("native save barrier");
+        assert_eq!(
+            std::fs::read(root.join("doc.md")).expect("native saved bytes"),
+            source.as_bytes()
+        );
+        println!("Real project image filename fixture: {}", root.display());
     }
 
     async fn fixture(
