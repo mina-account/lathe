@@ -141,6 +141,68 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn large_high_dpi_viewports_keep_raster_frames_bounded() -> Result<()> {
+        for (width, height, requested) in [
+            (3840, 2160, 2.),
+            (2560, 1440, 2.),
+            (7680, 4320, 1.),
+            (i32::MAX, 1, f32::MAX),
+            (i32::MAX, i32::MAX, f32::MAX),
+        ] {
+            let scale = raster_scale(width, height, requested)?;
+            assert!(scale > 0. && scale <= requested);
+            assert!(
+                frame_bytes(
+                    (width as f64 * f64::from(scale)).ceil() as i32,
+                    (height as f64 * f64::from(scale)).ceil() as i32
+                )
+                .is_ok()
+            );
+        }
+        assert_eq!(raster_scale(1200, 800, 1.)?, 1.);
+        assert_eq!(raster_scale(1280, 720, 1.5)?, 1.5);
+        for scale in [0., -1., f32::NAN, f32::INFINITY] {
+            assert!(raster_scale(1200, 800, scale).is_err());
+        }
+        assert!(raster_scale(0, 800, 1.).is_err());
+        Ok(())
+    }
+}
+
+fn raster_scale(width: i32, height: i32, requested: f32) -> Result<f32> {
+    if width <= 0 || height <= 0 || !requested.is_finite() || requested <= 0. {
+        bail!("Invalid browser viewport or scale");
+    }
+    let fits = |scale: f32, rounding_margin: i32| {
+        let dimension = |length: i32| {
+            let double = (f64::from(length) * f64::from(scale)).ceil();
+            let single = (length as f32 * scale).ceil();
+            (double.max(f64::from(single)).max(1.) as i32).saturating_add(rounding_margin)
+        };
+        frame_bytes(dimension(width), dimension(height)).is_ok()
+    };
+    if fits(requested, 0) {
+        return Ok(requested);
+    }
+    // Positive finite f32 bit patterns are ordered; keep logical geometry while
+    // selecting the largest raster scale that leaves room for CEF rounding.
+    let mut lower = 0;
+    let mut upper = requested.to_bits();
+    while lower < upper {
+        let middle = lower + (upper - lower).div_ceil(2);
+        if fits(f32::from_bits(middle), 1) {
+            lower = middle;
+        } else {
+            upper = middle - 1;
+        }
+    }
+    let scale = f32::from_bits(lower);
+    if scale <= 0. {
+        bail!("Browser viewport cannot fit the bounded raster budget");
+    }
+    Ok(scale)
 }
 
 fn frame_bytes(width: i32, height: i32) -> Result<usize> {
@@ -761,9 +823,7 @@ impl BrowserSurface for Surface {
     fn bounds(&mut self, bounds: gpui::Bounds<gpui::Pixels>, scale: f32) -> Result<()> {
         let width = f32::from(bounds.size.width).floor().max(1.) as i32;
         let height = f32::from(bounds.size.height).floor().max(1.) as i32;
-        if !scale.is_finite() || scale <= 0. {
-            bail!("Invalid browser scale");
-        }
+        let scale = raster_scale(width, height, scale)?;
         let mut state = self
             .shared
             .lock()
