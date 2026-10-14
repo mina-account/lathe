@@ -2409,7 +2409,11 @@ fn normalize_transcript_text(
     let mut cursor = 0;
     let mut plain_start = 0;
     let mut pending_context_attachment = None;
+    let mut context_validation = TranscriptContextValidation::default();
     while cursor < text.len() {
+        if pending_context_attachment.is_some() && !context_validation.advance(text, cursor) {
+            break;
+        }
         let remaining = &text[cursor..];
         if cursor == 0 || text.as_bytes().get(cursor - 1) == Some(&b'\n') {
             let line_end = cursor + remaining.find('\n').unwrap_or(remaining.len());
@@ -2459,14 +2463,11 @@ fn normalize_transcript_text(
             }
             continue;
         }
-        if remaining.starts_with("<context") {
-            if pending_context_attachment.is_some() {
-                break;
-            }
+        if transcript_context_opening_suffix(remaining).is_some() {
             if remaining.find("</context>").is_some_and(|closing| {
                 remaining
                     .get(1..closing)
-                    .is_some_and(|body| body.contains("<context"))
+                    .is_some_and(contains_transcript_context_opening)
             }) {
                 break;
             }
@@ -2511,7 +2512,7 @@ fn normalize_transcript_text(
             && MentionUri::parse(uri, path_style).is_ok();
         let following = &text[link_end..];
         let context = following.trim_start_matches([' ', '\t', '\r', '\n']);
-        let (end, body) = if context.starts_with("<context")
+        let (end, body) = if transcript_context_opening_suffix(context).is_some()
             || (!context.is_empty() && "<context".starts_with(context))
         {
             let Some(closing) = context.find("</context>") else {
@@ -2524,14 +2525,7 @@ fn normalize_transcript_text(
             };
             let end = text.len() - context.len() + closing + "</context>".len();
             let after_closing = &context[closing + "</context>".len()..];
-            if after_closing
-                .find("</context>")
-                .is_some_and(|extra_closing| {
-                    after_closing
-                        .find("<context")
-                        .is_none_or(|opening| extra_closing < opening)
-                })
-            {
+            if next_transcript_context_tag(after_closing).is_some_and(|(_, closing)| closing) {
                 break;
             }
             let opening = format!("<context ref=\"{uri}\">");
@@ -2552,7 +2546,7 @@ fn normalize_transcript_text(
             });
             if context
                 .get(1..closing)
-                .is_some_and(|body| body.contains("<context"))
+                .is_some_and(contains_transcript_context_opening)
             {
                 break;
             }
@@ -2569,9 +2563,16 @@ fn normalize_transcript_text(
             continue;
         }
         if body.is_some() {
+            if pending_context_attachment.is_some() && context_validation.depth > 0 {
+                break;
+            }
             // A later unpaired context tag can reveal that the first closing
             // tag belonged to captured text, so keep this conversion reversible.
             pending_context_attachment = Some((normalized.len(), plain_start));
+            context_validation = TranscriptContextValidation {
+                cursor: end,
+                depth: 0,
+            };
         }
         if plain_start < cursor {
             normalized.push(text[plain_start..cursor].to_owned().into());
@@ -2587,8 +2588,10 @@ fn normalize_transcript_text(
         cursor = end;
         plain_start = end;
     }
-    if cursor < text.len()
-        && let Some((block_index, text_start)) = pending_context_attachment
+    if let Some((block_index, text_start)) = pending_context_attachment
+        && (cursor < text.len()
+            || !context_validation.advance(text, text.len())
+            || context_validation.depth > 0)
     {
         normalized.truncate(block_index);
         plain_start = text_start;
@@ -2596,6 +2599,89 @@ fn normalize_transcript_text(
     if plain_start < text.len() {
         normalized.push(text[plain_start..].to_owned().into());
     }
+}
+
+#[derive(Default)]
+struct TranscriptContextValidation {
+    cursor: usize,
+    depth: usize,
+}
+
+impl TranscriptContextValidation {
+    fn advance(&mut self, text: &str, end: usize) -> bool {
+        // Captured text can contain code or escapes, so display-literal skipping
+        // must not hide tags that reveal a prematurely closed attachment.
+        while self.cursor < end {
+            let Some(offset) = text[self.cursor..end].find('<') else {
+                self.cursor = end;
+                break;
+            };
+            self.cursor += offset;
+            let remaining = &text[self.cursor..];
+            if let Some(length) = transcript_context_opening_length(remaining) {
+                self.depth += 1;
+                self.cursor += length;
+            } else if remaining.starts_with("</context>") {
+                if self.depth == 0 {
+                    return false;
+                }
+                self.depth -= 1;
+                self.cursor += "</context>".len();
+            } else {
+                self.cursor += 1;
+            }
+        }
+        true
+    }
+}
+
+fn next_transcript_context_tag(text: &str) -> Option<(usize, bool)> {
+    text.match_indices('<').find_map(|(offset, _)| {
+        let remaining = &text[offset..];
+        if transcript_context_opening_length(remaining).is_some() {
+            Some((offset, false))
+        } else if remaining.starts_with("</context>") {
+            Some((offset, true))
+        } else {
+            None
+        }
+    })
+}
+
+fn transcript_context_opening_length(text: &str) -> Option<usize> {
+    let suffix = transcript_context_opening_suffix(text)?;
+    let mut quote = None;
+    let mut last_non_whitespace = None;
+    for (offset, byte) in suffix.bytes().take(16 * 1024).enumerate() {
+        match byte {
+            b'<' | b'\r' | b'\n' => return None,
+            _ if quote == Some(byte) => quote = None,
+            b'\'' | b'"' if quote.is_none() => quote = Some(byte),
+            b'>' if quote.is_none() => {
+                return (last_non_whitespace != Some(b'/'))
+                    .then_some("<context".len() + offset + 1);
+            }
+            _ => {}
+        }
+        if !byte.is_ascii_whitespace() {
+            last_non_whitespace = Some(byte);
+        }
+    }
+    None
+}
+
+fn transcript_context_opening_suffix(text: &str) -> Option<&str> {
+    let suffix = text.strip_prefix("<context")?;
+    matches!(
+        suffix.as_bytes().first(),
+        None | Some(b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n')
+    )
+    .then_some(suffix)
+}
+
+fn contains_transcript_context_opening(text: &str) -> bool {
+    text.match_indices("<context")
+        .any(|(offset, _)| transcript_context_opening_suffix(&text[offset..]).is_some())
 }
 
 struct TranscriptCodeFence {
@@ -2939,6 +3025,137 @@ mod tests {
                     format!("{newline}{ambiguous}").into(),
                 ],
                 "a preceding valid attachment must survive the ambiguous fallback"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_captured_unrelated_xml_is_supported() {
+        for newline in ["\n", "\r\n"] {
+            let body = "<contextual>ordinary</contextual>";
+            let source = vec![transcript_attachment("file:///D:/f.txt", body, newline).into()];
+            let normalized = normalize_transcript_message(&source, PathStyle::Windows);
+            assert_eq!(normalized.len(), 1);
+            let resources = captured_resources(&normalized);
+            assert_eq!(resources.len(), 1);
+            assert_eq!(resources.first().expect("captured XML").text, body);
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_with_partial_opening() {
+        for literal in [
+            "~~~text\n<context\nthird\n~~~",
+            "~~~text\n<context\nthird",
+            "`<context\nthird`",
+            "    <context\n    third",
+            "\\<context\nthird",
+        ] {
+            assert_context_ambiguity(literal, false);
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_with_different_tag_name() {
+        for literal in [
+            "~~~text\n<contextual>\nthird\n~~~",
+            "~~~text\n<contextual>\nthird",
+            "`<contextual>\nthird`",
+            "    <contextual>\n    third",
+            "\\<contextual>\nthird",
+        ] {
+            assert_context_ambiguity(literal, false);
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_with_malformed_openings() {
+        for opening in ["<context />", "<context ref=\"unfinished>"] {
+            for literal in [
+                format!("~~~text\n{opening}\nthird\n~~~"),
+                format!("~~~text\n{opening}\nthird"),
+                format!("`{opening}\nthird`"),
+                format!("    {opening}\n    third"),
+                format!("\\{opening}\nthird"),
+            ] {
+                assert_context_ambiguity(&literal, false);
+            }
+        }
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_in_fenced_code() {
+        assert_context_ambiguity_in_literal("~~~text\n<context>\nsecond\n</context>\n~~~");
+        assert_context_ambiguity_in_literal("````text\n<context>\nsecond\n</context>\n````");
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_in_unterminated_code() {
+        assert_context_ambiguity_in_literal("~~~text\n<context>\nsecond\n</context>");
+        assert_context_ambiguity_in_literal("`<context>\nsecond\n</context>");
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_in_inline_code() {
+        assert_context_ambiguity_in_literal("`<context>\nsecond\n</context>`");
+        assert_context_ambiguity_in_literal("``<context>\nsecond\n</context>``");
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_in_indented_code() {
+        assert_context_ambiguity_in_literal("    <context>\n    second\n    </context>");
+        assert_context_ambiguity_in_literal("\t<context>\n\tsecond\n\t</context>");
+    }
+
+    #[test]
+    fn test_normalize_transcript_message_context_ambiguity_in_escaped_text() {
+        assert_context_ambiguity_in_literal("\\<context>\nsecond\n\\</context>");
+        assert_context_ambiguity_in_literal("<context>\nsecond\n</context>");
+    }
+
+    fn assert_context_ambiguity_in_literal(literal: &str) {
+        assert_context_ambiguity(literal, true);
+    }
+
+    fn assert_context_ambiguity(literal: &str, distinct_previous_attachment: bool) {
+        let uri = "file:///D:/f.txt";
+        for newline in ["\n", "\r\n"] {
+            let literal = literal.replace('\n', newline);
+            let body = format!("first{newline}</context>{newline}{literal}{newline}third");
+            let ambiguous = format!(
+                "{}, request after",
+                transcript_attachment(uri, &body, newline)
+            );
+            let source = vec![ambiguous.clone().into()];
+            assert_eq!(
+                normalize_transcript_message(&source, PathStyle::Windows),
+                source
+            );
+            let valid = transcript_attachment("file:///D:/first.txt", "valid", newline);
+            let resource = acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+                acp_v2::EmbeddedResourceResource::TextResourceContents(
+                    acp_v2::TextResourceContents::new("valid", "file:///D:/first.txt"),
+                ),
+            ));
+            let combined = format!("{valid}{newline}{ambiguous}");
+            let expected = if distinct_previous_attachment {
+                vec![resource.clone(), format!("{newline}{ambiguous}").into()]
+            } else {
+                // Without a balanced inner context, this pair has the same tag
+                // structure as an outer snapshot containing an inner attachment.
+                vec![combined.clone().into()]
+            };
+            assert_eq!(
+                normalize_transcript_message(&[combined.into()], PathStyle::Windows),
+                expected,
+            );
+            assert_eq!(
+                normalize_transcript_message(
+                    &[format!("{valid}{newline}{literal}").into()],
+                    PathStyle::Windows
+                ),
+                vec![resource, format!("{newline}{literal}").into()],
+                "balanced authored examples must retain the preceding chip and literal text",
             );
         }
     }
@@ -6415,26 +6632,38 @@ mod tests {
     ) {
         init_test(cx);
         let (message_editor, cx) = setup_message_editor(cx).await;
-        let body = "first\n</context>\n[@inner](file:///D:/inner.txt)\n<context ref=\"file:///D:/inner.txt\">\nsecond\n</context>\nthird";
-        let replay = format!(
-            "Before {}, request after",
-            transcript_attachment("file:///D:/f.txt", body, "\n")
-        );
-        message_editor.update_in(cx, |editor, window, cx| {
-            editor.session_capabilities.write().set_prompt_capabilities(
-                acp_v2::PromptCapabilities::new()
-                    .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
+        for body in [
+            "first\n</context>\n[@inner](file:///D:/inner.txt)\n<context ref=\"file:///D:/inner.txt\">\nsecond\n</context>\nthird",
+            "first\n</context>\n~~~text\n<context>\nsecond\n</context>\n~~~\nthird",
+            "first\n</context>\n~~~text\n<context>\nsecond\n</context>\nthird",
+            "first\n</context>\n`<context>\nsecond\n</context>`\nthird",
+            "first\n</context>\n    <context>\n    second\n    </context>\nthird",
+            "first\n</context>\n\\<context>\nsecond\n\\</context>\nthird",
+            "first\n</context>\n~~~text\n<context\nthird\n~~~",
+            "first\n</context>\n~~~text\n<contextual>\nthird\n~~~",
+            "first\n</context>\n~~~text\n<context />\nthird\n~~~",
+            "first\n</context>\n~~~text\n<context ref=\"unfinished>\nthird\n~~~",
+        ] {
+            let replay = format!(
+                "Before {}, request after",
+                transcript_attachment("file:///D:/f.txt", body, "\n")
             );
-            editor.set_transcript_message(vec![replay.clone().into()], window, cx);
-            assert_eq!(editor.text(cx), replay);
-            assert!(editor.mention_set.read(cx).is_empty());
-        });
-        let (serialized, tracked_buffers) = message_editor
-            .update(cx, |editor, cx| editor.contents(false, cx))
-            .await
-            .expect("serialize literal historical envelope");
-        assert_eq!(serialized, vec![replay.into()]);
-        assert!(tracked_buffers.is_empty());
+            message_editor.update_in(cx, |editor, window, cx| {
+                editor.session_capabilities.write().set_prompt_capabilities(
+                    acp_v2::PromptCapabilities::new()
+                        .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
+                );
+                editor.set_transcript_message(vec![replay.clone().into()], window, cx);
+                assert_eq!(editor.text(cx), replay);
+                assert!(editor.mention_set.read(cx).is_empty());
+            });
+            let (serialized, tracked_buffers) = message_editor
+                .update(cx, |editor, cx| editor.contents(false, cx))
+                .await
+                .expect("serialize literal historical envelope");
+            assert_eq!(serialized, vec![replay.into()]);
+            assert!(tracked_buffers.is_empty());
+        }
     }
 
     #[gpui::test]
