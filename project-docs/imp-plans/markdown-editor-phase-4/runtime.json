@@ -22,6 +22,11 @@
     "index.html": "d6b8bfa0b72d3ddcd911c84ee734412224da33bbbe3f98f5b5c01e916232bf86",
     "application.css": "2f0e792395427d47b86ea351a0a9e19b1c3f8d3b2e733968b16942c522e61279"
   },
+  "nativeSourceHashesNormalizedLF": {
+    "crates/markdown_editor/src/assets.rs": "e450450310ee816f322538c4d93196eb61394157e5b7fa206a34d252883cce8a",
+    "crates/markdown_editor/src/item.rs": "347cb19a3bb797422682b8bb7a43dd6b1b6d2c090abbb791e5e3af5db3bd0705",
+    "crates/fs/src/fs.rs": "ca6d8b9adf16108e89ba4497b1dd0b93f236252eb4dd9507593c84d0ed4c56a0"
+  },
   "assets": {
     "crates/markdown_editor/frontend/application.js": "af2968282ab1e91d7e2e4525b078b8291e4d7a2b4c006e732d9fb1ef803a6248",
     "crates/markdown_editor/frontend/rich.js": "c2cc755ed20f0b8bf1c21655196f2e11a3035a5608009a8f708c79a11c003035",
@@ -370,10 +375,5 @@
     "crates/markdown_editor/frontend/vendor/vditor.css": "0865fe88664d5a9628e8f09d9214506c5109456c9af04b24965abe4f20ec073c",
     "crates/markdown_editor/frontend/vendor/vditor.js": "8c5679db69c84ca06a61310b9737cdab967325fb4879de698b09802e254ad064",
     "crates/markdown_editor/src/packaged_resources.rs": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194"
-  },
-  "nativeSourceHashesNormalizedLF": {
-    "crates/markdown_editor/src/assets.rs": "db57fdbaf67afd66f94b03b80e6678ba8a3d6485d33611871f55b229941b11c8",
-    "crates/markdown_editor/src/item.rs": "347cb19a3bb797422682b8bb7a43dd6b1b6d2c090abbb791e5e3af5db3bd0705",
-    "crates/fs/src/fs.rs": "ca6d8b9adf16108e89ba4497b1dd0b93f236252eb4dd9507593c84d0ed4c56a0"
   }
 }

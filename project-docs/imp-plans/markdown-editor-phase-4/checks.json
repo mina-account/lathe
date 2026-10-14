@@ -2,8 +2,8 @@
   "date": "2026-10-13",
   "frontendBridge": 17,
   "frontendRealBrowser": 53,
-  "windowsNative": 72,
-  "linuxNative": 71,
+  "windowsNative": 73,
+  "linuxNative": 72,
   "windowsProtocol": 13,
   "linuxProtocol": 13,
   "windowsRemoteProjectBytes": 1,
@@ -221,6 +221,84 @@
         "Windows Zed/Collab wrapper lints"
       ],
       "reason": "No project/worktree/protocol/server/workspace/preview/routing production source changed. Fresh native/pump/import, protocol, app, Fs, Markdown/Workspace/Fs lint, browser and actual backend smokes cover current bytes; existing benign Linux direct-SSH fixture is fresh. FakeFs instrumentation is test-support only with unchanged zero-delay behavior."
+    },
+    "additionalCacheCleanup": false,
+    "confidentialTransportProbes": false
+  },
+  "reviewFixPass5": {
+    "reviewedHead": "ef69587de52180dfb4e6435f5c202e40e2baa741",
+    "findingsFixed": 2,
+    "nativeExpectedRed": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "foregroundObservations": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "log": "C:/tmp/lathe-phase4-fixes5-native-red.log"
+    },
+    "runtimeExpectedRed": {
+      "tests": 1,
+      "failed": 1,
+      "exit": 1,
+      "log": "C:/tmp/lathe-phase4-fixes5-runtime-red.log"
+    },
+    "schedulingSeeds": 3,
+    "validationsPerScenario": 5,
+    "windowsAssetGreen": 25,
+    "linuxAssetGreen": 24,
+    "validation": "Resource and collected imports return background-validated extension/MIME/bytes; clipboard converts on background and shares one final validation; no foreground full image decode",
+    "schedulingCoverage": "Actual resource/encoded/drop/picker/clipboard request paths with accepted1024x1024x16 APNG; GPUI dispatcher observations, timer foreground progress, actual response bytes and anchored source edits/undo; not a hardware latency measurement",
+    "runtimeRegenerationVerified": true,
+    "runtimeRegression": "Copies actual generator/verifier and required files into an isolated root, runs both without field patching; direct repository generator then verifier also passes",
+    "lintCorrection": "Removed redundant clone of the owned test executor; final checked-exit platform scripts reran with the final source",
+    "freshBackendSmokeExits": {
+      "windows": 0,
+      "wayland": 0,
+      "x11": 0
+    },
+    "frontendSourceChanged": false,
+    "reusedVerification": {
+      "sourceCommit": "ef69587de52180dfb4e6435f5c202e40e2baa741",
+      "report": "C:/tmp/lathe-phase4-fixes-4.md",
+      "checks": [
+        "browser53 and bridge17",
+        "isolated347 assets/332 hashes reconstruction",
+        "Fs23 each",
+        "Linux direct SSH resource/import1"
+      ],
+      "logs": [
+        "C:/tmp/lathe-phase4-fixes4-browser-final.log",
+        "C:/tmp/lathe-phase4-fixes4-bridge-final.log",
+        "C:/tmp/lathe-phase4-fixes4-assets-final.log",
+        "C:/tmp/lathe-phase4-fixes4-windows-final.log",
+        "C:/tmp/lathe-phase4-fixes4-linux-final.log"
+      ],
+      "historicalBroadGroups": {
+        "sourceCommit": "a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d",
+        "report": "C:/tmp/lathe-phase4-fixes-2.md",
+        "windowsLog": "C:/tmp/lathe-phase4-fixes2-windows-final.log",
+        "linuxLog": "C:/tmp/lathe-phase4-fixes2-linux-final.log",
+        "previousCurrentPassReport": "C:/tmp/lathe-phase4-fixes-3.md",
+        "previousCurrentPassCommit": "6530c95413dc34d69f6cd2420dbb9d84d68e15bb",
+        "checks": [
+          "Windows direct SSH resource/import1",
+          "Windows collaborative local/shared-SSH1 each",
+          "preview32 each",
+          "saveWindows25/Linux26",
+          "close49 each",
+          "routingWorkspace1/terminal15 each",
+          "Project/Worktree/Settings and RemoteServer wrapper lints each",
+          "Windows Zed/Collab wrapper lints"
+        ],
+        "reason": "No project/worktree/protocol/server/workspace/preview/routing production source changed. Fresh native/pump/import, protocol, app, Fs, Markdown/Workspace/Fs lint, browser and actual backend smokes cover current bytes; existing benign Linux direct-SSH fixture is fresh. FakeFs instrumentation is test-support only with unchanged zero-delay behavior."
+      },
+      "reason": "Frontend/generated/protocol/Fs/project/worktree/server/workspace/preview/routing source remains unchanged. Fresh full native/pump/asset suites, app checks, scoped wrapper lint, three actual smokes and generator/asset verifiers cover changed decode scheduling and evidence behavior."
     },
     "additionalCacheCleanup": false,
     "confidentialTransportProbes": false

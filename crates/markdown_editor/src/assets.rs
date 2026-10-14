@@ -17,7 +17,14 @@ use std::{io::Cursor, path::PathBuf};
 const MAX_IMAGE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_IMAGE_COUNT: usize = 16;
 const MAX_IMAGE_BATCH_BYTES: usize = 8 * 1024 * 1024;
-type LoadedImage = Result<(String, Vec<u8>)>;
+type LoadedImage = Result<ValidatedImage>;
+type RawImage = Result<(String, Vec<u8>)>;
+struct ValidatedImage {
+    name: String,
+    extension: &'static str,
+    mime: &'static str,
+    bytes: Vec<u8>,
+}
 pub(crate) enum ImageInput {
     Encoded(Vec<ImportedImage>),
     Picker,
@@ -31,7 +38,18 @@ enum ImageSource {
     Path(PathBuf),
 }
 
+#[cfg(test)]
+thread_local! {
+    static IMAGE_VALIDATION_PROBE: std::cell::RefCell<Option<(gpui::BackgroundExecutor, Vec<bool>)>> = const { std::cell::RefCell::new(None) };
+}
+
 fn image_type(bytes: &[u8]) -> Result<(&'static str, &'static str)> {
+    #[cfg(test)]
+    IMAGE_VALIDATION_PROBE.with(|probe| {
+        if let Some((executor, observations)) = probe.borrow_mut().as_mut() {
+            observations.push(executor.is_main_thread());
+        }
+    });
     if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES {
         bail!("Image exceeds the 4 MiB encoded limit");
     }
@@ -89,7 +107,10 @@ fn validate_frames(frames: image::Frames<'_>) -> Result<()> {
 
 fn clipboard_image(bytes: &[u8]) -> Result<Vec<u8>> {
     if image::guess_format(bytes)? != image::ImageFormat::Bmp {
-        image_type(bytes)?;
+        anyhow::ensure!(
+            bytes.len() <= MAX_IMAGE_BYTES,
+            "Image exceeds the 4 MiB encoded limit"
+        );
         return Ok(bytes.to_vec());
     }
     if bytes.len() > 64 * 1024 * 1024 {
@@ -105,9 +126,17 @@ fn clipboard_image(bytes: &[u8]) -> Result<Vec<u8>> {
     reader
         .decode()?
         .write_to(&mut output, image::ImageFormat::Png)?;
-    let bytes = output.into_inner();
-    image_type(&bytes)?;
-    Ok(bytes)
+    Ok(output.into_inner())
+}
+
+fn validate_image(name: String, bytes: Vec<u8>) -> Result<ValidatedImage> {
+    let (extension, mime) = image_type(&bytes)?;
+    Ok(ValidatedImage {
+        name,
+        extension,
+        mime,
+        bytes,
+    })
 }
 
 fn asset_document(
@@ -276,8 +305,12 @@ impl MarkdownEditor {
                     project.load_binary_resource(path, MAX_IMAGE_BYTES, cx)
                 });
                 let bytes = load.await?;
-                let (_, mime) = image_type(&bytes)?;
-                Ok((mime.into(), bytes))
+                cx.background_executor()
+                    .spawn(async move {
+                        let image = validate_image(String::new(), bytes)?;
+                        Ok((image.mime.into(), image.bytes))
+                    })
+                    .await
             })
         };
         self.active_asset_requests += 1;
@@ -374,8 +407,7 @@ impl MarkdownEditor {
                 let images = load.await?;
                 for image in images {
                     let result: Result<()> = async {
-                        let (name, bytes) = image?;
-                        let (extension, _) = image_type(&bytes)?;
+                        let ValidatedImage {name, extension, bytes, ..} = image?;
                         let (project, document, folder) = this.read_with(cx, |this, cx| {
                             if !this.asset_active(cx) {
                                 bail!("Document closed or became read-only during import");
@@ -627,7 +659,7 @@ async fn collect_images(
             );
             total_bytes += bytes.len();
         }
-        images.push(image);
+        images.push(image.and_then(|(name, bytes)| validate_image(name, bytes)));
     }
     Ok(images)
 }
@@ -636,7 +668,7 @@ async fn load_image_path(
     filesystem: &std::sync::Arc<dyn project::Fs>,
     path: PathBuf,
     remaining: usize,
-) -> Result<LoadedImage> {
+) -> Result<RawImage> {
     let reader = match filesystem.open_sync(&path).await {
         Ok(reader) => reader,
         Err(error) => return Ok(Err(error)),
@@ -1299,6 +1331,120 @@ mod tests {
             writer.finish().expect("complete APNG");
         }
         bytes
+    }
+
+    #[gpui::test(iterations = 3)]
+    async fn bounded_animation_validation_runs_on_background_and_preserves_foreground_progress(
+        cx: &mut TestAppContext,
+    ) {
+        use fs::Fs as _;
+        use std::cell::Cell;
+        let (visual, filesystem, cx) = fixture(cx).await;
+        let (incoming, sent) = attach_pump(&visual, cx);
+        let animation = apng(1024, 1024, 16);
+        let path = PathBuf::from(path!("/project/accepted.png"));
+        filesystem
+            .write(&path, &animation)
+            .await
+            .expect("bounded animation");
+        IMAGE_VALIDATION_PROBE
+            .with(|probe| *probe.borrow_mut() = Some((cx.executor(), Vec::new())));
+        let progress = Rc::new(Cell::new(0));
+        let timer = visual.update(cx, |_, cx| {
+            cx.spawn({
+                let progress = progress.clone();
+                async move |_, cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(1))
+                        .await;
+                    progress.set(progress.get() + 1);
+                }
+            })
+        });
+        incoming.borrow_mut().push(visual.read_with(cx, |item, _| {
+            protocol::ClientMessage::Resource {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                request: 70,
+                url: "../accepted.png".into(),
+            }
+        }));
+        visual.update(cx, |item, cx| item.pump_browser(cx));
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(1));
+        cx.run_until_parked();
+        timer.await;
+        assert_eq!(progress.get(), 1);
+        assert!(sent.borrow().iter().any(|message|matches!(message,HostMessage::Resource {request:70,mime,bytes,error:None} if mime=="image/png"&&STANDARD.decode(bytes).expect("resource bytes")==animation)));
+        for route in ["encoded", "drop", "picker", "clipboard"] {
+            if route == "clipboard" {
+                cx.update(|_, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_image(&gpui::Image::from_bytes(
+                        gpui::ImageFormat::Png,
+                        animation.clone(),
+                    )))
+                });
+            }
+            if route == "drop" {
+                visual.update(cx, |item, cx| {
+                    item.native_image_drop(&gpui::ExternalPaths(vec![path.clone()].into()), cx)
+                });
+            }
+            let request = visual.read_with(cx, |item, _| {
+                if route == "encoded" {
+                    protocol::ClientMessage::ImportImages {
+                        session: item.protocol.session.clone(),
+                        document: item.protocol.document,
+                        base_revision: item.protocol.revision,
+                        position: 8,
+                        images: vec![ImportedImage {
+                            name: "accepted.png".into(),
+                            bytes: STANDARD.encode(&animation),
+                        }],
+                    }
+                } else {
+                    pick(item, route == "clipboard", route == "drop")
+                }
+            });
+            incoming.borrow_mut().push(request);
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            visual.update(cx, |item, cx| {
+                item.buffer.update(cx, |buffer, cx| {
+                    buffer.finalize_last_transaction();
+                    buffer.edit([(0..0, "Native\n")], None, cx);
+                    buffer.finalize_last_transaction();
+                })
+            });
+            cx.run_until_parked();
+            if route == "picker" {
+                cx.simulate_path_prompt_response(|_| Some(vec![path.clone()]));
+                cx.run_until_parked();
+            }
+            let source = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+            assert!(
+                source.starts_with("Native\nBefore\n\n![image](assets/"),
+                "{route}: {source}"
+            );
+            assert!(source.ends_with("Tail"));
+            for _ in 0..2 {
+                visual.update(cx, |item, cx| {
+                    item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+                });
+            }
+            cx.run_until_parked();
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                "Before\n\nTail"
+            );
+        }
+        let observations = IMAGE_VALIDATION_PROBE
+            .with(|probe| probe.borrow_mut().take().expect("validation probe").1);
+        assert!(!observations.is_empty());
+        assert!(
+            observations.iter().all(|foreground| !*foreground),
+            "full decode must never run on foreground: {observations:?}"
+        );
+        assert_eq!(observations.len(), 5, "each image validates once");
     }
 
     #[test]

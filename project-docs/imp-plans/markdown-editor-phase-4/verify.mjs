@@ -66,7 +66,7 @@ assert.equal(checks.frontendBridge,17);
 assert.equal(checks.frontendRealBrowser,53);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
-assert.equal(checks.windowsNative,72);assert.equal(checks.linuxNative,71);
+assert.equal(checks.windowsNative,73);assert.equal(checks.linuxNative,72);
 assert.equal(checks.reviewFixPass2.findingsFixed,3);assert.equal(checks.reviewFixPass2.nativeAssetGreen,15);
 assert.equal(checks.reviewFixPass2.loadedImageHistoryAndFlush,true);
 assert.equal(checks.reviewFixPass3.findingsFixed,3);
@@ -76,5 +76,9 @@ assert.equal(checks.reviewFixPass4.windowsAssetGreen,24);assert.equal(checks.rev
 assert.equal(checks.reviewFixPass4.raceSeeds,20);
 assert.equal(checks.reviewFixPass4.nativeCountRejectedBeforeOpen,true);
 assert.equal(checks.reviewFixPass4.nativeCollectionReadBytesBounded,true);
+assert.equal(checks.reviewFixPass5.findingsFixed,2);
+assert.equal(checks.reviewFixPass5.schedulingSeeds,3);
+assert.equal(checks.reviewFixPass5.validationsPerScenario,5);
+assert.equal(checks.reviewFixPass5.runtimeRegenerationVerified,true);
 assert.equal(checks.windowsWorkspaceSave,25);assert.equal(checks.linuxWorkspaceSave,26);
 console.log("Verified recorded Phase4 renderer, resource, preservation and final-asset checks");

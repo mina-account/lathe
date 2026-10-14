@@ -83,6 +83,8 @@ cargo check --locked -p zed --all-targets --features visual-tests,markdown-brows
 ./script/clippy.ps1 -p zed --locked
 ./script/clippy.ps1 -p collab --locked
 node project-docs/imp-plans/markdown-editor-phase-4/verify.mjs
+node project-docs/imp-plans/markdown-editor-phase-4/record-runtime.mjs
+node project-docs/imp-plans/markdown-editor-phase-4/test-runtime.mjs
 ```
 
 Windows uses the VS2022 BuildTools development shell, CMake/Ninja, `CEF_PATH=C:/tmp/markdown-cef-runtime`, `CARGO_TARGET_DIR=C:/tmp/markdown-browser-probe-target`, and its debug directory on PATH. The repository lint wrapper is launched in a child PowerShell with its final native exit code preserved, avoiding PowerShell stderr promotion as a false failure. Linux uses `wsl -d Ubuntu -u an -- bash` and the checked-in LF `run-linux.sh` with `native`, `protocol`, `remote`, `regressions`, `check`, `lint`, `build`, `wayland`, or `x11`. It uses the ext4 target/CEF caches and actual WSLg Wayland/X11 backends. Wayland unsets DISPLAY; X11 sets `WAYLAND_DISPLAY='' DISPLAY=:0 XDG_SESSION_TYPE=x11`. No user processes are terminated by these helpers.
@@ -150,3 +152,15 @@ FakeFs adds test-support-only open/read measurements and GPUI-timer-delayed file
 Final current checks pass 53/53 real-browser groups, 17/17 bridge cases, 72/72 Windows native and 71/71 Linux native cases, and 13/13 protocol cases each. The native asset subset passes 24/24 Windows and 23/23 Linux. Current application checks, Markdown/Workspace/Fs repository-wrapper lints, scoped formatting, fresh actual Win32/Wayland/X11 smokes and locked 347-resource/332-hash reconstruction pass. The existing benign Linux direct-SSH fixture is also fresh. Native source hashes now accompany the unchanged frontend hashes and fresh backend traces.
 
 Unchanged broad suites retain explicit pass 2 provenance at `a1a34c8ad1cd4e49cf547575c1c09e5b5ec2aa9d`, carried through pass 3 at the reviewed commit, in `checks.json`. No project/worktree/protocol/server/workspace/preview/routing production source changed. No stopped or additional confidential transport probe was attempted. Baseline exceptions and Phase 5/6 obligations remain unchanged; completion status was not advanced.
+
+## Independent review pass 5 corrections
+
+Both findings from reviewed commit `ef69587de52180dfb4e6435f5c202e40e2baa741` have expected-red regressions. The accepted 1024-by-1024, 16-frame APNG fixture reached full decoding on GPUI's foreground dispatcher in resource/encoded/drop/picker paths, and clipboard validated once on background plus again on foreground. The actual dispatcher observations were `[true,true,true,true,false,true]`. After remediation, each of the five request paths validates exactly once on background across three scheduler seeds. GPUI-timer foreground progress, resource MIME/byte identity, native edits during import, anchored links and native undo remain correct. This verifies executor placement and document behavior; it is not a hardware latency measurement.
+
+Resource loading awaits background validation after the project read. All importer inputs return a validated name, extension, MIME and owned bytes from their background collector. The foreground loop performs only project/document checks, confined writes and anchored insertion. Clipboard conversion retains its raw/encoded bounds and shares the common final validation without a second full decode. All prior image, animation, error, privacy, batch, source/history and lifecycle regressions pass.
+
+The runtime recorder now regenerates normalized native source hashes with frontend and packaged hashes. `test-runtime.mjs` copies the actual generator/verifier and required benign inputs into an isolated root, then runs regeneration followed by the verifier without patching fields or logic. The previous generator caused the actual verifier to fail on missing native hashes; the corrected generator and direct repository regeneration both pass. Temporary fixture copies remain available for inspection.
+
+Final current native suites pass 73/73 Windows and 72/72 Linux, including the 25/24 asset subsets, with protocol 13/13 each. Current application checks, scoped repository-wrapper lint, formatting, fresh Win32/Wayland/X11 smokes, recorder/regeneration regression, source/asset/trace verifier and 332 pinned hashes pass. The introduced test-executor redundant clone was removed before the final checked-exit reruns. Native hashes were produced by `record-runtime.mjs`, with no manual native-field patch.
+
+Unchanged browser 53/53, bridge 17/17, Fs 23/23 each and isolated 347-resource reconstruction retain exact pass 4 provenance at the reviewed commit; unchanged transport/regression/lint groups retain the explicit historical chain in `checks.json`. No frontend/generated or transport source changed and no additional confidential/adversarial probe was run. Phase status, baseline exceptions and Phase 5/6 obligations remain unchanged.
