@@ -26,6 +26,8 @@ pub(super) enum SourceRole {
 pub(super) enum DisplayRow {
     Transcript(usize),
     ActivityHeader(TurnIdentity),
+    PlanSummary(TurnIdentity),
+    PlanEntry(TurnIdentity, usize),
     Content {
         turn: TurnIdentity,
         source: SourceReference,
@@ -40,7 +42,10 @@ impl DisplayRow {
         match self {
             Self::Transcript(index) => Some(*index),
             Self::Content { source, .. } => Some(source.entry_index),
-            Self::ActivityHeader(_) | Self::Generating => None,
+            Self::ActivityHeader(_)
+            | Self::PlanSummary(_)
+            | Self::PlanEntry(..)
+            | Self::Generating => None,
         }
     }
 }
@@ -56,10 +61,19 @@ struct GroupState {
     statuses: Vec<SourceReference>,
     prompt: Option<SourceReference>,
     expanded: bool,
+    inspect_activity: bool,
+    plan_entries: Option<usize>,
+    has_metadata: bool,
 }
 
 impl GroupState {
-    fn matches(&self, turn: &ClassifiedTurn, expanded: bool) -> bool {
+    fn matches(
+        &self,
+        turn: &ClassifiedTurn,
+        expanded: bool,
+        metadata: Option<&(TurnIdentity, u64, Option<usize>)>,
+    ) -> bool {
+        let plan_entries = metadata.and_then(|(_, _, entries)| *entries);
         self.lifecycle == turn.lifecycle
             && self.confidence == turn.confidence
             && self.response == turn.response
@@ -68,6 +82,9 @@ impl GroupState {
             && self.statuses == turn.statuses
             && self.prompt == turn.prompt
             && self.expanded == expanded
+            && self.inspect_activity == turn.inspect_activity
+            && self.plan_entries == plan_entries
+            && self.has_metadata == metadata.is_some()
     }
 }
 
@@ -82,9 +99,11 @@ pub(super) struct DisplayRows {
     group_rows: HashMap<TurnIdentity, Vec<usize>>,
     groups: HashMap<TurnIdentity, GroupState>,
     header_rows: HashMap<TurnIdentity, usize>,
+    pub metadata_activity: Option<(TurnIdentity, u64, Option<usize>)>,
 }
 
 impl DisplayRows {
+    #[cfg(test)]
     pub fn new(
         mode: DisplayMode,
         entry_count: usize,
@@ -92,10 +111,22 @@ impl DisplayRows {
         expanded: impl Fn(&TurnIdentity) -> bool,
         generating: bool,
     ) -> Self {
+        Self::with_metadata(mode, entry_count, turns, expanded, generating, None)
+    }
+
+    fn with_metadata(
+        mode: DisplayMode,
+        entry_count: usize,
+        turns: &[ClassifiedTurn],
+        expanded: impl Fn(&TurnIdentity) -> bool,
+        generating: bool,
+        metadata_activity: Option<(TurnIdentity, u64, Option<usize>)>,
+    ) -> Self {
         let mut projection = Self {
             mode,
             entry_count,
             turn_order: turns.iter().map(|turn| turn.identity.clone()).collect(),
+            metadata_activity,
             ..Self::default()
         };
         if mode == DisplayMode::Normal {
@@ -107,6 +138,12 @@ impl DisplayRows {
                 .extend((0..entry_count).map(|index| (index, index)));
         }
         for turn in turns {
+            let metadata = projection
+                .metadata_activity
+                .as_ref()
+                .filter(|(identity, _, _)| identity == &turn.identity);
+            let plan_entries = metadata.and_then(|(_, _, entries)| *entries);
+            let has_metadata = metadata.is_some();
             let mut sources = turn.activity.clone();
             sources.extend(turn.response.iter().cloned());
             sources.extend(turn.required_actions.iter().cloned());
@@ -126,6 +163,9 @@ impl DisplayRows {
                     statuses: turn.statuses.clone(),
                     prompt: turn.prompt.clone(),
                     expanded: expanded(&turn.identity),
+                    inspect_activity: turn.inspect_activity,
+                    plan_entries,
+                    has_metadata,
                 },
             );
             if mode == DisplayMode::Normal {
@@ -151,7 +191,7 @@ impl DisplayRows {
                     !turn.required_actions.contains(source) && !turn.statuses.contains(source)
                 })
                 .collect();
-            if !activity.is_empty() {
+            if !activity.is_empty() || has_metadata {
                 let header = projection.rows.len();
                 projection
                     .rows
@@ -172,6 +212,23 @@ impl DisplayRows {
                             .entry(source.entry_index)
                             .or_insert(header);
                     }
+                }
+                if expanded(&turn.identity)
+                    && let Some(entries) = plan_entries
+                {
+                    let start = projection.rows.len();
+                    projection
+                        .rows
+                        .push(DisplayRow::PlanSummary(turn.identity.clone()));
+                    projection.rows.extend(
+                        (0..entries)
+                            .map(|index| DisplayRow::PlanEntry(turn.identity.clone(), index)),
+                    );
+                    projection
+                        .group_rows
+                        .entry(turn.identity.clone())
+                        .or_default()
+                        .extend(start..projection.rows.len());
                 }
             }
             for source in &sources {
@@ -239,16 +296,32 @@ impl DisplayRows {
         self.entry_rows.get(&entry).copied()
     }
 
+    pub fn rows_for_entry(&self, entry: usize) -> impl Iterator<Item = usize> {
+        self.source_rows
+            .iter()
+            .filter_map(move |(source, row)| (source.entry_index == entry).then_some(*row))
+    }
+
     pub fn entry_for_row(&self, row: usize) -> Option<usize> {
         self.rows.get(row)?.entry_index().or_else(|| {
-            if let DisplayRow::ActivityHeader(identity) = self.rows.get(row)? {
+            if let DisplayRow::ActivityHeader(identity)
+            | DisplayRow::PlanSummary(identity)
+            | DisplayRow::PlanEntry(identity, _) = self.rows.get(row)?
+            {
                 return self
                     .groups
                     .get(identity)?
                     .activity
                     .iter()
                     .map(|source| source.entry_index)
-                    .min();
+                    .min()
+                    .or_else(|| {
+                        self.groups
+                            .get(identity)?
+                            .prompt
+                            .as_ref()
+                            .map(|prompt| prompt.entry_index)
+                    });
             }
             self.source_rows
                 .iter()
@@ -263,6 +336,43 @@ impl DisplayRows {
         ListOffset {
             item_ix: self.entry_for_row(offset.item_ix).unwrap_or(entry_count),
             offset_in_item: offset.offset_in_item,
+        }
+    }
+
+    pub fn navigation_range_for_row(&self, row: usize) -> Option<std::ops::Range<usize>> {
+        let boundary = match self.rows.get(row)? {
+            DisplayRow::PlanSummary(identity) | DisplayRow::PlanEntry(identity, _) => {
+                let group = self.groups.get(identity)?;
+                Some(
+                    group
+                        .activity
+                        .iter()
+                        .chain(&group.prompt)
+                        .map(|source| source.entry_index)
+                        .max()
+                        .map_or(self.entry_count, |index| index.saturating_add(1)),
+                )
+            }
+            DisplayRow::ActivityHeader(identity)
+                if self.groups.get(identity)?.plan_entries.is_some() =>
+            {
+                let group = self.groups.get(identity)?;
+                Some(
+                    group
+                        .prompt
+                        .as_ref()
+                        .map(|prompt| prompt.entry_index.saturating_add(1))
+                        .or_else(|| group.activity.iter().map(|source| source.entry_index).min())
+                        .unwrap_or(self.entry_count),
+                )
+            }
+            _ => None,
+        };
+        if let Some(boundary) = boundary {
+            Some(boundary..boundary)
+        } else {
+            self.entry_for_row(row)
+                .map(|entry| entry..entry.saturating_add(1))
         }
     }
 
@@ -290,7 +400,14 @@ impl DisplayRows {
                 .zip(turns)
                 .all(|(identity, turn)| identity == &turn.identity);
         if self.mode != mode || !stable_order || self.entry_count != entry_count {
-            let next = Self::new(mode, entry_count, turns, expanded, generating);
+            let next = Self::with_metadata(
+                mode,
+                entry_count,
+                turns,
+                expanded,
+                generating,
+                self.metadata_activity.clone(),
+            );
             let prefix = self
                 .rows
                 .iter()
@@ -320,14 +437,25 @@ impl DisplayRows {
         let mut remeasure = Vec::new();
         for turn in turns {
             let is_expanded = expanded(&turn.identity);
-            if self
-                .groups
-                .get(&turn.identity)
-                .is_some_and(|group| group.matches(turn, is_expanded))
-            {
+            if self.groups.get(&turn.identity).is_some_and(|group| {
+                group.matches(
+                    turn,
+                    is_expanded,
+                    self.metadata_activity
+                        .as_ref()
+                        .filter(|(identity, _, _)| identity == &turn.identity),
+                )
+            }) {
                 continue;
             }
-            let fragment = Self::new(mode, 0, std::slice::from_ref(turn), |_| is_expanded, false);
+            let fragment = Self::with_metadata(
+                mode,
+                0,
+                std::slice::from_ref(turn),
+                |_| is_expanded,
+                false,
+                self.metadata_activity.clone(),
+            );
             if mode == DisplayMode::Compact {
                 let range = self
                     .group_rows
@@ -575,6 +703,62 @@ mod tests {
             projection.from_transcript_offset(persisted).offset_in_item,
             gpui::px(37.)
         );
+    }
+
+    #[test]
+    fn metadata_navigation_boundaries_preserve_source_ranges_and_saved_offsets() {
+        let mut turn = turn();
+        turn.response.clear();
+        let accepted_form = source(2, None, SourceIdentity::Tool(Arc::from("accepted-form")));
+        turn.activity.push(accepted_form.clone());
+        let normal = DisplayRows::new(
+            DisplayMode::Normal,
+            3,
+            std::slice::from_ref(&turn),
+            |_| false,
+            false,
+        );
+        for entry in 0..3 {
+            assert_eq!(
+                normal.navigation_range_for_row(entry),
+                Some(entry..entry + 1)
+            );
+        }
+        let compact = DisplayRows::with_metadata(
+            DisplayMode::Compact,
+            3,
+            std::slice::from_ref(&turn),
+            |_| true,
+            false,
+            Some((turn.identity.clone(), 7, Some(1))),
+        );
+        let form_row = compact
+            .row_for_source(&accepted_form)
+            .expect("accepted form row");
+        assert_eq!(compact.navigation_range_for_row(form_row), Some(2..3));
+        let header = compact
+            .rows
+            .iter()
+            .position(|row| matches!(row, DisplayRow::ActivityHeader(_)))
+            .expect("header");
+        assert_eq!(compact.navigation_range_for_row(header), Some(1..1));
+        for (row, descriptor) in compact.rows.iter().enumerate() {
+            if matches!(
+                descriptor,
+                DisplayRow::PlanSummary(_) | DisplayRow::PlanEntry(..)
+            ) {
+                assert_eq!(
+                    compact.entry_for_row(row),
+                    Some(1),
+                    "saved offsets keep their transcript source"
+                );
+                assert_eq!(
+                    compact.navigation_range_for_row(row),
+                    Some(3..3),
+                    "navigation starts after earlier activity, including accepted forms"
+                );
+            }
+        }
     }
 
     #[test]

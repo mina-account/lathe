@@ -97,13 +97,6 @@ impl EntryViewState {
         self.expanded_activity_groups.contains_key(identity)
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Outer disclosure interactions are wired in the activity panel task."
-        )
-    )]
     pub(crate) fn set_activity_group_expanded(
         &mut self,
         identity: TurnIdentity,
@@ -121,8 +114,39 @@ impl EntryViewState {
         &mut self,
         turns: &[crate::conversation_view::response_model::ClassifiedTurn],
     ) {
-        self.expanded_activity_groups
-            .retain(|identity, _| turns.iter().any(|turn| &turn.identity == identity));
+        self.expanded_activity_groups = self
+            .expanded_activity_groups
+            .drain()
+            .filter_map(|(identity, anchor)| {
+                let owns_anchor =
+                    |turn: &&crate::conversation_view::response_model::ClassifiedTurn| {
+                        anchor.as_ref().is_none_or(|anchor| {
+                            turn.prompt.as_ref() == Some(anchor)
+                                || turn.activity.contains(anchor)
+                                || turn.response.contains(anchor)
+                                || turn.required_actions.contains(anchor)
+                                || turn.statuses.contains(anchor)
+                        })
+                    };
+                // Prompt echoes can replace a provisional identity while keeping its output.
+                let turn = turns
+                    .iter()
+                    .find(|turn| turn.identity == identity && owns_anchor(turn))
+                    .or_else(|| anchor.as_ref().and_then(|_| turns.iter().find(owns_anchor)))?;
+                Some((turn.identity.clone(), anchor))
+            })
+            .collect();
+    }
+
+    pub(crate) fn reconcile_activity_group(
+        &mut self,
+        previous: &TurnIdentity,
+        current: TurnIdentity,
+    ) {
+        if self.expanded_activity_groups.get(previous) == Some(&None) {
+            self.expanded_activity_groups.remove(previous);
+            self.expanded_activity_groups.insert(current, None);
+        }
     }
 
     pub(crate) fn is_tool_call_expanded(&self, tool_call_id: &acp_v1::ToolCallId) -> bool {
