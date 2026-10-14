@@ -12581,6 +12581,93 @@ pub(crate) mod tests {
     }
 
     #[gpui::test]
+    async fn test_agent_activity_historical_panel_keeps_pending_edits_reachable(
+        cx: &mut TestAppContext,
+    ) {
+        use super::display_rows::{DisplayMode, DisplayRow};
+        init_test(cx);
+        let connection = StubAgentConnection::new();
+        let (conversation, cx) =
+            setup_conversation_view(StubAgentServer::new(connection.clone()), cx).await;
+        add_to_workspace_with_size(conversation.clone(), true, cx);
+        let view = active_thread(&conversation, cx);
+        let thread = view.read_with(cx, |view, _| view.thread.clone());
+        connection.set_next_prompt_updates(vec![
+            acp_v1::SessionUpdate::AgentThoughtChunk(acp_v1::ContentChunk::new(
+                "Edit the requested file".into(),
+            )),
+            acp_v1::SessionUpdate::AgentMessageChunk(acp_v1::ContentChunk::new(
+                "The edit is ready to review".into(),
+            )),
+        ]);
+        thread
+            .update(cx, |thread, cx| thread.send_raw("Edit the file", cx))
+            .await
+            .expect("editing prompt");
+        cx.run_until_parked();
+        add_activity_test_edit(&view, cx).await;
+        connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+            acp_v1::ContentChunk::new("A text-only reply".into()),
+        )]);
+        thread
+            .update(cx, |thread, cx| thread.send_raw("Explain the result", cx))
+            .await
+            .expect("text-only prompt");
+        cx.run_until_parked();
+        let identity = view.update(cx, |view, cx| {
+            view.edits_expanded = false;
+            view.set_display_mode(DisplayMode::Compact, cx);
+            assert!(view.thread.read(cx).plan().is_none());
+            let latest = view.response_model.turns.last().expect("latest turn");
+            assert!(latest.activity.is_empty());
+            let identity = view
+                .response_model
+                .turns
+                .first()
+                .expect("editing turn")
+                .identity
+                .clone();
+            assert_eq!(
+                view.display_rows
+                    .rows
+                    .iter()
+                    .filter(|row| matches!(row, DisplayRow::ActivityHeader(_)))
+                    .count(),
+                1,
+            );
+            view.scroll_to_entry(0, cx);
+            identity
+        });
+        cx.run_until_parked();
+        let selector: &'static str =
+            Box::leak(format!("agent-activity-{identity:?}").into_boxed_str());
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        let header = cx.debug_bounds(selector).expect("historical activity");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        let edits = cx
+            .debug_bounds("edits-container")
+            .expect("pending edit summary");
+        cx.simulate_click(edits.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("agent-edited-files-list").is_some(),
+            "the earlier open panel must still permit pending edit inspection after a text-only turn"
+        );
+        let header = cx.debug_bounds(selector).expect("open historical activity");
+        cx.simulate_click(header.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+        assert!(cx.debug_bounds("agent-edits-review-summary").is_some());
+        let edits = cx
+            .debug_bounds("edits-container")
+            .expect("closed edit summary");
+        cx.simulate_click(edits.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("agent-edited-files-list").is_none());
+    }
+
+    #[gpui::test]
     async fn test_agent_activity_closed_panel_preserves_elicitation_and_errors(
         cx: &mut TestAppContext,
     ) {

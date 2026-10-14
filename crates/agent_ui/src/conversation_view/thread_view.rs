@@ -4021,29 +4021,11 @@ impl ThreadView {
         if self.display_mode != DisplayMode::Compact {
             return true;
         }
-        self.display_rows
-            .plan_activity
-            .as_ref()
-            .map(|(identity, _, _)| identity)
-            .or_else(|| {
-                self.response_model
-                    .turns
-                    .iter()
-                    .rev()
-                    .find(|turn| {
-                        matches!(
-                            turn.lifecycle,
-                            TurnLifecycle::Running | TurnLifecycle::RequiresAction
-                        )
-                    })
-                    .or_else(|| self.response_model.turns.last())
-                    .map(|turn| &turn.identity)
-            })
-            .is_some_and(|identity| {
-                self.entry_view_state
-                    .read(cx)
-                    .activity_group_expanded(identity)
-            })
+        let state = self.entry_view_state.read(cx);
+        // Pending edits are thread-wide and can outlive the turn that produced them.
+        self.display_rows.rows.iter().any(|row| {
+            matches!(row, DisplayRow::ActivityHeader(identity) if state.activity_group_expanded(identity))
+        })
     }
 
     fn render_edited_files(
@@ -5078,6 +5060,7 @@ impl ThreadView {
             .child(
                 h_flex()
                     .id("edits-container")
+                    .debug_selector(|| "edits-container".into())
                     .cursor_pointer()
                     .gap_1()
                     .when(details_visible, |this| {
