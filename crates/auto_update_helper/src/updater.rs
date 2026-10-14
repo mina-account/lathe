@@ -376,6 +376,9 @@ pub(crate) fn perform_update(
     launch: bool,
     launch_arguments: &[OsString],
 ) -> Result<()> {
+    if app_dir.join("libexec/lathe-editor.exe").is_file() {
+        return perform_lathe_update(app_dir, launch, launch_arguments);
+    }
     let hwnd = hwnd.map(|ptr| HWND(ptr as _));
 
     // Try to release file handles before starting the update
@@ -499,5 +502,233 @@ mod test {
             ret.is_err_and(|e| e.to_string().as_str() == "Autoupdate failed, rollback successful")
         );
         assert!(std::env::var("ZED_AUTO_UPDATE_RB").is_ok_and(|e| e == "rollback1"));
+    }
+}
+
+fn lathe_launch_command(app_dir: &Path, launch_arguments: &[OsString]) -> std::process::Command {
+    #[allow(clippy::disallowed_methods, reason = "doesn't run in the main binary")]
+    let mut command = std::process::Command::new(app_dir.join("libexec/lathe-editor.exe"));
+    command.args(launch_arguments);
+    command
+}
+
+fn perform_lathe_update(app_dir: &Path, launch: bool, launch_arguments: &[OsString]) -> Result<()> {
+    use crate::lathe_layout::{DIRECTORIES, validate_payload, validate_tree};
+    let root = crate::lathe_layout::installation_root(&app_dir.join("libexec/lathe-editor.exe"))?
+        .context("Missing Lathe installation root")?;
+    anyhow::ensure!(
+        root == app_dir.canonicalize()?,
+        "Lathe helper root does not match editor root"
+    );
+    validate_payload(app_dir, None, None, std::env::consts::ARCH)?;
+    let backup = validate_tree(app_dir, Path::new("old"))?;
+    crate::lathe_layout::validate_backup_cleanup(app_dir)?;
+    anyhow::ensure!(
+        !backup.exists(),
+        "Previous Lathe update backup still exists; restart Lathe before updating again"
+    );
+    std::fs::create_dir(&backup)?;
+    let mut completed: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+    let result: Result<()> = (|| {
+        for name in DIRECTORIES
+            .iter()
+            .copied()
+            .chain(["licenses.md", "release.txt"])
+        {
+            let current = validate_tree(app_dir, Path::new(name))?;
+            let old = backup.join(name);
+            let staged = validate_tree(app_dir, &Path::new("install").join(name))?;
+            if name == "licenses.md" && !staged.exists() {
+                continue;
+            }
+            if current.exists() {
+                move_with_retry(&current, &old)?;
+                completed.push((current.clone(), old));
+            }
+            move_with_retry(&staged, &current)?;
+            completed.push((staged, current));
+        }
+        if launch {
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "runs on the update helper worker thread"
+            )]
+            let _child = lathe_launch_command(app_dir, launch_arguments)
+                .spawn()
+                .context("Failed to launch Lathe after update")?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        for (original, destination) in completed.iter().rev() {
+            move_with_retry(destination, original).with_context(|| {
+                format!(
+                    "Lathe update failed ({error:#}); rollback failed for {}",
+                    original.display()
+                )
+            })?;
+        }
+        std::fs::remove_dir(&backup)?;
+        anyhow::bail!("Lathe update failed; rollback successful: {error:#}");
+    }
+    log::info!("Lathe update completed; backup retained until successful startup");
+    Ok(())
+}
+
+fn move_with_retry(source: &Path, destination: &Path) -> Result<()> {
+    let start = Instant::now();
+    loop {
+        match std::fs::rename(source, destination) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if start.elapsed() < Duration::from_secs(15)
+                    && matches!(
+                        error.kind(),
+                        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::WouldBlock
+                    ) =>
+            {
+                std::thread::sleep(Duration::from_millis(50))
+            }
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Cannot move {} to {}",
+                        source.display(),
+                        destination.display()
+                    )
+                });
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod lathe_tests {
+    use super::*;
+    fn payload(root: &Path, directory: &str, version: &str) -> Result<()> {
+        let root = root.join(directory);
+        for path in [
+            "bin/lathe.exe",
+            "libexec/lathe-editor.exe",
+            "libexec/conpty.dll",
+            "libexec/x64/OpenConsole.exe",
+            "share/lathe.ico",
+            "tools/auto_update_helper.exe",
+        ] {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().context("Missing parent")?)?;
+            std::fs::write(path, version)?;
+        }
+        std::fs::write(
+            root.join("release.txt"),
+            format!("lathe-update-v1\n{version}\nbeta\nx86_64\n"),
+        )?;
+        Ok(())
+    }
+    #[test]
+    fn consecutive_updates_and_arguments() -> Result<()> {
+        let folder = tempfile::tempdir()?;
+        let root = folder.path();
+        payload(root, "", "1.10.2")?;
+        for version in ["1.10.3", "1.10.4"] {
+            payload(root, "install", version)?;
+            perform_lathe_update(root, false, &[])?;
+            assert_eq!(
+                std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+                version
+            );
+            crate::lathe_layout::validate_backup_cleanup(root)?;
+            std::fs::remove_dir_all(root.join("old"))?;
+            std::fs::remove_dir_all(root.join("install"))?;
+        }
+        let arguments = [
+            OsString::from("--user-data-dir"),
+            OsString::from("C:/isolated profile"),
+        ];
+        let command = lathe_launch_command(root, &arguments);
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            arguments
+                .iter()
+                .map(OsString::as_os_str)
+                .collect::<Vec<_>>()
+        );
+        Ok(())
+    }
+    #[test]
+    fn mismatched_marker_and_locked_payload_preserve_current() -> Result<()> {
+        use std::os::windows::fs::OpenOptionsExt;
+        let folder = tempfile::tempdir()?;
+        let root = folder.path();
+        payload(root, "", "1.10.2")?;
+        payload(root, "install", "1.10.3")?;
+        assert!(
+            crate::lathe_layout::validate_payload(root, Some("1.10.4"), Some("beta"), "x86_64")
+                .is_err()
+        );
+        assert!(
+            crate::lathe_layout::validate_payload(root, Some("1.10.3"), Some("stable"), "x86_64")
+                .is_err()
+        );
+        std::fs::remove_file(root.join("install/release.txt"))?;
+        assert!(perform_lathe_update(root, false, &[]).is_err());
+        payload(root, "install", "1.10.3")?;
+        let locked = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(root.join("libexec/lathe-editor.exe"))?;
+        let result = perform_lathe_update(root, false, &[]);
+        assert!(result.is_err_and(|error| error.to_string().contains("rollback successful")));
+        drop(locked);
+        assert_eq!(
+            std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+            "1.10.2"
+        );
+        assert!(!root.join("old").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn interrupted_backup_is_preserved() -> Result<()> {
+        let folder = tempfile::tempdir()?;
+        let root = folder.path();
+        payload(root, "", "1.10.2")?;
+        std::fs::create_dir(root.join("old"))?;
+        std::fs::write(root.join("old/recovery-file"), "recoverable")?;
+        assert!(crate::lathe_layout::validate_backup_cleanup(root).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join("old/recovery-file"))?,
+            "recoverable"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+            "1.10.2"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_and_failed_launch_restore_installation() -> Result<()> {
+        let folder = tempfile::tempdir()?;
+        let root = folder.path();
+        payload(root, "", "1.10.2")?;
+        payload(root, "install", "1.10.3")?;
+        std::fs::remove_file(root.join("install/tools/auto_update_helper.exe"))?;
+        assert!(perform_lathe_update(root, false, &[]).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+            "1.10.2"
+        );
+        payload(root, "install", "1.10.3")?;
+        assert!(perform_lathe_update(root, true, &[]).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join("bin/lathe.exe"))?,
+            "1.10.2"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("install/bin/lathe.exe"))?,
+            "1.10.3"
+        );
+        Ok(())
     }
 }

@@ -1,3 +1,6 @@
+#[cfg(target_os = "windows")]
+#[path = "../../auto_update_helper/src/lathe_layout.rs"]
+mod lathe_layout;
 mod lathe_update;
 
 use anyhow::{Context as _, Result};
@@ -267,6 +270,10 @@ struct GlobalAutoUpdate(Option<Entity<AutoUpdater>>);
 impl Global for GlobalAutoUpdate {}
 
 pub fn init(client: Arc<Client>, cx: &mut App) {
+    #[cfg(target_os = "windows")]
+    cx.background_spawn(async { cleanup_windows().await })
+        .detach_and_log_err(cx);
+
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         workspace.register_action(|_, action, window, cx| check(action, window, cx));
 
@@ -476,11 +483,10 @@ struct InstallerDir(PathBuf);
 #[cfg(target_os = "windows")]
 impl InstallerDir {
     async fn new() -> Result<Self> {
-        let installer_dir = std::env::current_exe()?
-            .parent()
-            .context("No parent dir for Zed.exe")?
-            .join("updates");
-        if smol::fs::metadata(&installer_dir).await.is_ok() {
+        let (root, _lathe) = windows_installation_root()?;
+        let installer_dir = root.join("updates");
+        lathe_layout::validate_tree(&root, Path::new("updates"))?;
+        if installer_dir.exists() {
             smol::fs::remove_dir_all(&installer_dir).await?;
         }
         smol::fs::create_dir(&installer_dir).await?;
@@ -575,15 +581,6 @@ impl AutoUpdater {
             });
 
         cx.spawn(async move |this, cx| {
-            if cfg!(target_os = "windows") {
-                use util::ResultExt;
-
-                cleanup_windows()
-                    .await
-                    .context("failed to cleanup old directories")
-                    .log_err();
-            }
-
             #[cfg(all(not(target_os = "windows"), not(test)))]
             cx.background_spawn(cleanup_stale_installer_dirs()).detach();
 
@@ -621,7 +618,14 @@ impl AutoUpdater {
                     let is_missing_dependency =
                         error.downcast_ref::<MissingDependencyError>().is_some();
                     this.status = match check_type {
-                        UpdateCheckType::Automatic if is_missing_dependency => {
+                        UpdateCheckType::Automatic
+                            if is_missing_dependency
+                                || lathe_update_base_url(
+                                    ReleaseChannel::try_global(cx)
+                                        .unwrap_or(ReleaseChannel::Stable),
+                                )
+                                .is_some() =>
+                        {
                             log::warn!("auto-update: {}", error);
                             AutoUpdateStatus::Errored {
                                 error: Arc::new(error),
@@ -773,6 +777,7 @@ impl AutoUpdater {
         let client = this.read_with(cx, |this, _| this.client.clone());
 
         if let Some(api_url) = lathe_update_base_url(release_channel) {
+            lathe_update::ensure_desktop_artifact(asset, version.as_ref())?;
             return lathe_update::get_release_asset(
                 client.http_client(),
                 &api_url,
@@ -943,6 +948,7 @@ impl AutoUpdater {
                 running_app_path,
                 channel,
                 background_executor,
+                newer_version.to_string(),
             ))
             .await
         };
@@ -1048,6 +1054,7 @@ impl AutoUpdater {
         running_app_path: PathBuf,
         channel: &str,
         background_executor: BackgroundExecutor,
+        _target_version: String,
     ) -> Result<Option<PathBuf>> {
         match OS {
             "macos" => {
@@ -1062,7 +1069,7 @@ impl AutoUpdater {
             "linux" => {
                 install_release_linux(&installer_dir, &target_path, channel, running_app_path).await
             }
-            "windows" => install_release_windows(&target_path).await,
+            "windows" => install_release_windows(&target_path, &_target_version, channel).await,
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         }
     }
@@ -1483,63 +1490,117 @@ async fn cleanup_stale_installer_dirs() {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn windows_installation_root() -> Result<(PathBuf, bool)> {
+    let editor = std::env::current_exe()?;
+    if let Some(root) = lathe_layout::installation_root(&editor)? {
+        Ok((root, true))
+    } else {
+        Ok((
+            editor
+                .parent()
+                .context("No parent directory for editor")?
+                .to_path_buf(),
+            false,
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
 async fn cleanup_windows() -> Result<()> {
-    let parent = std::env::current_exe()?
-        .parent()
-        .context("No parent dir for Zed.exe")?
-        .to_owned();
-
-    // keep in sync with crates/auto_update_helper/src/updater.rs
-    _ = smol::fs::remove_dir(parent.join("updates")).await;
-    _ = smol::fs::remove_dir(parent.join("install")).await;
-    _ = smol::fs::remove_dir(parent.join("old")).await;
-
+    #[cfg(target_os = "windows")]
+    {
+        let (root, lathe) = windows_installation_root()?;
+        if lathe {
+            lathe_layout::validate_backup_cleanup(&root)?;
+        }
+        if lathe && root.join("install/release.txt").exists() {
+            return Ok(());
+        }
+        for directory in ["old", "install", "updates"] {
+            let target = lathe_layout::validate_tree(&root, Path::new(directory))?;
+            if target.exists() {
+                smol::fs::remove_dir_all(target).await?;
+            }
+        }
+    }
     Ok(())
 }
 
-async fn install_release_windows(downloaded_installer: &Path) -> Result<Option<PathBuf>> {
-    let mut cmd = new_command(downloaded_installer);
-    cmd.arg("/verysilent")
+async fn install_release_windows(
+    downloaded_installer: &Path,
+    _target_version: &str,
+    _channel: &str,
+) -> Result<Option<PathBuf>> {
+    let mut command = new_command(downloaded_installer);
+    command
+        .arg("/verysilent")
         .arg("/update=true")
         .arg("/MERGETASKS=!desktopicon");
-    let output = cmd.output().await?;
+    #[cfg(target_os = "windows")]
+    let (root, lathe) = windows_installation_root()?;
+    #[cfg(target_os = "windows")]
+    if lathe {
+        lathe_layout::validate_tree(&root, Path::new("install"))?;
+        let helper = lathe_layout::validate_tree(&root, Path::new("tools/auto_update_helper.exe"))?;
+        anyhow::ensure!(
+            helper.is_file(),
+            "Missing Lathe update helper; install the bootstrap manually"
+        );
+        command
+            .arg(format!("/DIR={}", root.display()))
+            .arg("/NOCLOSEAPPLICATIONS");
+    }
+    let output = command.output().await?;
     anyhow::ensure!(
         output.status.success(),
-        "failed to start installer: {:?}",
+        "installer staging failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    // We return the path to the update helper program, because it will
-    // perform the final steps of the update process, copying the new binary,
-    // deleting the old one, and launching the new binary.
+    #[cfg(target_os = "windows")]
+    if lathe {
+        let version = semver::Version::parse(_target_version)?;
+        let version = format!("{}.{}.{}", version.major, version.minor, version.patch);
+        lathe_layout::validate_payload(&root, Some(&version), Some(_channel), ARCH)?;
+        let helper =
+            lathe_layout::validate_tree(&root, Path::new("updates/auto_update_helper.exe"))?;
+        smol::fs::copy(root.join("tools/auto_update_helper.exe"), &helper).await?;
+        return Ok(Some(helper));
+    }
     let helper_path = std::env::current_exe()?
         .parent()
-        .context("No parent dir for Zed.exe")?
-        .join("tools")
-        .join("auto_update_helper.exe");
+        .context("No parent dir for editor")?
+        .join("tools/auto_update_helper.exe");
+    anyhow::ensure!(helper_path.is_file(), "Missing update helper");
     Ok(Some(helper_path))
 }
 
 pub async fn finalize_auto_update_on_quit() {
-    let Some(installer_path) = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.join("updates")))
-    else {
-        return;
-    };
-
-    // The installer will create a flag file after it finishes updating
-    let flag_file = installer_path.join("versions.txt");
-    if flag_file.exists()
-        && let Some(helper) = installer_path
-            .parent()
-            .map(|p| p.join("tools").join("auto_update_helper.exe"))
-    {
-        let mut command = util::command::new_command(helper);
-        command.arg("--launch");
-        command.arg("false");
-        if let Ok(mut cmd) = command.spawn() {
-            _ = cmd.status().await;
-        }
+    #[cfg(target_os = "windows")]
+    let result: Result<()> = (|| {
+        let (root, lathe) = windows_installation_root()?;
+        let helper = if lathe {
+            if !root.join("install/release.txt").exists() {
+                return Ok(());
+            }
+            lathe_layout::validate_payload(&root, None, None, ARCH)?;
+            lathe_layout::validate_tree(&root, Path::new("updates/auto_update_helper.exe"))?
+        } else {
+            if !root.join("updates/versions.txt").exists() {
+                return Ok(());
+            }
+            root.join("tools/auto_update_helper.exe")
+        };
+        anyhow::ensure!(helper.is_file(), "Missing staged update helper");
+        // The helper must wait for executable handles after the quit callback returns.
+        util::command::new_command(helper)
+            .args(["--launch", "false"])
+            .spawn()?;
+        Ok(())
+    })();
+    #[cfg(target_os = "windows")]
+    if let Err(error) = result {
+        log::error!("Cannot finalize pending update: {error:#}");
     }
 }
 
@@ -1569,6 +1630,121 @@ mod tests {
 
     pub(super) struct InstallOverride(pub Rc<dyn Fn(&Path, &AsyncApp) -> Result<Option<PathBuf>>>);
     impl Global for InstallOverride {}
+
+    #[test]
+    fn beta_core_versions_do_not_repeat_or_downgrade() -> Result<()> {
+        let current = Version::parse("1.10.2+beta.source")?;
+        for (fetched, offered) in [
+            ("1.10.1-beta", false),
+            ("1.10.2-beta", false),
+            ("1.10.3-beta", true),
+        ] {
+            let result = AutoUpdater::check_if_fetched_version_is_newer(
+                ReleaseChannel::Beta,
+                Ok(None),
+                current.clone(),
+                fetched.to_string(),
+                AutoUpdateStatus::Idle,
+            )?;
+            assert_eq!(result.is_some(), offered);
+        }
+        Ok(())
+    }
+
+    #[gpui::test]
+    fn fork_api_failure_is_visible_without_fallback(cx: &mut TestAppContext) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let http_client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |request| {
+                requests.fetch_add(1, atomic::Ordering::SeqCst);
+                assert_eq!(request.uri().host(), Some("api.github.com"));
+                assert_eq!(request.uri().path(), "/repos/mina-account/lathe/releases");
+                async move {
+                    Ok(Response::builder()
+                        .status(429)
+                        .body("rate limited".into())?)
+                }
+            }
+        });
+        let updater = cx.update(|cx| {
+            settings::init(cx);
+            release_channel::init_test(Version::new(1, 10, 2), ReleaseChannel::Beta, cx);
+            let client = Client::new(Arc::new(FakeSystemClock::new()), http_client, cx);
+            cx.new(|cx| AutoUpdater::new(Version::new(1, 10, 2), client, cx))
+        });
+        updater.update(cx, |updater, cx| {
+            updater.poll(UpdateCheckType::Automatic, cx)
+        });
+        cx.run_until_parked();
+        assert!(matches!(
+            updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Errored { .. }
+        ));
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 1);
+    }
+
+    #[gpui::test]
+    async fn fork_remote_server_is_rejected_before_fetch_and_cloud_version_is_preserved(
+        cx: &mut TestAppContext,
+    ) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let http_client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |request| {
+                requests.fetch_add(1, atomic::Ordering::SeqCst);
+                assert_eq!(request.uri().path(), "/releases/nightly/1.10.1/asset");
+                assert!(
+                    request
+                        .uri()
+                        .query()
+                        .is_some_and(|query| query.contains("asset=zed-remote-server"))
+                );
+                async move {
+                    Ok(Response::builder().status(200).body(
+                        r#"{"version":"1.10.1","url":"https://test.example/server-A"}"#.into(),
+                    )?)
+                }
+            }
+        });
+        let updater = cx.update(|cx| {
+            settings::init(cx);
+            release_channel::init_test(Version::new(1, 10, 2), ReleaseChannel::Beta, cx);
+            let client = Client::new(Arc::new(FakeSystemClock::new()), http_client, cx);
+            cx.new(|cx| AutoUpdater::new(Version::new(1, 10, 2), client, cx))
+        });
+        let mut asynchronous = cx.to_async();
+        let rejected = AutoUpdater::get_release_asset(
+            &updater,
+            ReleaseChannel::Beta,
+            Some(Version::new(1, 10, 1)),
+            "zed-remote-server",
+            "linux",
+            "x86_64",
+            &mut asynchronous,
+        )
+        .await;
+        assert!(rejected.is_err_and(|error| {
+            error
+                .to_string()
+                .contains("unsupported Lathe fork artifact")
+        }));
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+        let server = AutoUpdater::get_release_asset(
+            &updater,
+            ReleaseChannel::Nightly,
+            Some(Version::new(1, 10, 1)),
+            "zed-remote-server",
+            "linux",
+            "x86_64",
+            &mut asynchronous,
+        )
+        .await
+        .expect("inherited cloud server route");
+        assert_eq!(server.version, "1.10.1");
+        assert_eq!(server.url, "https://test.example/server-A");
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 1);
+    }
 
     #[gpui::test]
     fn test_auto_update_defaults_to_true(cx: &mut TestAppContext) {

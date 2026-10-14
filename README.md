@@ -2,9 +2,11 @@
 
 A code editor. It's a fork of [Zed](https://zed.dev) with my own changes stacked on top: a mobile dev panel for React Native and Expo, more git tooling than upstream ships, pull request review inside the editor, and a theme I actually want to look at all day.
 
-### [Download Lathe](https://github.com/paterschris/lathe/releases/latest)
+### [Download Lathe](https://github.com/mina-account/lathe/releases)
 
-macOS, Linux, Windows. On macOS, Homebrew works too:
+This fork currently publishes Windows x64 Beta builds. Other platforms can be built from source when supported.
+
+The Homebrew commands below install the original distribution, not the mina-account fork. Use this fork's Releases for Super Compact Mode.
 
 ```sh
 brew install --cask paterschris/tap/lathe
@@ -37,7 +39,7 @@ Screenshots and the long version live in **[docs/features.md](docs/features.md)*
 
 ## Install
 
-### Homebrew (recommended)
+### Homebrew (original distribution)
 
 ```sh
 brew tap paterschris/tap
@@ -46,7 +48,7 @@ brew install --cask lathe
 
 ### Manual download
 
-From [Releases](https://github.com/paterschris/lathe/releases):
+From [Releases](https://github.com/mina-account/lathe/releases):
 
 - **macOS**: grab the `.dmg`, open it, drag **Lathe.app** to `/Applications`. There's a `.zip` too if you'd rather. Both are code-signed and notarized by Apple.
 - **Linux**: the `.tar.gz`, extracted wherever you want it. Or build from source and use the install script below. Runtime requirements are the same as upstream Zed's: the host's ALSA (`libasound2` on Debian/Ubuntu, `alsa-lib` on Fedora/Arch) and working Vulkan drivers. Any normal desktop distro already has both.
@@ -69,7 +71,7 @@ That strips Mark-of-the-Web off the extracted files, installs Lathe under `%LOCA
 **macOS:**
 
 ```sh
-git clone git@github.com:paterschris/lathe.git
+git clone git@github.com:mina-account/lathe.git
 cd lathe
 script/build-fork      # ~10-15 min first time
 script/install-fork    # copies to /Applications
@@ -78,7 +80,7 @@ script/install-fork    # copies to /Applications
 **Linux:**
 
 ```sh
-git clone git@github.com:paterschris/lathe.git
+git clone git@github.com:mina-account/lathe.git
 cd lathe
 script/build-fork-linux      # installs system deps, builds
 script/package-fork-linux    # creates .tar.gz
@@ -88,7 +90,7 @@ script/install-fork-linux    # installs to ~/.local/share/lathe, symlinks CLI to
 **Windows:**
 
 ```powershell
-git clone https://github.com/paterschris/lathe.git
+git clone https://github.com/mina-account/lathe.git
 cd lathe
 script/build-fork-windows.ps1 -Architecture x86_64
 script/package-fork-windows.ps1 -Architecture x86_64
@@ -114,7 +116,7 @@ Two channels:
 - **Stable**, tagged `vX.Y.Z`. Use this one.
 - **Beta**, tagged `vX.Y.Z-beta` and published as GitHub prereleases, with a different app icon. Beta usually means the newest upstream Zed sync is in there and hasn't reached stable yet.
 
-Homebrew gives you stable. For a beta, pull the `-beta` asset off [Releases](https://github.com/paterschris/lathe/releases).
+The original distribution's Homebrew tap gives you its stable build, without this fork's additions. For a beta, pull the `-beta` asset off [Releases](https://github.com/mina-account/lathe/releases).
 
 Want a ping when a release goes out? **Watch > Custom > Releases** at the top of the repo. Starring won't do it, that just bookmarks the project.
 
@@ -187,3 +189,11 @@ Builds, packages, and publishes a GitHub release. Needs the [GitHub CLI](https:/
 - On macOS, the app shares settings and extensions with stock Zed (`~/Library/Application Support/Zed`)
 - Linux installs land in `~/.local/share/lathe`, CLI symlinked to `~/.local/bin/lathe`
 - `cargo-bundle` gets installed for you from [zed-industries/cargo-bundle](https://github.com/zed-industries/cargo-bundle)
+
+### Windows updater bootstrap
+
+Install `Lathe-1.10.2-x86_64-windows-setup.exe` manually from this fork's [Beta release](https://github.com/mina-account/lathe/releases/tag/v1.10.2-beta). Old binaries contain the old feed; a release description cannot repair them. Users on upstream 1.11.2 also need this manual bootstrap, because automatic updates do not downgrade.
+
+Verify the installed version is 1.10.2 Beta and its source commit matches the release. Check the installer SHA-256 against its `.sha256` asset. The release records whether binaries are signed; unsigned builds show Windows security prompts.
+
+Settings are preserved. If you previously set `"auto_update": false`, keep it disabled until verifying the bootstrap, then set `"auto_update": true` if you want polling. Stable, Beta and Preview use `https://api.github.com/repos/mina-account/lathe/releases?per_page=30`; explicit `LATHE_BETA_UPDATE_URL`, `LATHE_UPDATE_URL` and `LATHE_RELEASE_NOTES_URL` overrides retain their precedence. Windows updates stage separately and apply after saving and quitting or restarting. Canceling quit leaves the session running. Windows-only releases do not supply macOS, Linux, ARM64 or remote-server artifacts.

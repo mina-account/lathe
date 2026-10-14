@@ -41,7 +41,8 @@ jobs:
             'script/build-fork-windows.ps1',
             'script/package-fork-windows.ps1',
             'script/install-fork-windows.ps1',
-            'script/uninstall-fork-windows.ps1'
+            'script/uninstall-fork-windows.ps1',
+            'script/test-fork-windows-update.ps1'
           )
           $hasErrors = $false
           foreach ($s in $scripts) {
@@ -133,7 +134,13 @@ jobs:
             -p project `
             -p agent_servers `
             -p util `
-            -p install_cli
+            -p install_cli `
+            -p auto_update `
+            -p auto_update_helper
+
+      - name: Test update helper transactions
+        shell: pwsh
+        run: cargo test -p auto_update_helper -- --test-threads=1
 
       - name: cargo check (full workspace)
         # Full-tree check is slower but surfaces second-order breakage — a
@@ -194,6 +201,13 @@ jobs:
         shell: pwsh
         run: ./script/package-fork-windows.ps1 -Architecture x86_64
 
+      - name: Smoke-test two isolated update transactions
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem target/release -Filter 'Lathe-*-windows.zip' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $archive) { throw 'Missing packaged Windows archive' }
+          ./script/test-fork-windows-update.ps1 -ArchivePath $archive.FullName
+
       - name: Smoke-test install script (extract + PATH update + uninstall)
         shell: pwsh
         # Runs the full install/uninstall round-trip in a clean user profile
@@ -222,6 +236,8 @@ jobs:
 
           if (-not (Test-Path $cliExe))    { throw "FAIL: missing $cliExe after install" }
           if (-not (Test-Path $editorExe)) { throw "FAIL: missing $editorExe after install" }
+          if (-not (Test-Path (Join-Path $installDir 'tools\auto_update_helper.exe'))) { throw 'Missing installed helper' }
+          if (-not (Test-Path (Join-Path $installDir 'release.txt'))) { throw 'Missing installed release metadata' }
 
           $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
           $binDir = Join-Path $installDir 'bin'
@@ -249,7 +265,7 @@ jobs:
           # "could not find zed-cli" on real Windows installs: the cli
           # --version check above only exercises the cli->editor direction.
           # Runners have an interactive desktop and D3D falls back to WARP.
-          $editor = Start-Process -FilePath $editorExe -PassThru
+          $editor = Start-Process -FilePath $editorExe -WindowStyle Hidden -PassThru
           Start-Sleep -Seconds 15
           if ($editor.HasExited) {
             throw "FAIL: lathe-editor.exe exited within 15s of launch (exit code $($editor.ExitCode))"

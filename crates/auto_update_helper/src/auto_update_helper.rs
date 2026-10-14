@@ -3,6 +3,8 @@
 #[cfg(target_os = "windows")]
 mod dialog;
 #[cfg(target_os = "windows")]
+mod lathe_layout;
+#[cfg(target_os = "windows")]
 mod updater;
 
 #[cfg(target_os = "windows")]
