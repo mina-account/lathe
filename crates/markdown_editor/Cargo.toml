@@ -14,12 +14,15 @@ doctest = false
 
 [features]
 default = ["application"]
-application = ["dep:editor", "dep:gpui", "dep:language", "dep:project", "dep:workspace", "dep:ui", "dep:util", "dep:futures", "dep:log", "dep:db", "dep:pulldown-cmark", "dep:settings", "dep:theme", "dep:image", "dep:base64", "dep:http_client", "dep:path", "dep:uuid"]
+application = ["dep:lathe_hooks", "dep:markdown_preview", "dep:editor", "dep:gpui", "dep:language", "dep:project", "dep:workspace", "dep:ui", "dep:util", "dep:futures", "dep:log", "dep:db", "dep:pulldown-cmark", "dep:settings", "dep:theme", "dep:image", "dep:base64", "dep:http_client", "dep:path", "dep:uuid"]
 browser = ["application", "dep:cef", "dep:image"]
 test-support = ["application", "gpui/test-support", "editor/test-support", "workspace/test-support", "dep:db", "db/test-support", "dep:fs", "fs/test-support", "dep:gpui_platform", "gpui_platform/test-support", "gpui_platform/wayland", "gpui_platform/x11", "dep:raw-window-handle", "dep:sysinfo", "dep:settings"]
 
 [dependencies]
+lathe_hooks = { workspace = true, optional = true }
+markdown_preview = { workspace = true, optional = true }
 anyhow.workspace = true
+schemars.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 urlencoding.workspace = true

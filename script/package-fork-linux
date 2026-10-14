@@ -92,6 +92,7 @@ app_dir="${temp_dir}/lathe${suffix}.app"
 mkdir -p "${app_dir}/bin" "${app_dir}/libexec"
 cp "$zed_binary" "${app_dir}/libexec/lathe-editor"
 cp "$cli_binary" "${app_dir}/bin/lathe"
+node script/package-markdown-runtime.mjs "$(dirname "$zed_binary")" "${app_dir}/libexec"
 
 # Bundle shared libraries
 echo "--- Bundling shared libraries ---"
@@ -102,7 +103,7 @@ mkdir -p "${app_dir}/lib"
 # the builder's GLIBCXX symbols can still run the editor.
 ldd "$zed_binary" | \
     cut -d' ' -f3 | \
-    grep -v '\<\(libc.so\|libgcc_s.so\|libm.so\|libpthread.so\|libdl.so\|libasound.so\)' | \
+    grep -v '\<\(libc.so\|libgcc_s.so\|libm.so\|libpthread.so\|libdl.so\|libasound.so\|libcef.so\)' | \
     while read -r lib; do
         if [ -f "$lib" ]; then
             cp "$lib" "${app_dir}/lib/"

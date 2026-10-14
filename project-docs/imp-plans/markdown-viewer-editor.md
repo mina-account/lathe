@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Phases 0 through 3 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the shared-buffer Item now provides confined, source-preserving Vditor 3.11.2 editing modes and viewer. Phases 4 through 6 remain pending: expanded resources/renderers/themes, complete opening/settings/install/packaging, and the user's full native/manual acceptance run.
+Status: Phases 0 through 4 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the shared-buffer Item provides confined, source-preserving Vditor 3.11.2 modes, viewer, project images, local renderers, themes, and CSS. Phase 4 merged in [PR 6](https://github.com/mina-account/lathe/pull/6) after independent review 13 reported clean. Phase 5 opening/settings/install/packaging and the user's Phase 6 full native/manual acceptance run remain pending.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 

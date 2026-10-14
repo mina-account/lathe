@@ -199,6 +199,30 @@ pub fn run_subprocess_if_invoked() {
     std::process::exit(if result >= 0 { result } else { 1 });
 }
 
+fn preflight_runtime(runtime: &std::path::Path) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    let library = "libcef.dll";
+    #[cfg(target_os = "linux")]
+    let library = "libcef.so";
+    for path in [
+        library,
+        "icudtl.dat",
+        "resources.pak",
+        "chrome_100_percent.pak",
+        "chrome_200_percent.pak",
+        "v8_context_snapshot.bin",
+        "locales/en-US.pak",
+    ] {
+        if !runtime.join(path).is_file() {
+            bail!(
+                "Markdown editor runtime is incomplete: missing {path} in {}. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+                runtime.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 fn initialize(cx: &mut gpui::App) -> Result<()> {
     if cx.background_executor().is_test() {
         bail!("CEF initialization is disabled in GPUI tests");
@@ -214,17 +238,16 @@ fn initialize(cx: &mut gpui::App) -> Result<()> {
                 .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
         })
         .ok_or_else(|| anyhow!("CEF runtime directory unavailable"))?;
-    for path in ["icudtl.dat", "resources.pak", "locales"] {
-        if !runtime.join(path).exists() {
-            bail!(
-                "Pinned CEF runtime missing {path}; keep the build-copied 154.0.34 runtime beside the executable or set LATHE_MARKDOWN_CEF_RUNTIME to its flat runtime directory"
-            );
-        }
-    }
+    preflight_runtime(&runtime)?;
+    log::info!(
+        "Markdown editor CEF runtime: {} (pinned 154.0.34)",
+        runtime.display()
+    );
     let args = cef::args::Args::new();
     let mut app = RuntimeApp::new();
     cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
     let settings = cef::Settings {
+        browser_subprocess_path: std::env::current_exe()?.to_string_lossy().as_ref().into(),
         no_sandbox: 1,
         command_line_args_disabled: 1,
         windowless_rendering_enabled: 1,

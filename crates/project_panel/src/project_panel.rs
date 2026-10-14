@@ -1221,9 +1221,29 @@ impl ProjectPanel {
                 (has_git_repo, has_history)
             };
 
+            let markdown_actions = lathe_hooks::LatheHooks::get(cx)
+                .and_then(|hooks| hooks.markdown_file_actions)
+                .filter(|_| !is_dir)
+                .map(|actions| {
+                    actions(lathe_hooks::MarkdownFileTarget {
+                        worktree_id: worktree_id.to_proto(),
+                        path: entry.path.to_string(),
+                        file_name: worktree
+                            .absolutize(&entry.path)
+                            .file_name()
+                            .map(|name| name.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                        item_id: None,
+                    })
+                })
+                .unwrap_or_default();
             let has_pasteable_content = self.has_pasteable_content(cx);
             let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                 menu.context(self.focus_handle.clone()).map(|menu| {
+                    let mut menu = menu;
+                    for (label, action) in markdown_actions {
+                        menu = menu.action(label, action);
+                    }
                     if is_read_only {
                         menu.when(is_markdown, |menu| {
                             menu.action("Open Markdown Preview", Box::new(OpenMarkdownPreview))

@@ -3288,7 +3288,26 @@ impl Pane {
                 } else {
                     Vec::new()
                 };
-                let extra_actions = item_handle.tab_extra_context_menu_actions(window, cx);
+                let mut extra_actions = item_handle.tab_extra_context_menu_actions(window, cx);
+                if let Some(path) = item_handle.project_path(cx)
+                    && let Some(actions) = lathe_hooks::LatheHooks::get(cx)
+                        .and_then(|hooks| hooks.markdown_file_actions)
+                {
+                    extra_actions.extend(actions(lathe_hooks::MarkdownFileTarget {
+                        worktree_id: path.worktree_id.to_proto(),
+                        path: path.path.to_string(),
+                        file_name: pane
+                            .upgrade()
+                            .and_then(|pane| pane.read(cx).project.upgrade())
+                            .and_then(|project| project.read(cx).absolute_path(&path, cx))
+                            .and_then(|path| {
+                                path.file_name()
+                                    .map(|name| name.to_string_lossy().into_owned())
+                            })
+                            .unwrap_or_else(|| path.path.to_string()),
+                        item_id: Some(item_id.as_u64()),
+                    }));
+                }
                 ContextMenu::build(window, cx, move |mut menu, window, cx| {
                     let close_active_item_action = CloseActiveItem {
                         save_intent: None,

@@ -71,6 +71,10 @@ function Get-VSArch {
 }
 
 function Find-VsDevShell {
+    if ($env:VSINSTALLDIR) {
+        $candidate = Join-Path $env:VSINSTALLDIR 'Common7/Tools/Launch-VsDevShell.ps1'
+        if (Test-Path -LiteralPath $candidate) { return $candidate }
+    }
     # vswhere ships with any VS installer and knows about custom install
     # locations the hardcoded roots below would miss.
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -206,12 +210,14 @@ if (-not $env:ZED_COMMIT_SHA) {
 }
 
 Write-Output "Channel: $channel"
+& "$PSScriptRoot/build-markdown-frontend.ps1"
 Write-Output "Building release binaries..."
 
-cargo build --release --target $Target --package zed --package cli --package auto_update_helper
+cargo build --locked --release --target $Target --package zed --package cli --package auto_update_helper --features zed/markdown-browser
 if ($LASTEXITCODE -ne 0) { throw "Cargo build failed (exit code $LASTEXITCODE)." }
 
-$outDir = "target/$Target/release"
+$cargoRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { 'target' }
+$outDir = Join-Path $cargoRoot "$Target/release"
 Write-Output ""
 Write-Output "=== Build complete ==="
 Write-Output "  GUI:    $outDir/zed.exe"

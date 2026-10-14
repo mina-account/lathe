@@ -8,10 +8,6 @@
 //! against future Zed updates. See `lathe-extraction-plan.md` for the seam
 //! patterns this enables and the migration order.
 //!
-//! The registry is intentionally empty at this stage (Phase 0): it is the
-//! landing zone that later extraction phases populate. Keeping the container
-//! here means the upstream init site stays a single line as features move in.
-//!
 //! # Adding an extension point
 //!
 //! 1. Add a field to [`LatheHooks`] holding your callback, e.g.
@@ -22,13 +18,26 @@
 //! 2. Register it from your feature crate's `init` via [`LatheHooks::update`].
 //! 3. Read it from the one upstream call site via [`LatheHooks::get`].
 
-use gpui::{App, Global};
+use gpui::{Action, App, Global, SharedString};
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MarkdownFileTarget {
+    pub worktree_id: u64,
+    pub path: String,
+    /// Single-file worktrees have an empty relative path.
+    pub file_name: String,
+    pub item_id: Option<u64>,
+}
 
 /// Registry of Lathe extension points, installed as a GPUI global by [`init`].
 ///
 /// See the module documentation for how to add a new extension point.
 #[derive(Default)]
-pub struct LatheHooks {}
+pub struct LatheHooks {
+    pub markdown_file_actions:
+        Option<fn(MarkdownFileTarget) -> Vec<(SharedString, Box<dyn Action>)>>,
+    pub markdown_preview_default: Option<fn(&std::path::Path, &App) -> Option<bool>>,
+}
 
 #[derive(Default)]
 struct GlobalLatheHooks(LatheHooks);

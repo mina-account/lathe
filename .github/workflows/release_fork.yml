@@ -344,6 +344,13 @@ jobs:
       - name: Install Linux dependencies
         run: script/linux
 
+      - name: Install Markdown frontend build toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: npm
+          cache-dependency-path: crates/markdown_editor/frontend/package-lock.json
+
       - name: Build
         env:
           LATHE_UPDATE_URL: https://api.github.com/repos/mina-account/lathe/releases?per_page=30
@@ -418,6 +425,13 @@ jobs:
         continue-on-error: true
         with:
           cache-on-failure: true
+
+      - name: Install Markdown frontend build toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: npm
+          cache-dependency-path: crates/markdown_editor/frontend/package-lock.json
 
       - name: Build
         shell: pwsh

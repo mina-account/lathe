@@ -9,7 +9,16 @@ pub use item::{BrowserSurface, FakeBrowserSurface, MarkdownEditor, init};
 mod assets;
 #[cfg(all(feature = "browser", any(target_os = "windows", target_os = "linux")))]
 pub mod browser;
+#[cfg(all(feature = "browser", any(target_os = "windows", target_os = "linux")))]
+mod installation_check;
+#[cfg(feature = "application")]
+mod opening;
 #[cfg(feature = "browser")]
 mod packaged_resources;
 #[cfg(feature = "application")]
 mod settings;
+#[cfg(feature = "application")]
+pub use opening::{
+    CopyHtml, CopyMarkdown, InsertImage, OpenToTheSide, ResetPreferences, SetDefaultOpenMode,
+    SetMode, ShowPreview, ToggleOutline,
+};

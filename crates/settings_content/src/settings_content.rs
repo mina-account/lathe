@@ -1426,9 +1426,56 @@ pub enum LineIndicatorFormat {
     Long,
 }
 
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    PartialEq,
+    Eq,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkdownDefaultOpenMode {
+    #[default]
+    Source,
+    Preview,
+    Editor,
+}
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    PartialEq,
+    Eq,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkdownEditorMode {
+    #[default]
+    InstantRendering,
+    Wysiwyg,
+    Split,
+}
+
 #[with_fallible_options]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, MergeFrom, Default, PartialEq)]
 pub struct MarkdownEditorSettingsContent {
+    /// Unset retains the legacy preview preference, then falls back to source.
+    pub default_open_mode: Option<MarkdownDefaultOpenMode>,
+    pub mode: Option<MarkdownEditorMode>,
     pub image_save_folder: Option<String>,
     pub use_app_theme_colors: Option<bool>,
     pub show_line_numbers: Option<bool>,
@@ -1438,6 +1485,19 @@ pub struct MarkdownEditorSettingsContent {
     pub code_theme: Option<String>,
     /// Explicit network service URL ending at the PlantUML server root.
     pub plantuml_service: Option<String>,
+}
+
+#[test]
+fn markdown_editor_opening_settings_round_trip() {
+    let input = serde_json::json!({"default_open_mode":"editor", "mode":"split"});
+    let content: MarkdownEditorSettingsContent =
+        serde_json::from_value(input.clone()).expect("valid Markdown opening settings");
+    let output = serde_json::to_value(content).expect("serialized Markdown settings");
+    assert_eq!(
+        output.get("default_open_mode"),
+        input.get("default_open_mode")
+    );
+    assert_eq!(output.get("mode"), input.get("mode"));
 }
 
 /// The settings for the markdown preview.
