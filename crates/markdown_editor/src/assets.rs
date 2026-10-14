@@ -882,6 +882,201 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn browser_unicode_image_names_decode_import_and_keep_the_session_live(
+        cx: &mut TestAppContext,
+    ) {
+        use workspace::item::Item as _;
+        struct DecodedPumpSurface {
+            encoded: Rc<RefCell<Vec<String>>>,
+            surface: PumpSurface,
+        }
+        impl BrowserSurface for DecodedPumpSurface {
+            fn send(&mut self, message: &HostMessage) -> Result<()> {
+                self.surface.send(message)
+            }
+            fn poll(&mut self) -> Result<Vec<protocol::ClientMessage>> {
+                let mut messages = Vec::new();
+                for body in std::mem::take(&mut *self.encoded.borrow_mut()) {
+                    messages.push(protocol::decode(
+                        &protocol::application_url(&self.surface.session, self.surface.document),
+                        &body,
+                        &self.surface.session,
+                        self.surface.document,
+                    )?);
+                }
+                messages.append(&mut self.surface.poll()?);
+                Ok(messages)
+            }
+            fn script(&mut self, script: &str) -> Result<()> {
+                self.surface.script(script)
+            }
+            fn dispose(&mut self) -> Result<()> {
+                self.surface.dispose()
+            }
+        }
+        let traces = if let Some(path) = std::env::var_os("LATHE_MARKDOWN_BROWSER_IMAGE_NAMES") {
+            std::fs::read_to_string(path).expect("actual browser request traces")
+        } else {
+            include_str!(
+                "../../../project-docs/imp-plans/markdown-editor-phase-4/image-name-requests.json"
+            )
+            .into()
+        };
+        let traces: Vec<serde_json::Value> = serde_json::from_str(&traces).expect("request traces");
+        assert_eq!(traces.len(), 30);
+        let (visual, filesystem, cx) = fixture(cx).await;
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{"ensure_final_newline_on_save":false,"format_on_save":"off"}"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("exact source settings");
+            })
+        });
+        let incoming = Rc::new(RefCell::new(Vec::new()));
+        let encoded = Rc::new(RefCell::new(Vec::new()));
+        let sent = Rc::new(RefCell::new(Vec::new()));
+        visual
+            .update(cx, |item, cx| {
+                item.attach(
+                    Box::new(DecodedPumpSurface {
+                        encoded: encoded.clone(),
+                        surface: PumpSurface {
+                            incoming: incoming.clone(),
+                            sent: sent.clone(),
+                            session: item.protocol.session.clone(),
+                            document: item.protocol.document,
+                            sequence: 0,
+                        },
+                    }),
+                    cx,
+                )
+            })
+            .expect("decoded browser surface");
+        for (index, trace) in traces.into_iter().enumerate() {
+            let mut request = trace["request"].clone();
+            visual.read_with(cx, |item, _| {
+                request["session"] = item.protocol.session.clone().into();
+                request["document"] = item.protocol.document.to_string().into();
+                request["base_revision"] = item.protocol.revision.into();
+            });
+            let bytes = STANDARD
+                .decode(request["images"][0]["bytes"].as_str().expect("image bytes"))
+                .expect("image base64");
+            encoded
+                .borrow_mut()
+                .push(serde_json::to_string(&request).expect("actual browser request"));
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            cx.run_until_parked();
+            assert!(
+                visual.read_with(cx, |item, cx| item.asset_active(cx)),
+                "ordinary browser filename must not stop the session: {:?}",
+                visual.read_with(cx, |item, _| item.error().map(str::to_owned))
+            );
+            assert!(visual.read_with(cx, |item, _| item.error().is_none()));
+            let imported = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+            let link = imported
+                .strip_prefix("Before\n\n![image](")
+                .and_then(|text| text.strip_suffix(")Tail"))
+                .expect("exact anchored source");
+            let path = urlencoding::decode(link).expect("relative asset path");
+            let filename = path.rsplit('/').next().expect("destination filename");
+            assert!(filename.len() <= 255 && filename.encode_utf16().count() <= 255);
+            assert_eq!(
+                filesystem
+                    .read_file_sync(&PathBuf::from(path!("/project/docs")).join(path.as_ref()))
+                    .expect("persisted asset"),
+                bytes
+            );
+            let sequence = u64::try_from(index + 1).expect("request sequence");
+            incoming.borrow_mut().push(visual.read_with(cx, |item, _| {
+                protocol::ClientMessage::Draft {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    sequence,
+                    base_revision: item.protocol.revision,
+                    text: format!("{imported} edited"),
+                }
+            }));
+            let edit = visual.read_with(cx, |item, _| protocol::ClientMessage::Edit {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                request: sequence,
+                sequence,
+                base_revision: item.protocol.revision,
+                change: protocol::Change {
+                    start: imported.encode_utf16().count(),
+                    end: imported.encode_utf16().count(),
+                    text: " edited".into(),
+                },
+            });
+            incoming.borrow_mut().push(edit);
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            let edited = visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text());
+            assert_eq!(edited, format!("{imported} edited"));
+            let project = visual.read_with(cx, |item, cx| {
+                item.source.read(cx).project().expect("project").clone()
+            });
+            let save = visual.update_in(cx, |item, window, cx| {
+                item.save(Default::default(), project, window, cx)
+            });
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            save.await.expect("save remains live");
+            assert_eq!(
+                filesystem
+                    .read_file_sync(path!("/project/docs/doc.md"))
+                    .expect("saved source"),
+                edited.as_bytes()
+            );
+            visual.update(cx, |item, cx| {
+                item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+            });
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                imported
+            );
+            visual.update(cx, |item, cx| {
+                item.buffer.update(cx, |buffer, cx| buffer.undo(cx))
+            });
+            cx.run_until_parked();
+            assert_eq!(
+                visual.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text()),
+                "Before\n\nTail"
+            );
+            let close = visual.update_in(cx, |item, window, cx| item.prepare_to_save(window, cx));
+            visual.update(cx, |item, cx| item.pump_browser(cx));
+            close.await.expect("close remains live");
+        }
+        let oversized = visual.read_with(cx, |item, _| {
+            serde_json::to_string(&protocol::ClientMessage::ImportImages {
+                session: item.protocol.session.clone(),
+                document: item.protocol.document,
+                base_revision: item.protocol.revision,
+                position: 8,
+                images: vec![ImportedImage {
+                    name: "a".repeat(256),
+                    bytes: STANDARD.encode(png()),
+                }],
+            })
+            .expect("invalid protocol fixture")
+        });
+        assert!(
+            visual
+                .read_with(cx, |item, _| protocol::decode(
+                    &protocol::application_url(&item.protocol.session, item.protocol.document),
+                    &oversized,
+                    &item.protocol.session,
+                    item.protocol.document
+                ))
+                .is_err(),
+            "genuine protocol budget remains enforced"
+        );
+    }
+
+    #[gpui::test]
     async fn completed_imports_clear_image_progress_and_preserve_error_notices(
         cx: &mut TestAppContext,
     ) {

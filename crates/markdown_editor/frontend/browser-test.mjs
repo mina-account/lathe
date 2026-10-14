@@ -1,6 +1,8 @@
 import {test, before, after} from "node:test";
 import assert from "node:assert/strict";
-import {readFile} from "node:fs/promises";
+import {readFile,writeFile,mkdtemp,stat} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import {createServer} from "node:http";
 import {chromium} from "playwright";
 
@@ -1166,4 +1168,40 @@ test("theme completion preserves real navigation before its queued scroll event"
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>['draft','edit','history'].includes(message.kind)).length),0);
         await context.close();
     }
+});
+
+test("browser File imports bound legal Windows Unicode basenames before native submission",async()=>{
+    const source="Before\n\nTail",png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=","base64");
+    const names=["\u4e2d".repeat(100)+".png","\u4e2d".repeat(251)+".png","\u{10400}".repeat(100)+".png","\u4e2d".repeat(83)+".png","a".repeat(251)+".png"];
+    const directory=await mkdtemp(join(tmpdir(),"lathe-browser-image-names-"));
+    if(process.platform==="win32")for(const name of names){
+        assert(name.length<=255);await writeFile(join(directory,name),png);assert.equal((await stat(join(directory,name))).size,png.length);
+    }
+    const traces=[];
+    for(const mode of ["ir","wysiwyg","sv"])for(const transfer of ["paste","drop"])for(const name of names){
+        const {page,context}=await open(source,mode);await selectText(page,"Tail");
+        await page.evaluate(({name,bytes,transfer})=>{
+            const data=new DataTransfer();data.items.add(new File([Uint8Array.from(bytes)],name,{type:"image/png"}));
+            const root=window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element;
+            root.dispatchEvent(transfer==="paste"?new ClipboardEvent("paste",{clipboardData:data,bubbles:true,cancelable:true}):new DragEvent("drop",{dataTransfer:data,bubbles:true,cancelable:true}));
+        },{name,bytes:[...png],transfer});
+        await page.waitForFunction(()=>window.testMessages.some(message=>message.kind==="import_images"));
+        const request=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="import_images"));
+        traces.push({mode,transfer,originalName:name,request});
+        assert.equal(request.position,8);assert.equal(request.base_revision,0);assert.equal(request.images[0].bytes,png.toString("base64"));
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        await selectText(page,"Tail");await page.keyboard.insertText("Edited");await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),"Before\n\nEdited");await acknowledge(page);
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"flush",request:993}));
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>message.kind==="flushed"&&message.request===993)),true);
+        await context.close();
+    }
+    if(process.env.LATHE_MARKDOWN_BROWSER_IMAGE_NAMES)await writeFile(process.env.LATHE_MARKDOWN_BROWSER_IMAGE_NAMES,JSON.stringify(traces,null,2)+"\n");
+    for(const {originalName,request} of traces){
+        const name=request.images[0].name;
+        assert(Buffer.byteLength(name)<=255,`${Buffer.byteLength(originalName)}-byte original must fit native name budget: ${Buffer.byteLength(name)}`);
+        assert(!name.includes("\uFFFD"));assert(name.endsWith(".png"));
+        if(Buffer.byteLength(originalName)<=255)assert.equal(name,originalName);
+    }
+    console.log(`Verified ${traces.length} real File import requests; native Windows original files: ${process.platform==="win32"?names.length:0}`);
 });

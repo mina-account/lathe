@@ -227,6 +227,19 @@ function importAfterFlush(input                                   ,position     
         bridge.emit({...input,position,base_revision:bridge.revision});
     });bridge.submit();bridge.finishFlush();
 }
+function imageImportName(name       )        {
+    const encoder=new TextEncoder();
+    if(encoder.encode(name).length<=255)return name;
+    const separator=name.lastIndexOf("."),extension=separator>0 ? name.slice(separator) : "";
+    const suffix=encoder.encode(extension).length<255 ? extension : "",stem=suffix ? name.slice(0,separator) : name;
+    let remaining=255-encoder.encode(suffix).length,result="";
+    for(const character of stem) {
+        const bytes=encoder.encode(character).length;
+        if(bytes>remaining)break;
+        result+=character;remaining-=bytes;
+    }
+    return result+suffix;
+}
 async function importFiles(files       ) {
     if(files.length>16){status.textContent="Import at most 16 images.";return;}
     if(files.reduce((total,file)=>total+file.size,0)>8*1024*1024){status.textContent="Image batch exceeds the 8 MiB total limit.";return;}
@@ -236,7 +249,7 @@ async function importFiles(files       ) {
             if(file.size>4*1024*1024)throw new Error("Image exceeds the 4 MiB limit.");
             const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
             for(let index=0;index<bytes.length;index+=32768)binary+=String.fromCharCode(...bytes.subarray(index,index+32768));
-            images.push({name:file.name,bytes:btoa(binary)});
+            images.push({name:imageImportName(file.name),bytes:btoa(binary)});
         }
         importAfterFlush({kind:"import_images",images},position,source);
     }catch(error){status.textContent=String(error);}

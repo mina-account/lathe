@@ -63,10 +63,10 @@ for(const [file,hash] of Object.entries(runtime.nativeSourceHashesNormalizedLF))
 }
 const checks=JSON.parse(await readFile(new URL("checks.json",import.meta.url),"utf8"));
 assert.equal(checks.frontendBridge,17);
-assert.equal(checks.frontendRealBrowser,57);
+assert.equal(checks.frontendRealBrowser,58);
 assert.equal(checks.isolatedGeneratedAssetReproduction,347);
 assert.deepEqual(checks.nativeSmokeExit,{windows:0,wayland:0,x11:0});
-assert.equal(checks.windowsNative,77);assert.equal(checks.linuxNative,76);
+assert.equal(checks.windowsNative,78);assert.equal(checks.linuxNative,77);
 assert.equal(checks.reviewFixPass2.findingsFixed,3);assert.equal(checks.reviewFixPass2.nativeAssetGreen,15);
 assert.equal(checks.reviewFixPass2.loadedImageHistoryAndFlush,true);
 assert.equal(checks.reviewFixPass3.findingsFixed,3);
@@ -108,5 +108,21 @@ assert.equal(checks.reviewFixPass9.overlapAndRevisionNoticeRetained,true);
 assert.equal(checks.reviewFixPass9.packagedDomNativeTraceReplay.actualSequences,20);
 assert.equal(checks.reviewFixPass9.packagedDomNativeTraceReplay.typedNoticeDisplayed,true);
 assert.equal(checks.reviewFixPass9.packagedDomNativeTraceReplay.sourceAndHistoryUnchanged,true);
+assert.equal(checks.reviewFixPass10.findingsFixed,1);
+assert.equal(checks.reviewFixPass10.actualBrowserRequestScenarios,30);
+assert.equal(checks.reviewFixPass10.actualWindowsOriginalNames,5);
+assert.equal(checks.reviewFixPass10.nativeDecodePumpImportSaveUndoClose,true);
+assert.equal(checks.reviewFixPass10.genuineProtocolLimitPreserved,true);
+const nameFixture=await readFile(new URL("image-name-requests.json",import.meta.url));
+assert.equal(createHash("sha256").update(nameFixture).digest("hex"),checks.reviewFixPass10.actualBrowserRequestFixtureSha256);
+const nameRequests=JSON.parse(nameFixture);
+assert.equal(nameRequests.length,30);
+for(const {originalName,request} of nameRequests) {
+    assert(originalName.length<=255);
+    assert.equal(request.kind,"import_images");assert.equal(request.position,8);
+    assert(Buffer.byteLength(request.images[0].name)<=255);
+    assert(request.images[0].name.endsWith(".png"));
+    if(Buffer.byteLength(originalName)<=255)assert.equal(request.images[0].name,originalName);
+}
 assert.equal(checks.windowsWorkspaceSave,25);assert.equal(checks.linuxWorkspaceSave,26);
 console.log("Verified recorded Phase4 renderer, resource, preservation and final-asset checks");

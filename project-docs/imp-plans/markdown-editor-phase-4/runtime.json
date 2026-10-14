@@ -17,19 +17,19 @@
     "package-lock.json": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
     "build.mjs": "3bcd0bdf8cbcaa1e7304987c4dce37d7e260ffe766c1082974ea0500d09707ed",
     "application.ts": "ea9badf9952e598ce124ac2b61cbc6f220baadb546ac2315c11ea4c2257c0344",
-    "rich.ts": "556c14d5526d8d406c2d170444163bcc656bdd3e308c4fa957c0e2dacb025644",
+    "rich.ts": "c48186eba69f5c1932b561ff07a9d62ed54d93f39683902148b85ed330b8f22a",
     "renderers.ts": "455439b13564b2e90a8a174435b3919b33ad87ce09a3bb8f640efb26a7814b9a",
     "index.html": "d6b8bfa0b72d3ddcd911c84ee734412224da33bbbe3f98f5b5c01e916232bf86",
     "application.css": "2f0e792395427d47b86ea351a0a9e19b1c3f8d3b2e733968b16942c522e61279"
   },
   "nativeSourceHashesNormalizedLF": {
-    "crates/markdown_editor/src/assets.rs": "2be3ea36ffc0380400664bdae4e5833045306d30cc87b2083f708518801c66a3",
+    "crates/markdown_editor/src/assets.rs": "25892c6c00a9fa2f872f9422a83b11c6c41fd83ae80f0fca7e5d056f7ee67178",
     "crates/markdown_editor/src/item.rs": "347cb19a3bb797422682b8bb7a43dd6b1b6d2c090abbb791e5e3af5db3bd0705",
     "crates/fs/src/fs.rs": "ca6d8b9adf16108e89ba4497b1dd0b93f236252eb4dd9507593c84d0ed4c56a0"
   },
   "assets": {
     "crates/markdown_editor/frontend/application.js": "af2968282ab1e91d7e2e4525b078b8291e4d7a2b4c006e732d9fb1ef803a6248",
-    "crates/markdown_editor/frontend/rich.js": "1ff5aafd7fd90b3bff24c59c3c295aa7c92047e3692da84cbdd2f9096c4d8ff1",
+    "crates/markdown_editor/frontend/rich.js": "05b5b10234fd72560e37954b097e4775c0267be5f228d42670a2658dde91f161",
     "crates/markdown_editor/frontend/renderers.js": "d8ec89545b009df0d93db0357a16a7041fb19976eea24c5004b3b5dd9fc9e563",
     "crates/markdown_editor/frontend/themes.js": "3e961c73eeacc4b70e4984441aadbfe4a8d867be08a61bc2389c1f1d625be63b",
     "crates/markdown_editor/frontend/vendor/DIFF-MATCH-PATCH-LICENSE": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
