@@ -1621,10 +1621,27 @@ async fn cleanup_windows_at(
     lathe: bool,
     channel: &str,
 ) -> Result<Option<PendingWindowsUpdate>> {
-    if lathe {
-        lathe_layout::validate_backup_cleanup(root)?;
+    if !lathe {
+        if root.join("updates/versions.txt").exists() {
+            return Ok(None);
+        }
+        // Legacy transactions have no validated backup metadata, so retain nonempty directories.
+        for directory in ["old", "install", "updates"] {
+            let target = lathe_layout::validate_tree(root, Path::new(directory))?;
+            match smol::fs::remove_dir(target).await {
+                Ok(()) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+                    ) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        return Ok(None);
     }
-    let pending = if lathe && root.join("install/release.txt").exists() {
+    lathe_layout::validate_backup_cleanup(root)?;
+    let pending = if root.join("install/release.txt").exists() {
         lathe_layout::validate_payload(root, None, Some(channel), ARCH)?;
         let marker = std::fs::read_to_string(root.join("install/release.txt"))?;
         let version = Version::parse(marker.lines().nth(1).context("Missing staged version")?)?;
@@ -1814,6 +1831,69 @@ mod tests {
             root.join("release.txt"),
             format!("lathe-update-v1\n{version}\nbeta\n{ARCH}\n"),
         )?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_legacy_preserves_staged_update() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        for directory in ["install/bin", "updates", "old"] {
+            std::fs::create_dir_all(root.join(directory))?;
+        }
+        let files = [
+            ("Zed.exe", "running editor"),
+            ("install/Zed.exe", "staged editor"),
+            ("install/bin/Zed.exe", "staged CLI"),
+            ("updates/versions.txt", "1.10.2\n1.10.3\n"),
+            ("old/Zed.exe", "rollback editor"),
+        ];
+        for (relative, contents) in files {
+            std::fs::write(root.join(relative), contents)?;
+        }
+
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
+        for (relative, contents) in files {
+            assert_eq!(std::fs::read_to_string(root.join(relative))?, contents);
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_legacy_preserves_unvalidated_files() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        for directory in ["old", "install", "updates"] {
+            std::fs::create_dir(root.join(directory))?;
+            std::fs::write(root.join(directory).join("incomplete"), directory)?;
+        }
+
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
+        for directory in ["old", "install", "updates"] {
+            assert_eq!(
+                std::fs::read_to_string(root.join(directory).join("incomplete"))?,
+                directory
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cleanup_legacy_removes_only_empty_directories() -> Result<()> {
+        let folder = tempdir()?;
+        let root = folder.path();
+        for directory in ["old", "install", "updates"] {
+            std::fs::create_dir(root.join(directory))?;
+        }
+
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
+        for directory in ["old", "install", "updates"] {
+            assert!(!root.join(directory).exists());
+        }
+        assert!(smol::block_on(cleanup_windows_at(root, false, "beta"))?.is_none());
         Ok(())
     }
 
