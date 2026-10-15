@@ -166,5 +166,36 @@
       "AssertionError: .github/workflows/lathe_linux_ci.yml/build-linux: no Node/npm provisioning before build-fork-linux"
     ],
     "basis": "Actual frontend invocation without Node/npm plus original workflow requirement check; fixed step covers both matrix architectures."
+  },
+  {
+    "name": "review2-stopped-source-opening",
+    "log": "C:\\tmp\\lathe-phase5-fix2-source-red.log",
+    "sha256": "e91f28ce04e7abee1222ced02bc5c3ae6564b2f31ca08f5e313f641bb770def7",
+    "failure_excerpt": [
+      "source remains accessible: Restart or recover the stopped visual session before saving/closing"
+    ],
+    "basis": "Original44cb source/installed packages; actual installed library physically absent, without runtime override for loader cases"
+  },
+  {
+    "name": "review2-actual-missing-library-windows",
+    "log": "C:\\tmp\\lathe-phase5-fix2-loader-red-windows.log",
+    "sha256": "b10b41f198644f5d430db554c7dcdb787012056925a52df9ca457ec443dd1100",
+    "failure_excerpt": ["EXPECTED_RED_ACTUAL_LIBRARY_ABSENT -1073741515"],
+    "basis": "Original44cb source/installed packages; actual installed library physically absent, without runtime override for loader cases",
+    "diagnostic": {
+      "runtime_override": null,
+      "actual_library_absent": true,
+      "retained_handle": 2536,
+      "exit_code": -1073741515
+    }
+  },
+  {
+    "name": "review2-actual-missing-library-linux",
+    "log": "C:\\tmp\\lathe-phase5-fix2-loader-red-linux.log",
+    "sha256": "98058660d6fe4747f41d54c8217f43ef734dd3f3c730d800d63bcd14cc9f0e7c",
+    "failure_excerpt": [
+      "EXPECTED_RED_ACTUAL_LIBRARY_ABSENT 127 /home/an/.cache/lathe-phase5-installed-review2-red/application/libexec/lathe-editor: error while loading shared libraries: libcef.so: cannot open shared object file: No such file or directory"
+    ],
+    "basis": "Original44cb source/installed packages; actual installed library physically absent, without runtime override for loader cases"
   }
 ]

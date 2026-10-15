@@ -1,23 +1,23 @@
 {
-    "version":  "154.5.0+154.0.34",
-    "files":  [
-                  {
-                      "sha256":  "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
-                      "path":  "aarch64_pc_windows_msvc.rs"
-                  },
-                  {
-                      "sha256":  "aaf53a81b7b2f745d0764005666f4e2c7e75e2fe266f5c0b4548b5a3b66ffee0",
-                      "path":  "aarch64_unknown_linux_gnu.rs"
-                  },
-                  {
-                      "sha256":  "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
-                      "path":  "x86_64_pc_windows_msvc.rs"
-                  },
-                  {
-                      "sha256":  "40637562e0b267799e75ff739c42889733a24b75d3c91d1cb49947d4ed3e8bfe",
-                      "path":  "x86_64_unknown_linux_gnu.rs"
-                  }
-              ],
-    "commit":  "2861f6991fae3ee31f877891382adcbc9b9f0953",
-    "repository":  "https://github.com/tauri-apps/cef-rs"
+  "version": "154.5.0+154.0.34",
+  "files": [
+    {
+      "sha256": "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
+      "path": "aarch64_pc_windows_msvc.rs"
+    },
+    {
+      "sha256": "aaf53a81b7b2f745d0764005666f4e2c7e75e2fe266f5c0b4548b5a3b66ffee0",
+      "path": "aarch64_unknown_linux_gnu.rs"
+    },
+    {
+      "sha256": "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
+      "path": "x86_64_pc_windows_msvc.rs"
+    },
+    {
+      "sha256": "40637562e0b267799e75ff739c42889733a24b75d3c91d1cb49947d4ed3e8bfe",
+      "path": "x86_64_unknown_linux_gnu.rs"
+    }
+  ],
+  "commit": "2861f6991fae3ee31f877891382adcbc9b9f0953",
+  "repository": "https://github.com/tauri-apps/cef-rs"
 }

@@ -1,351 +1,431 @@
 {
   "archive": "/home/an/.cache/lathe-browser-probe-target/release/Lathe-1.10.2-x86_64-linux.tar.gz",
-  "archive_sha256": "285ba9f82b195490ab5b868c05d650ed18d33bef85b9d1db2c11fe189afafff9",
-  "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-  "executable_sha256": "a8f79163c02b39c7005329644813687254ea673bdb304c893fdce78a663a6c08",
+  "archive_sha256": "d957278652e4fa24fb7bd614e26df2e3892e426e1930c616cee68c81ce834874",
+  "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+  "executable_sha256": "826c3cd11e3618cd6efa02f4cb25b26fa2c1b03e0c62e149432893104cb8a173",
   "node_on_path": false,
   "proxy": "http://127.0.0.1:9",
   "cef_override_normal": null,
   "ld_library_path": null,
   "ld_preload": null,
   "runtime_files_verified": 230,
-  "ldd": "\tlinux-vdso.so.1 (0x00007ffd7fffb000)\n\tlibcef.so => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcef.so (0x00007f35aebe6000)\n\tlibxcb.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb.so.1 (0x00007f35aebbd000)\n\tlibxkbcommon.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxkbcommon.so.0 (0x00007f35aeb74000)\n\tlibxkbcommon-x11.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxkbcommon-x11.so.0 (0x00007f35aeb6a000)\n\tlibgio-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgio-2.0.so.0 (0x00007f35ae998000)\n\tlibgobject-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgobject-2.0.so.0 (0x00007f35ae935000)\n\tlibglib-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libglib-2.0.so.0 (0x00007f35ae7ec000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f35ae703000)\n\tlibstdc++.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libstdc++.so.6 (0x00007f35ae485000)\n\tlibasound.so.2 => /usr/lib/x86_64-linux-gnu/libasound.so.2 (0x00007f35ae379000)\n\tlibX11-xcb.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libX11-xcb.so.1 (0x00007f35ae374000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f35ae346000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f35ae133000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f35d399f000)\n\tlibdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007f35ae125000)\n\tlibpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f35ae11e000)\n\tlibnspr4.so => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnspr4.so (0x00007f35ae0df000)\n\tlibnss3.so => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnss3.so (0x00007f35adfb0000)\n\tlibnssutil3.so => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnssutil3.so (0x00007f35adf7e000)\n\tlibsmime3.so => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libsmime3.so (0x00007f35adf55000)\n\tlibatk-1.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libatk-1.0.so.0 (0x00007f35adf2b000)\n\tlibatk-bridge-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libatk-bridge-2.0.so.0 (0x00007f35adeed000)\n\tlibdbus-1.so.3 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libdbus-1.so.3 (0x00007f35ade9e000)\n\tlibcups.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcups.so.2 (0x00007f35addfd000)\n\tlibX11.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libX11.so.6 (0x00007f35adcbf000)\n\tlibXcomposite.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXcomposite.so.1 (0x00007f35adcba000)\n\tlibXdamage.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXdamage.so.1 (0x00007f35adcb3000)\n\tlibXext.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXext.so.6 (0x00007f35adc9f000)\n\tlibXfixes.so.3 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXfixes.so.3 (0x00007f35adc97000)\n\tlibXrandr.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXrandr.so.2 (0x00007f35adc8a000)\n\tlibgbm.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgbm.so.1 (0x00007f35adc83000)\n\tlibexpat.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libexpat.so.1 (0x00007f35adc53000)\n\tlibcairo.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcairo.so.2 (0x00007f35adb0f000)\n\tlibpango-1.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpango-1.0.so.0 (0x00007f35adaa4000)\n\tlibudev.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libudev.so.1 (0x00007f35ada71000)\n\tlibatspi.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libatspi.so.0 (0x00007f35ada37000)\n\tlibXau.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXau.so.6 (0x00007f35ada2f000)\n\tlibXdmcp.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXdmcp.so.6 (0x00007f35ada27000)\n\tlibxcb-xkb.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb-xkb.so.1 (0x00007f35ada09000)\n\tlibgmodule-2.0.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgmodule-2.0.so.0 (0x00007f35ada02000)\n\tlibz.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libz.so.1 (0x00007f35ad9e6000)\n\tlibmount.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libmount.so.1 (0x00007f35ad997000)\n\tlibselinux.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libselinux.so.1 (0x00007f35ad96a000)\n\tlibffi.so.8 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libffi.so.8 (0x00007f35ad95e000)\n\tlibpcre2-8.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpcre2-8.so.0 (0x00007f35ad8c4000)\n\tlibplc4.so => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libplc4.so (0x00007f35ad8bd000)\n\tlibplds4.so => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libplds4.so (0x00007f35ad8b6000)\n\tlibsystemd.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libsystemd.so.0 (0x00007f35ad7d6000)\n\tlibgssapi_krb5.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgssapi_krb5.so.2 (0x00007f35ad782000)\n\tlibavahi-common.so.3 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libavahi-common.so.3 (0x00007f35ad774000)\n\tlibavahi-client.so.3 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libavahi-client.so.3 (0x00007f35ad761000)\n\tlibgnutls.so.30 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgnutls.so.30 (0x00007f35ad564000)\n\tlibXrender.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXrender.so.1 (0x00007f35ad558000)\n\tlibdrm.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libdrm.so.2 (0x00007f35ad541000)\n\tlibpng16.so.16 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpng16.so.16 (0x00007f35ad509000)\n\tlibfontconfig.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libfontconfig.so.1 (0x00007f35ad4b8000)\n\tlibfreetype.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libfreetype.so.6 (0x00007f35ad3ea000)\n\tlibxcb-render.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb-render.so.0 (0x00007f35ad3db000)\n\tlibxcb-shm.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb-shm.so.0 (0x00007f35ad3d6000)\n\tlibpixman-1.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpixman-1.so.0 (0x00007f35ad327000)\n\tlibfribidi.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libfribidi.so.0 (0x00007f35ad309000)\n\tlibthai.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libthai.so.0 (0x00007f35ad2fc000)\n\tlibharfbuzz.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libharfbuzz.so.0 (0x00007f35ad1ef000)\n\tlibcap.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcap.so.2 (0x00007f35ad1e2000)\n\tlibXi.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXi.so.6 (0x00007f35ad1cf000)\n\tlibbsd.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbsd.so.0 (0x00007f35ad1b9000)\n\tlibblkid.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libblkid.so.1 (0x00007f35ad17c000)\n\tlibgcrypt.so.20 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgcrypt.so.20 (0x00007f35ad033000)\n\tliblz4.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/liblz4.so.1 (0x00007f35ad011000)\n\tliblzma.so.5 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/liblzma.so.5 (0x00007f35acfdf000)\n\tlibzstd.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libzstd.so.1 (0x00007f35acf25000)\n\tlibkrb5.so.3 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libkrb5.so.3 (0x00007f35ace5a000)\n\tlibk5crypto.so.3 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libk5crypto.so.3 (0x00007f35ace2e000)\n\tlibcom_err.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcom_err.so.2 (0x00007f35ace28000)\n\tlibkrb5support.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libkrb5support.so.0 (0x00007f35ace1b000)\n\tlibp11-kit.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libp11-kit.so.0 (0x00007f35acc77000)\n\tlibidn2.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libidn2.so.0 (0x00007f35acc53000)\n\tlibunistring.so.5 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libunistring.so.5 (0x00007f35acaa6000)\n\tlibtasn1.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libtasn1.so.6 (0x00007f35aca90000)\n\tlibnettle.so.8 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnettle.so.8 (0x00007f35aca3b000)\n\tlibhogweed.so.6 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libhogweed.so.6 (0x00007f35ac9f3000)\n\tlibgmp.so.10 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgmp.so.10 (0x00007f35ac96d000)\n\tlibbz2.so.1.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbz2.so.1.0 (0x00007f35ac959000)\n\tlibbrotlidec.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbrotlidec.so.1 (0x00007f35ac94b000)\n\tlibdatrie.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libdatrie.so.1 (0x00007f35ac942000)\n\tlibgraphite2.so.3 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgraphite2.so.3 (0x00007f35ac91c000)\n\tlibmd.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libmd.so.0 (0x00007f35ac90b000)\n\tlibgpg-error.so.0 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgpg-error.so.0 (0x00007f35ac8e6000)\n\tlibkeyutils.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libkeyutils.so.1 (0x00007f35ac8df000)\n\tlibresolv.so.2 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libresolv.so.2 (0x00007f35ac8cd000)\n\tlibbrotlicommon.so.1 => /home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbrotlicommon.so.1 (0x00007f35ac8a8000)\n",
+  "startup_ldd": "\tlinux-vdso.so.1 (0x00007fff1d5b5000)\n\tlibxcb.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1 (0x00007f3dc34e5000)\n\tlibxkbcommon.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0 (0x00007f3dc349c000)\n\tlibxkbcommon-x11.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0 (0x00007f3dc3492000)\n\tlibgio-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0 (0x00007f3dc32c2000)\n\tlibgobject-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0 (0x00007f3dc325f000)\n\tlibglib-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0 (0x00007f3dc3114000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f3dc302b000)\n\tlibstdc++.so.6 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6 (0x00007f3dc2dad000)\n\tlibasound.so.2 => /usr/lib/x86_64-linux-gnu/libasound.so.2 (0x00007f3dc2ca3000)\n\tlibX11-xcb.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1 (0x00007f3dc2c9e000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f3dc2c6e000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f3dc2a5b000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f3dd7d69000)\n\tlibXau.so.6 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6 (0x00007f3dc2a55000)\n\tlibXdmcp.so.6 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6 (0x00007f3dc2a4d000)\n\tlibxcb-xkb.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1 (0x00007f3dc2a2f000)\n\tlibgmodule-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0 (0x00007f3dc2a26000)\n\tlibz.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1 (0x00007f3dc2a0a000)\n\tlibmount.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1 (0x00007f3dc29bd000)\n\tlibselinux.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1 (0x00007f3dc2990000)\n\tlibffi.so.8 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8 (0x00007f3dc2984000)\n\tlibpcre2-8.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0 (0x00007f3dc28e8000)\n\tlibbsd.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0 (0x00007f3dc28d2000)\n\tlibblkid.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1 (0x00007f3dc2897000)\n\tlibmd.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0 (0x00007f3dc2888000)\n",
+  "cef_ldd": "\tlinux-vdso.so.1 (0x00007ffc2613c000)\n\tlibdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007f0f5e1c4000)\n\tlibpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f0f5e1bf000)\n\tlibglib-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0 (0x00007f0f5e076000)\n\tlibgobject-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0 (0x00007f0f5e013000)\n\tlibnspr4.so => /home/an/.cache/lathe-p5-r2-final/application/libexec/libnspr4.so (0x00007f0f5dfd4000)\n\tlibnss3.so => /home/an/.cache/lathe-p5-r2-final/application/libexec/libnss3.so (0x00007f0f5dea3000)\n\tlibnssutil3.so => /home/an/.cache/lathe-p5-r2-final/application/libexec/libnssutil3.so (0x00007f0f5de71000)\n\tlibsmime3.so => /home/an/.cache/lathe-p5-r2-final/application/libexec/libsmime3.so (0x00007f0f5de48000)\n\tlibgio-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0 (0x00007f0f5dc78000)\n\tlibatk-1.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-1.0.so.0 (0x00007f0f5dc4e000)\n\tlibatk-bridge-2.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-bridge-2.0.so.0 (0x00007f0f5dc10000)\n\tlibdbus-1.so.3 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libdbus-1.so.3 (0x00007f0f5dbc1000)\n\tlibcups.so.2 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libcups.so.2 (0x00007f0f5db20000)\n\tlibX11.so.6 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libX11.so.6 (0x00007f0f5d9e2000)\n\tlibXcomposite.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libXcomposite.so.1 (0x00007f0f5d9dd000)\n\tlibXdamage.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libXdamage.so.1 (0x00007f0f5d9d6000)\n\tlibXext.so.6 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libXext.so.6 (0x00007f0f5d9c2000)\n\tlibXfixes.so.3 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libXfixes.so.3 (0x00007f0f5d9ba000)\n\tlibXrandr.so.2 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libXrandr.so.2 (0x00007f0f5d9ad000)\n\tlibgbm.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1 (0x00007f0f5d9a6000)\n\tlibexpat.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1 (0x00007f0f5d976000)\n\tlibxcb.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1 (0x00007f0f5d94d000)\n\tlibxkbcommon.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0 (0x00007f0f5d904000)\n\tlibcairo.so.2 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libcairo.so.2 (0x00007f0f5d7c0000)\n\tlibpango-1.0.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libpango-1.0.so.0 (0x00007f0f5d755000)\n\tlibudev.so.1 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libudev.so.1 (0x00007f0f5d720000)\n\tlibasound.so.2 => /lib/x86_64-linux-gnu/libasound.so.2 (0x00007f0f5d616000)\n\tlibm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f0f5d52d000)\n\tlibatspi.so.0 => /home/an/.cache/lathe-p5-r2-final/application/libexec/libatspi.so.0 (0x00007f0f5d4f3000)\n\tlibgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f0f5d4c5000)\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0f5d2b2000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f0f6e75a000)\n\tlibpcre2-8.so.0 => /lib/x86_64-linux-gnu/libpcre2-8.so.0 (0x00007f0f5d216000)\n\tlibffi.so.8 => /lib/x86_64-linux-gnu/libffi.so.8 (0x00007f0f5d20a000)\n\tlibplc4.so => /lib/x86_64-linux-gnu/libplc4.so (0x00007f0f5d203000)\n\tlibplds4.so => /lib/x86_64-linux-gnu/libplds4.so (0x00007f0f5d1fe000)\n\tlibgmodule-2.0.so.0 => /lib/x86_64-linux-gnu/libgmodule-2.0.so.0 (0x00007f0f5d1f7000)\n\tlibz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007f0f5d1d9000)\n\tlibmount.so.1 => /lib/x86_64-linux-gnu/libmount.so.1 (0x00007f0f5d18c000)\n\tlibselinux.so.1 => /lib/x86_64-linux-gnu/libselinux.so.1 (0x00007f0f5d15f000)\n\tlibsystemd.so.0 => /lib/x86_64-linux-gnu/libsystemd.so.0 (0x00007f0f5d07f000)\n\tlibgssapi_krb5.so.2 => /lib/x86_64-linux-gnu/libgssapi_krb5.so.2 (0x00007f0f5d02b000)\n\tlibavahi-common.so.3 => /lib/x86_64-linux-gnu/libavahi-common.so.3 (0x00007f0f5d01b000)\n\tlibavahi-client.so.3 => /lib/x86_64-linux-gnu/libavahi-client.so.3 (0x00007f0f5d008000)\n\tlibgnutls.so.30 => /lib/x86_64-linux-gnu/libgnutls.so.30 (0x00007f0f5ce0d000)\n\tlibXrender.so.1 => /lib/x86_64-linux-gnu/libXrender.so.1 (0x00007f0f5ce01000)\n\tlibdrm.so.2 => /lib/x86_64-linux-gnu/libdrm.so.2 (0x00007f0f5cdea000)\n\tlibXau.so.6 => /lib/x86_64-linux-gnu/libXau.so.6 (0x00007f0f5cde2000)\n\tlibXdmcp.so.6 => /lib/x86_64-linux-gnu/libXdmcp.so.6 (0x00007f0f5cdda000)\n\tlibpng16.so.16 => /lib/x86_64-linux-gnu/libpng16.so.16 (0x00007f0f5cda2000)\n\tlibfontconfig.so.1 => /lib/x86_64-linux-gnu/libfontconfig.so.1 (0x00007f0f5cd51000)\n\tlibfreetype.so.6 => /lib/x86_64-linux-gnu/libfreetype.so.6 (0x00007f0f5cc85000)\n\tlibxcb-render.so.0 => /lib/x86_64-linux-gnu/libxcb-render.so.0 (0x00007f0f5cc74000)\n\tlibxcb-shm.so.0 => /lib/x86_64-linux-gnu/libxcb-shm.so.0 (0x00007f0f5cc6f000)\n\tlibpixman-1.so.0 => /lib/x86_64-linux-gnu/libpixman-1.so.0 (0x00007f0f5cbc0000)\n\tlibfribidi.so.0 => /lib/x86_64-linux-gnu/libfribidi.so.0 (0x00007f0f5cba2000)\n\tlibthai.so.0 => /lib/x86_64-linux-gnu/libthai.so.0 (0x00007f0f5cb97000)\n\tlibharfbuzz.so.0 => /lib/x86_64-linux-gnu/libharfbuzz.so.0 (0x00007f0f5ca8a000)\n\tlibcap.so.2 => /lib/x86_64-linux-gnu/libcap.so.2 (0x00007f0f5ca7b000)\n\tlibXi.so.6 => /lib/x86_64-linux-gnu/libXi.so.6 (0x00007f0f5ca68000)\n\tlibblkid.so.1 => /lib/x86_64-linux-gnu/libblkid.so.1 (0x00007f0f5ca2d000)\n\tlibgcrypt.so.20 => /lib/x86_64-linux-gnu/libgcrypt.so.20 (0x00007f0f5c8e4000)\n\tliblz4.so.1 => /lib/x86_64-linux-gnu/liblz4.so.1 (0x00007f0f5c8c2000)\n\tliblzma.so.5 => /lib/x86_64-linux-gnu/liblzma.so.5 (0x00007f0f5c88e000)\n\tlibzstd.so.1 => /lib/x86_64-linux-gnu/libzstd.so.1 (0x00007f0f5c7d4000)\n\tlibkrb5.so.3 => /lib/x86_64-linux-gnu/libkrb5.so.3 (0x00007f0f5c70b000)\n\tlibk5crypto.so.3 => /lib/x86_64-linux-gnu/libk5crypto.so.3 (0x00007f0f5c6df000)\n\tlibcom_err.so.2 => /lib/x86_64-linux-gnu/libcom_err.so.2 (0x00007f0f5c6d9000)\n\tlibkrb5support.so.0 => /lib/x86_64-linux-gnu/libkrb5support.so.0 (0x00007f0f5c6ca000)\n\tlibp11-kit.so.0 => /lib/x86_64-linux-gnu/libp11-kit.so.0 (0x00007f0f5c526000)\n\tlibidn2.so.0 => /lib/x86_64-linux-gnu/libidn2.so.0 (0x00007f0f5c504000)\n\tlibunistring.so.5 => /lib/x86_64-linux-gnu/libunistring.so.5 (0x00007f0f5c357000)\n\tlibtasn1.so.6 => /lib/x86_64-linux-gnu/libtasn1.so.6 (0x00007f0f5c341000)\n\tlibnettle.so.8 => /lib/x86_64-linux-gnu/libnettle.so.8 (0x00007f0f5c2ea000)\n\tlibhogweed.so.6 => /lib/x86_64-linux-gnu/libhogweed.so.6 (0x00007f0f5c2a2000)\n\tlibgmp.so.10 => /lib/x86_64-linux-gnu/libgmp.so.10 (0x00007f0f5c21e000)\n\tlibbsd.so.0 => /lib/x86_64-linux-gnu/libbsd.so.0 (0x00007f0f5c208000)\n\tlibbz2.so.1.0 => /lib/x86_64-linux-gnu/libbz2.so.1.0 (0x00007f0f5c1f4000)\n\tlibbrotlidec.so.1 => /lib/x86_64-linux-gnu/libbrotlidec.so.1 (0x00007f0f5c1e4000)\n\tlibdatrie.so.1 => /lib/x86_64-linux-gnu/libdatrie.so.1 (0x00007f0f5c1db000)\n\tlibgraphite2.so.3 => /lib/x86_64-linux-gnu/libgraphite2.so.3 (0x00007f0f5c1b5000)\n\tlibgpg-error.so.0 => /lib/x86_64-linux-gnu/libgpg-error.so.0 (0x00007f0f5c190000)\n\tlibkeyutils.so.1 => /lib/x86_64-linux-gnu/libkeyutils.so.1 (0x00007f0f5c189000)\n\tlibresolv.so.2 => /lib/x86_64-linux-gnu/libresolv.so.2 (0x00007f0f5c175000)\n\tlibmd.so.0 => /lib/x86_64-linux-gnu/libmd.so.0 (0x00007f0f5c166000)\n\tlibbrotlicommon.so.1 => /lib/x86_64-linux-gnu/libbrotlicommon.so.1 (0x00007f0f5c143000)\n",
   "bundled_dependencies": {
-    "libcef.so": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcef.so",
-      "sha256": "8952fb40b6bd1d8f145a27c9f4103dac92438309768d928235c4a8913eb1dba3"
-    },
-    "libxcb.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb.so.1",
-      "sha256": "7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440"
-    },
-    "libxkbcommon.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxkbcommon.so.0",
-      "sha256": "3eb6c7315985803a7c72cb81aa3293b763e6cfc907b70b7b2f641c2827cd90f9"
-    },
-    "libxkbcommon-x11.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxkbcommon-x11.so.0",
-      "sha256": "109a5c2095ab6bcc36f751d3c0deb3b066ecbfb664a36904b6ca212f987a408a"
-    },
-    "libgio-2.0.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgio-2.0.so.0",
-      "sha256": "d72a56593ae024d868cb7b494f7e48c76e90e4ced9498ab4da2eb3bece85bda3"
+    "libglib-2.0.so.0": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0",
+      "sha256": "96ef9163aee942bdc09e6f4a1acd2fd6b178c03af824c569741440d63ac9f4f4",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0"
     },
     "libgobject-2.0.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgobject-2.0.so.0",
-      "sha256": "7a8981c2df678797438cc92f246402b81d185604623d12ab71c1ff1c2840e9fc"
-    },
-    "libglib-2.0.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libglib-2.0.so.0",
-      "sha256": "96ef9163aee942bdc09e6f4a1acd2fd6b178c03af824c569741440d63ac9f4f4"
-    },
-    "libstdc++.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libstdc++.so.6",
-      "sha256": "1fd75fe70354a416d75aef22bcae68c47bd25d20e2d0568c30b1a9838cf62f11"
-    },
-    "libX11-xcb.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libX11-xcb.so.1",
-      "sha256": "941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0",
+      "sha256": "7a8981c2df678797438cc92f246402b81d185604623d12ab71c1ff1c2840e9fc",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0"
     },
     "libnspr4.so": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnspr4.so",
-      "sha256": "c32583a53640c144757419b977a76976ee3dbda7b905a0af1046ace3c570ae98"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnspr4.so",
+      "sha256": "c32583a53640c144757419b977a76976ee3dbda7b905a0af1046ace3c570ae98",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnspr4.so"
     },
     "libnss3.so": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnss3.so",
-      "sha256": "55b09461bb63081b8e1d4f600583b0e1fdb8eff1ebe2f25e44cfa5f45b2d4169"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnss3.so",
+      "sha256": "55b09461bb63081b8e1d4f600583b0e1fdb8eff1ebe2f25e44cfa5f45b2d4169",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnss3.so"
     },
     "libnssutil3.so": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnssutil3.so",
-      "sha256": "39deb60cb4cd5a8b1ee4da37f838de80c65258a81428a4bdb668ffd6f93a9501"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnssutil3.so",
+      "sha256": "39deb60cb4cd5a8b1ee4da37f838de80c65258a81428a4bdb668ffd6f93a9501",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnssutil3.so"
     },
     "libsmime3.so": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libsmime3.so",
-      "sha256": "38b9c337509c7cf443d6c5f49d4e9e9bd0bb4bf53de48f47c9d39a29757ab7ac"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libsmime3.so",
+      "sha256": "38b9c337509c7cf443d6c5f49d4e9e9bd0bb4bf53de48f47c9d39a29757ab7ac",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libsmime3.so"
+    },
+    "libgio-2.0.so.0": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0",
+      "sha256": "d72a56593ae024d868cb7b494f7e48c76e90e4ced9498ab4da2eb3bece85bda3",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0"
     },
     "libatk-1.0.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libatk-1.0.so.0",
-      "sha256": "d312f3dbed8f19037bf4d8581f0e41ddfe53796dc7abbc9b7f253495d472a923"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-1.0.so.0",
+      "sha256": "d312f3dbed8f19037bf4d8581f0e41ddfe53796dc7abbc9b7f253495d472a923",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-1.0.so.0"
     },
     "libatk-bridge-2.0.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libatk-bridge-2.0.so.0",
-      "sha256": "366fcd2f2cd9a77767855a7c25b00ffce57e6b55109a2bf800872f0337a28415"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-bridge-2.0.so.0",
+      "sha256": "366fcd2f2cd9a77767855a7c25b00ffce57e6b55109a2bf800872f0337a28415",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-bridge-2.0.so.0"
     },
     "libdbus-1.so.3": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libdbus-1.so.3",
-      "sha256": "a6ae7b4ef48562b40d7b9ba8efd2e49f6528b7cc6364bea382dcee4b473b5413"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdbus-1.so.3",
+      "sha256": "a6ae7b4ef48562b40d7b9ba8efd2e49f6528b7cc6364bea382dcee4b473b5413",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdbus-1.so.3"
     },
     "libcups.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcups.so.2",
-      "sha256": "df3aa37f2995344a4e0b09d0ee9d98241dadb3e282fe11054899bbb7bcc57eaa"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcups.so.2",
+      "sha256": "df3aa37f2995344a4e0b09d0ee9d98241dadb3e282fe11054899bbb7bcc57eaa",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcups.so.2"
     },
     "libX11.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libX11.so.6",
-      "sha256": "edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11.so.6",
+      "sha256": "edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11.so.6"
     },
     "libXcomposite.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXcomposite.so.1",
-      "sha256": "675c78d8d5b088a59ad4f8eb15419d0842b17caca3317a5e9f68573171ec5d61"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXcomposite.so.1",
+      "sha256": "675c78d8d5b088a59ad4f8eb15419d0842b17caca3317a5e9f68573171ec5d61",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXcomposite.so.1"
     },
     "libXdamage.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXdamage.so.1",
-      "sha256": "6ff910fbde851ede163b9066671e1740e374df414591015d90770b99d5b3de4a"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdamage.so.1",
+      "sha256": "6ff910fbde851ede163b9066671e1740e374df414591015d90770b99d5b3de4a",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdamage.so.1"
     },
     "libXext.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXext.so.6",
-      "sha256": "2907e6a996465de5b32a0dd10534d4416b87f1dee5670aaa7b19301a1fc93f44"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXext.so.6",
+      "sha256": "2907e6a996465de5b32a0dd10534d4416b87f1dee5670aaa7b19301a1fc93f44",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXext.so.6"
     },
     "libXfixes.so.3": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXfixes.so.3",
-      "sha256": "89e5897f438456013d2297850a7558cd28c9ad1f6978447197568949fb6a0fd9"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXfixes.so.3",
+      "sha256": "89e5897f438456013d2297850a7558cd28c9ad1f6978447197568949fb6a0fd9",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXfixes.so.3"
     },
     "libXrandr.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXrandr.so.2",
-      "sha256": "bc6120a734d52e7f5e3611334e9f3cff0b3ce1b129bb20b6412ce8f0f62c049d"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXrandr.so.2",
+      "sha256": "bc6120a734d52e7f5e3611334e9f3cff0b3ce1b129bb20b6412ce8f0f62c049d",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXrandr.so.2"
     },
     "libgbm.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgbm.so.1",
-      "sha256": "3c781e20939adc578f1696980cb8a106cfc34da404e89d93faa887e995da2f14"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1",
+      "sha256": "3c781e20939adc578f1696980cb8a106cfc34da404e89d93faa887e995da2f14",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1"
     },
     "libexpat.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libexpat.so.1",
-      "sha256": "286682ecbc5e59a638963b1a4e6351e65eb32fcf4bdcb9cb7569b6a61fe06a8d"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1",
+      "sha256": "286682ecbc5e59a638963b1a4e6351e65eb32fcf4bdcb9cb7569b6a61fe06a8d",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1"
+    },
+    "libxcb.so.1": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1",
+      "sha256": "7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1"
+    },
+    "libxkbcommon.so.0": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0",
+      "sha256": "3eb6c7315985803a7c72cb81aa3293b763e6cfc907b70b7b2f641c2827cd90f9",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0"
     },
     "libcairo.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcairo.so.2",
-      "sha256": "3144bd5935aee427d6c191b6b6d0ebf9010fb6320295a7f73edd276bc6993f2d"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcairo.so.2",
+      "sha256": "3144bd5935aee427d6c191b6b6d0ebf9010fb6320295a7f73edd276bc6993f2d",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcairo.so.2"
     },
     "libpango-1.0.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpango-1.0.so.0",
-      "sha256": "44fbb30ec8f9b2621095bad0d27cc15cec39245133124a44e8abc45193cbb493"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpango-1.0.so.0",
+      "sha256": "44fbb30ec8f9b2621095bad0d27cc15cec39245133124a44e8abc45193cbb493",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpango-1.0.so.0"
     },
     "libudev.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libudev.so.1",
-      "sha256": "0d6934adafb2ef3c640382440c14d6bd60f391e688c000796ffcea0c72849269"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libudev.so.1",
+      "sha256": "0d6934adafb2ef3c640382440c14d6bd60f391e688c000796ffcea0c72849269",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libudev.so.1"
     },
     "libatspi.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libatspi.so.0",
-      "sha256": "4af877d2d235b7eaab015abe6d81b82c82fe506a5d71403b9bbdfcbce99e8141"
-    },
-    "libXau.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXau.so.6",
-      "sha256": "8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a"
-    },
-    "libXdmcp.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXdmcp.so.6",
-      "sha256": "667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0"
-    },
-    "libxcb-xkb.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb-xkb.so.1",
-      "sha256": "f6b3ca63ff23f3e82d122af4622aaebed49c58614e2f840568a0bb4c9048436c"
-    },
-    "libgmodule-2.0.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgmodule-2.0.so.0",
-      "sha256": "556b3e8f3c18dbb0255971b1792a076dbd07338482927fe7f9f6c597b1801833"
-    },
-    "libz.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libz.so.1",
-      "sha256": "86200da370f20476a2507e9097a789b5ef97269b4ca8d5e164ad82dab9d99892"
-    },
-    "libmount.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libmount.so.1",
-      "sha256": "7472255ae5799059b37ddd544788f5665dbd3e1cb78259f52180293039efc2a5"
-    },
-    "libselinux.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libselinux.so.1",
-      "sha256": "0ec0843463f90e227b0e138e1f379774f50b5514bd7f5dbd4c8a87aca0aa6670"
-    },
-    "libffi.so.8": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libffi.so.8",
-      "sha256": "00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatspi.so.0",
+      "sha256": "4af877d2d235b7eaab015abe6d81b82c82fe506a5d71403b9bbdfcbce99e8141",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatspi.so.0"
     },
     "libpcre2-8.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpcre2-8.so.0",
-      "sha256": "e00576d71d81d3ba0cfa4903c835a44a8723aac96f72f79ff75200b4cff9071b"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0",
+      "sha256": "e00576d71d81d3ba0cfa4903c835a44a8723aac96f72f79ff75200b4cff9071b",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0"
+    },
+    "libffi.so.8": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8",
+      "sha256": "00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8"
     },
     "libplc4.so": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libplc4.so",
-      "sha256": "f68520b4a9ba6190c67ce96511192f9af31dd96d91f18fd64cca48ffe08f7deb"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libplc4.so",
+      "sha256": "f68520b4a9ba6190c67ce96511192f9af31dd96d91f18fd64cca48ffe08f7deb",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libplc4.so"
     },
     "libplds4.so": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libplds4.so",
-      "sha256": "403f3c1ec489de93d04b5a386d2e659af6da0a41e09ffb90a280b6d68eeb1617"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libplds4.so",
+      "sha256": "403f3c1ec489de93d04b5a386d2e659af6da0a41e09ffb90a280b6d68eeb1617",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libplds4.so"
+    },
+    "libgmodule-2.0.so.0": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0",
+      "sha256": "556b3e8f3c18dbb0255971b1792a076dbd07338482927fe7f9f6c597b1801833",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0"
+    },
+    "libz.so.1": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1",
+      "sha256": "86200da370f20476a2507e9097a789b5ef97269b4ca8d5e164ad82dab9d99892",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1"
+    },
+    "libmount.so.1": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1",
+      "sha256": "7472255ae5799059b37ddd544788f5665dbd3e1cb78259f52180293039efc2a5",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1"
+    },
+    "libselinux.so.1": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1",
+      "sha256": "0ec0843463f90e227b0e138e1f379774f50b5514bd7f5dbd4c8a87aca0aa6670",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1"
     },
     "libsystemd.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libsystemd.so.0",
-      "sha256": "b10be60fc80ea6910df1b253658e638bd29f3d1aeeb3798006fc66972366cb94"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libsystemd.so.0",
+      "sha256": "b10be60fc80ea6910df1b253658e638bd29f3d1aeeb3798006fc66972366cb94",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libsystemd.so.0"
     },
     "libgssapi_krb5.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgssapi_krb5.so.2",
-      "sha256": "8d0b00978cde2a5a9ec76bee1e16a80efd502bc4db8647174a00a61c9d90f989"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgssapi_krb5.so.2",
+      "sha256": "8d0b00978cde2a5a9ec76bee1e16a80efd502bc4db8647174a00a61c9d90f989",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libgssapi_krb5.so.2"
     },
     "libavahi-common.so.3": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libavahi-common.so.3",
-      "sha256": "39554b903a4ff94fb42375f552009995f5bbcbc8468e3c467883d551183dca62"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libavahi-common.so.3",
+      "sha256": "39554b903a4ff94fb42375f552009995f5bbcbc8468e3c467883d551183dca62",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libavahi-common.so.3"
     },
     "libavahi-client.so.3": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libavahi-client.so.3",
-      "sha256": "b3dca38686ab3869e1026c5b851ffa7ad6b66a420e0651ee4c033f3c3d7bdf35"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libavahi-client.so.3",
+      "sha256": "b3dca38686ab3869e1026c5b851ffa7ad6b66a420e0651ee4c033f3c3d7bdf35",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libavahi-client.so.3"
     },
     "libgnutls.so.30": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgnutls.so.30",
-      "sha256": "ddbae2995750875c07bc218d12a062d73f8250678f54dedda7e9be5068781c98"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgnutls.so.30",
+      "sha256": "ddbae2995750875c07bc218d12a062d73f8250678f54dedda7e9be5068781c98",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libgnutls.so.30"
     },
     "libXrender.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXrender.so.1",
-      "sha256": "250977e0e004b6c0556144c3e683487063b4582dc83d205196ec3aa65d54e2c6"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXrender.so.1",
+      "sha256": "250977e0e004b6c0556144c3e683487063b4582dc83d205196ec3aa65d54e2c6",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libXrender.so.1"
     },
     "libdrm.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libdrm.so.2",
-      "sha256": "ff39219aa058421e46afd36851342370cd1932d2557eb22f54e129755642bf67"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdrm.so.2",
+      "sha256": "ff39219aa058421e46afd36851342370cd1932d2557eb22f54e129755642bf67",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libdrm.so.2"
+    },
+    "libXau.so.6": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6",
+      "sha256": "8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6"
+    },
+    "libXdmcp.so.6": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6",
+      "sha256": "667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6"
     },
     "libpng16.so.16": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpng16.so.16",
-      "sha256": "89c0c6569a8c00480d451401ad4c0a74942e62dc57f229a970592fdc5adb29e8"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpng16.so.16",
+      "sha256": "89c0c6569a8c00480d451401ad4c0a74942e62dc57f229a970592fdc5adb29e8",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libpng16.so.16"
     },
     "libfontconfig.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libfontconfig.so.1",
-      "sha256": "a94b4059b27766f563894c8f7e61762b6f6b2e25c59ef36b730164d4b75c6c98"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfontconfig.so.1",
+      "sha256": "a94b4059b27766f563894c8f7e61762b6f6b2e25c59ef36b730164d4b75c6c98",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libfontconfig.so.1"
     },
     "libfreetype.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libfreetype.so.6",
-      "sha256": "992dac80abe3a3854f3eb2668da4207c029664ceca5f122ddb46e2a8169e9499"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfreetype.so.6",
+      "sha256": "992dac80abe3a3854f3eb2668da4207c029664ceca5f122ddb46e2a8169e9499",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libfreetype.so.6"
     },
     "libxcb-render.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb-render.so.0",
-      "sha256": "35fdef7a90d7f44a0ad9cb259c9ee22f04a48cb064ceb1fc7d17be815acab327"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-render.so.0",
+      "sha256": "35fdef7a90d7f44a0ad9cb259c9ee22f04a48cb064ceb1fc7d17be815acab327",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libxcb-render.so.0"
     },
     "libxcb-shm.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libxcb-shm.so.0",
-      "sha256": "ad78a7b22409685ca82e54346c2b9465d697f303e69e74a9c1693bb206e319df"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-shm.so.0",
+      "sha256": "ad78a7b22409685ca82e54346c2b9465d697f303e69e74a9c1693bb206e319df",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libxcb-shm.so.0"
     },
     "libpixman-1.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libpixman-1.so.0",
-      "sha256": "73aa0daeedb7228754d798b194e2ff69c8b82a689b9aa4f1d8ab32a8763b0cc5"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpixman-1.so.0",
+      "sha256": "73aa0daeedb7228754d798b194e2ff69c8b82a689b9aa4f1d8ab32a8763b0cc5",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libpixman-1.so.0"
     },
     "libfribidi.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libfribidi.so.0",
-      "sha256": "550020af7ff4f77e3f05500e71051b676ee76f530479c2a836dfe899fcaf8395"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfribidi.so.0",
+      "sha256": "550020af7ff4f77e3f05500e71051b676ee76f530479c2a836dfe899fcaf8395",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libfribidi.so.0"
     },
     "libthai.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libthai.so.0",
-      "sha256": "1a72e318418dc0ee6014401de9d9976516fe127358c07c305e1198b9814e2b31"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libthai.so.0",
+      "sha256": "1a72e318418dc0ee6014401de9d9976516fe127358c07c305e1198b9814e2b31",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libthai.so.0"
     },
     "libharfbuzz.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libharfbuzz.so.0",
-      "sha256": "4562cfcfd18935324ba3ac74a944898b867ab87a56e925ab3e351ba773f1513e"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libharfbuzz.so.0",
+      "sha256": "4562cfcfd18935324ba3ac74a944898b867ab87a56e925ab3e351ba773f1513e",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libharfbuzz.so.0"
     },
     "libcap.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcap.so.2",
-      "sha256": "6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcap.so.2",
+      "sha256": "6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libcap.so.2"
     },
     "libXi.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libXi.so.6",
-      "sha256": "a51348c921ce1a35123fa7c99dc59bfd3e815be6829874fe15ae55172901d3e4"
-    },
-    "libbsd.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbsd.so.0",
-      "sha256": "0fd5a235d714063f17285ad16e6286ca79458e2cbba1388e8b6fc921b912cbdb"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXi.so.6",
+      "sha256": "a51348c921ce1a35123fa7c99dc59bfd3e815be6829874fe15ae55172901d3e4",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libXi.so.6"
     },
     "libblkid.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libblkid.so.1",
-      "sha256": "9c3860ffab5422410ff9e073d3e82267f00bc68ff1248cbb191640ee2ff045bc"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1",
+      "sha256": "9c3860ffab5422410ff9e073d3e82267f00bc68ff1248cbb191640ee2ff045bc",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1"
     },
     "libgcrypt.so.20": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgcrypt.so.20",
-      "sha256": "6ad6d7007ee1ad8319eb18ba9a512cf09dda49396a303774c68b47477020bad4"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgcrypt.so.20",
+      "sha256": "6ad6d7007ee1ad8319eb18ba9a512cf09dda49396a303774c68b47477020bad4",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libgcrypt.so.20"
     },
     "liblz4.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/liblz4.so.1",
-      "sha256": "40bffd0a098387368b16b992abd5f7cf43c0fa2f05cabe5a6d483719554adfda"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblz4.so.1",
+      "sha256": "40bffd0a098387368b16b992abd5f7cf43c0fa2f05cabe5a6d483719554adfda",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/liblz4.so.1"
     },
     "liblzma.so.5": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/liblzma.so.5",
-      "sha256": "696e868dd0700a19a6d65fc01608ec2d70d3cb91f65710e89180cd2e688f30cb"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblzma.so.5",
+      "sha256": "696e868dd0700a19a6d65fc01608ec2d70d3cb91f65710e89180cd2e688f30cb",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/liblzma.so.5"
     },
     "libzstd.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libzstd.so.1",
-      "sha256": "0a2128bc10841fb29e76d08d945864dfb0b6a66da5df6df5d8299197439e54bb"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libzstd.so.1",
+      "sha256": "0a2128bc10841fb29e76d08d945864dfb0b6a66da5df6df5d8299197439e54bb",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libzstd.so.1"
     },
     "libkrb5.so.3": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libkrb5.so.3",
-      "sha256": "8cd11f2aa69efdac7c040a2794f8bf1a737405abff53908b737c721d1c4ba65d"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkrb5.so.3",
+      "sha256": "8cd11f2aa69efdac7c040a2794f8bf1a737405abff53908b737c721d1c4ba65d",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libkrb5.so.3"
     },
     "libk5crypto.so.3": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libk5crypto.so.3",
-      "sha256": "dd8b93b95adf53a638772061dbe81dc0252d2d8857ae1df774aed78c6a79e0c0"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libk5crypto.so.3",
+      "sha256": "dd8b93b95adf53a638772061dbe81dc0252d2d8857ae1df774aed78c6a79e0c0",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libk5crypto.so.3"
     },
     "libcom_err.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libcom_err.so.2",
-      "sha256": "022943b3b11c860b049bce41342f1c2594941b7b401d95dfdf235521099fee08"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcom_err.so.2",
+      "sha256": "022943b3b11c860b049bce41342f1c2594941b7b401d95dfdf235521099fee08",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libcom_err.so.2"
     },
     "libkrb5support.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libkrb5support.so.0",
-      "sha256": "8253bcdf7f39fcf8f25e797757808e671d777efc00b0cd1fbbcd9da61b0e98f7"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkrb5support.so.0",
+      "sha256": "8253bcdf7f39fcf8f25e797757808e671d777efc00b0cd1fbbcd9da61b0e98f7",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libkrb5support.so.0"
     },
     "libp11-kit.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libp11-kit.so.0",
-      "sha256": "a59efd4792d3343dedea1d26a28f5597abfe3369082deb504c4802a31b014897"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libp11-kit.so.0",
+      "sha256": "a59efd4792d3343dedea1d26a28f5597abfe3369082deb504c4802a31b014897",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libp11-kit.so.0"
     },
     "libidn2.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libidn2.so.0",
-      "sha256": "6e632fd9a3125db60bbc623719bbc17b0470330321c5b1c57f1ff7190e5551ad"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libidn2.so.0",
+      "sha256": "6e632fd9a3125db60bbc623719bbc17b0470330321c5b1c57f1ff7190e5551ad",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libidn2.so.0"
     },
     "libunistring.so.5": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libunistring.so.5",
-      "sha256": "e08e4cf4c4d57cbdccea128d1b9de58cfa24be54c091e5c70b02ba44076c6585"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libunistring.so.5",
+      "sha256": "e08e4cf4c4d57cbdccea128d1b9de58cfa24be54c091e5c70b02ba44076c6585",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libunistring.so.5"
     },
     "libtasn1.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libtasn1.so.6",
-      "sha256": "59994414d0cdec4f678ef91eaaafc44b26b00bca507e4cc7978caaf79f584173"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libtasn1.so.6",
+      "sha256": "59994414d0cdec4f678ef91eaaafc44b26b00bca507e4cc7978caaf79f584173",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libtasn1.so.6"
     },
     "libnettle.so.8": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libnettle.so.8",
-      "sha256": "a245ed916229583d6fe0b07657b3ed945bc148c28cc08b5266295f620d2b91cc"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnettle.so.8",
+      "sha256": "a245ed916229583d6fe0b07657b3ed945bc148c28cc08b5266295f620d2b91cc",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libnettle.so.8"
     },
     "libhogweed.so.6": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libhogweed.so.6",
-      "sha256": "c3c606139d4f7776efa4dbd4a6b62e30c916b07a0cafd8c3ef173d6f093607e3"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libhogweed.so.6",
+      "sha256": "c3c606139d4f7776efa4dbd4a6b62e30c916b07a0cafd8c3ef173d6f093607e3",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libhogweed.so.6"
     },
     "libgmp.so.10": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgmp.so.10",
-      "sha256": "0ccdfb6d6f5c039465f6d002cf7e4c072d48ac6a2cffc8dd6c748dec31592804"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmp.so.10",
+      "sha256": "0ccdfb6d6f5c039465f6d002cf7e4c072d48ac6a2cffc8dd6c748dec31592804",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libgmp.so.10"
+    },
+    "libbsd.so.0": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0",
+      "sha256": "0fd5a235d714063f17285ad16e6286ca79458e2cbba1388e8b6fc921b912cbdb",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0"
     },
     "libbz2.so.1.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbz2.so.1.0",
-      "sha256": "cc08c9f50a8009ffd6391e0116a100369b11ca9238fa52392c019e6645b122a1"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbz2.so.1.0",
+      "sha256": "cc08c9f50a8009ffd6391e0116a100369b11ca9238fa52392c019e6645b122a1",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libbz2.so.1.0"
     },
     "libbrotlidec.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbrotlidec.so.1",
-      "sha256": "64d8a5019d4c294b89fde1193343ea324bbd8603652554e5545f0a01595fa2c5"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbrotlidec.so.1",
+      "sha256": "64d8a5019d4c294b89fde1193343ea324bbd8603652554e5545f0a01595fa2c5",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libbrotlidec.so.1"
     },
     "libdatrie.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libdatrie.so.1",
-      "sha256": "507f33edbbc19b80637d6d66f8e3f62fac097d0b4e9ee6f6f23f535ecea26a61"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdatrie.so.1",
+      "sha256": "507f33edbbc19b80637d6d66f8e3f62fac097d0b4e9ee6f6f23f535ecea26a61",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libdatrie.so.1"
     },
     "libgraphite2.so.3": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgraphite2.so.3",
-      "sha256": "fcfaf843b25b58b88319ced52f826fc8213a661f3693c916f88641eddffe05b8"
-    },
-    "libmd.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libmd.so.0",
-      "sha256": "4a108e1c28f9150e45d25d2ea3ec886864c18f344272ce0c755d464abc775410"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgraphite2.so.3",
+      "sha256": "fcfaf843b25b58b88319ced52f826fc8213a661f3693c916f88641eddffe05b8",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libgraphite2.so.3"
     },
     "libgpg-error.so.0": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libgpg-error.so.0",
-      "sha256": "6cb18a007bfcb623029f4528a36b46578fea7dc34c2b505b8e6e0d99e6348cd1"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgpg-error.so.0",
+      "sha256": "6cb18a007bfcb623029f4528a36b46578fea7dc34c2b505b8e6e0d99e6348cd1",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libgpg-error.so.0"
     },
     "libkeyutils.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libkeyutils.so.1",
-      "sha256": "f48214417757f18793ed6e180cc14ee1d6f04252a518fc7270e8ca1d0b4260fe"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkeyutils.so.1",
+      "sha256": "f48214417757f18793ed6e180cc14ee1d6f04252a518fc7270e8ca1d0b4260fe",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libkeyutils.so.1"
     },
     "libresolv.so.2": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libresolv.so.2",
-      "sha256": "1d730ea434da5a5595bc6a961d7a9ace83e03703205df9644044b3dca79c362f"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libresolv.so.2",
+      "sha256": "1d730ea434da5a5595bc6a961d7a9ace83e03703205df9644044b3dca79c362f",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libresolv.so.2"
+    },
+    "libmd.so.0": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0",
+      "sha256": "4a108e1c28f9150e45d25d2ea3ec886864c18f344272ce0c755d464abc775410",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0"
     },
     "libbrotlicommon.so.1": {
-      "path": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/libbrotlicommon.so.1",
-      "sha256": "a91ead095d2c80520c55a89057bbe10b031a075340442e63f44b310f93883a1b"
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbrotlicommon.so.1",
+      "sha256": "a91ead095d2c80520c55a89057bbe10b031a075340442e63f44b310f93883a1b",
+      "standalone_diagnostic_selection": "/lib/x86_64-linux-gnu/libbrotlicommon.so.1"
+    },
+    "libxkbcommon-x11.so.0": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0",
+      "sha256": "109a5c2095ab6bcc36f751d3c0deb3b066ecbfb664a36904b6ca212f987a408a",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0"
+    },
+    "libstdc++.so.6": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6",
+      "sha256": "1fd75fe70354a416d75aef22bcae68c47bd25d20e2d0568c30b1a9838cf62f11",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6"
+    },
+    "libX11-xcb.so.1": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1",
+      "sha256": "941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1"
+    },
+    "libxcb-xkb.so.1": {
+      "path": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1",
+      "sha256": "f6b3ca63ff23f3e82d122af4622aaebed49c58614e2f840568a0bb4c9048436c",
+      "standalone_diagnostic_selection": "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1"
     }
   },
   "runs": [
@@ -353,8 +433,8 @@
       "name": "wayland",
       "result": {
         "success": true,
-        "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-        "process_id": 125084,
+        "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+        "process_id": 142831,
         "cef": "154.0.34",
         "modes": [
           {
@@ -682,50 +762,231 @@
             ]
           }
         ],
-        "source_preserved": true
+        "source_preserved": true,
+        "history_verified": true,
+        "source_opened": true,
+        "history_error": null,
+        "source_open_error": null
       },
       "exit_code": 0,
       "processes": [
         {
-          "process_id": 125084,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-phase5-installed-linux-review1-green/wayland/user-data /home/an/.cache/lathe-phase5-installed-linux-review1-green/wayland/fixture.md "
+          "process_id": 142831,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-p5-r2-final/data0 /home/an/.cache/lathe-p5-r2-final/wayland/fixture.md "
         },
         {
-          "process_id": 125569,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125084 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 143319,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --printenv "
         },
         {
-          "process_id": 125570,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125084 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 143321,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-142831 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 125590,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125084 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 143322,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-142831 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 125599,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125084 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,13187046808059009220,15131406073796596149,524288 --field-trial-handle=3,i,3099116772436965533,16997897965936372971,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=7,i,4998886765746064600,5792993872412134788,4 --trace-process-track-uuid=3190708989122997041 "
+          "process_id": 143341,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-142831 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 125600,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125084 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 143345,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-142831 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,3703391811720849173,956665612699804371,524288 --field-trial-handle=3,i,1607788815533261202,8543536701928413120,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=7,i,12844783728626724926,6494200339730183393,4 --trace-process-track-uuid=3190708989122997041 "
         },
         {
-          "process_id": 125626,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125084 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 143351,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-142831 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 125627,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125084 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 143377,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-142831 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
+        },
+        {
+          "process_id": 143378,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-142831 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         }
+      ],
+      "loaded_libraries": [
+        "/home/an/.cache/fontconfig/2300eef321c393bfd76478a5c0e95b23-le64.cache-12",
+        "/home/an/.cache/fontconfig/d589a48862398ed80a3d6066f4f56f4c-le64.cache-12",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/chrome_100_percent.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/chrome_200_percent.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/icudtl.dat",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXcomposite.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdamage.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXext.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXfixes.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXi.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXrandr.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXrender.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-1.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-bridge-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatspi.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libavahi-client.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libavahi-common.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbrotlicommon.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbrotlidec.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbz2.so.1.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcairo.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcap.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcef.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcom_err.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcups.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdatrie.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdbus-1.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdrm.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfontconfig.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfreetype.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfribidi.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgcrypt.so.20",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmp.so.10",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgnutls.so.30",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgpg-error.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgraphite2.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgssapi_krb5.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libharfbuzz.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libhogweed.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libidn2.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libk5crypto.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkeyutils.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkrb5.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkrb5support.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblz4.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblzma.so.5",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnettle.so.8",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnspr4.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnss3.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnssutil3.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libp11-kit.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpango-1.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpixman-1.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libplc4.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libplds4.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpng16.so.16",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libresolv.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libsmime3.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libsystemd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libtasn1.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libthai.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libudev.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libunistring.so.5",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libvulkan.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-render.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-shm.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libzstd.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/locales/en-US.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/resources.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/v8_context_snapshot.bin",
+        "/home/an/.cache/lathe-p5-r2-final/data0/db/0-beta/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data0/db/0-global/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data0/prompts/prompts-library-db.0.mdb/data.mdb",
+        "/home/an/.cache/lathe-p5-r2-final/data0/prompts/prompts-library-db.0.mdb/lock.mdb",
+        "/home/an/.cache/mesa_shader_cache/index",
+        "/tmp/lathe-markdown-142831/BrowserMetrics/BrowserMetrics-6AD0335A-22DEF.pma",
+        "/tmp/lathe-markdown-142831/Default/Cookies",
+        "/tmp/lathe-markdown-142831/Default/DawnGraphiteCache/data_0",
+        "/tmp/lathe-markdown-142831/Default/DawnGraphiteCache/data_1",
+        "/tmp/lathe-markdown-142831/Default/DawnGraphiteCache/data_2",
+        "/tmp/lathe-markdown-142831/Default/DawnGraphiteCache/data_3",
+        "/tmp/lathe-markdown-142831/Default/DawnGraphiteCache/index",
+        "/tmp/lathe-markdown-142831/Default/DawnWebGPUCache/data_0",
+        "/tmp/lathe-markdown-142831/Default/DawnWebGPUCache/data_1",
+        "/tmp/lathe-markdown-142831/Default/DawnWebGPUCache/data_2",
+        "/tmp/lathe-markdown-142831/Default/DawnWebGPUCache/data_3",
+        "/tmp/lathe-markdown-142831/Default/DawnWebGPUCache/index",
+        "/tmp/lathe-markdown-142831/Default/Favicons",
+        "/tmp/lathe-markdown-142831/Default/GPUCache/data_0",
+        "/tmp/lathe-markdown-142831/Default/GPUCache/data_1",
+        "/tmp/lathe-markdown-142831/Default/GPUCache/data_2",
+        "/tmp/lathe-markdown-142831/Default/GPUCache/data_3",
+        "/tmp/lathe-markdown-142831/Default/GPUCache/index",
+        "/tmp/lathe-markdown-142831/Default/History",
+        "/tmp/lathe-markdown-142831/Default/ServerCertificate",
+        "/tmp/lathe-markdown-142831/Default/declarative_performance_observer.db",
+        "/usr/lib/locale/C.utf8/LC_ADDRESS",
+        "/usr/lib/locale/C.utf8/LC_COLLATE",
+        "/usr/lib/locale/C.utf8/LC_CTYPE",
+        "/usr/lib/locale/C.utf8/LC_IDENTIFICATION",
+        "/usr/lib/locale/C.utf8/LC_MEASUREMENT",
+        "/usr/lib/locale/C.utf8/LC_MESSAGES/SYS_LC_MESSAGES",
+        "/usr/lib/locale/C.utf8/LC_MONETARY",
+        "/usr/lib/locale/C.utf8/LC_NAME",
+        "/usr/lib/locale/C.utf8/LC_NUMERIC",
+        "/usr/lib/locale/C.utf8/LC_PAPER",
+        "/usr/lib/locale/C.utf8/LC_TELEPHONE",
+        "/usr/lib/locale/C.utf8/LC_TIME",
+        "/usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache",
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+        "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0",
+        "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1",
+        "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so",
+        "/usr/lib/x86_64-linux-gnu/libasound.so.2.0.0",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+        "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72",
+        "/usr/lib/x86_64-linux-gnu/libelf-0.190.so",
+        "/usr/lib/x86_64-linux-gnu/libgallium-25.2.8-0ubuntu0.24.04.4.so",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+        "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6",
+        "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1",
+        "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+        "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0",
+        "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4",
+        "/usr/lib/x86_64-linux-gnu/libva-drm.so.2.2000.0",
+        "/usr/lib/x86_64-linux-gnu/libva.so.2.2000.0",
+        "/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.22.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14",
+        "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
       ],
       "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
       "display": null,
@@ -736,8 +997,8 @@
       "name": "x11",
       "result": {
         "success": true,
-        "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-        "process_id": 125954,
+        "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+        "process_id": 143710,
         "cef": "154.0.34",
         "modes": [
           {
@@ -1065,50 +1326,231 @@
             ]
           }
         ],
-        "source_preserved": true
+        "source_preserved": true,
+        "history_verified": true,
+        "source_opened": true,
+        "history_error": null,
+        "source_open_error": null
       },
       "exit_code": 0,
       "processes": [
         {
-          "process_id": 125954,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-phase5-installed-linux-review1-green/x11/user-data /home/an/.cache/lathe-phase5-installed-linux-review1-green/x11/fixture.md "
+          "process_id": 143710,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-p5-r2-final/data1 /home/an/.cache/lathe-p5-r2-final/x11/fixture.md "
         },
         {
-          "process_id": 126441,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125954 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 144195,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --printenv "
         },
         {
-          "process_id": 126442,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125954 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 144199,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-143710 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 126462,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125954 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 144200,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-143710 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 126466,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125954 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,2493852812676037664,4592431045135753292,524288 --field-trial-handle=3,i,6571178801417502997,12269552992966003875,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=7,i,11727701453954036954,184385924696755512,4 --trace-process-track-uuid=3190708989122997041 "
+          "process_id": 144220,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-zygote-sandbox --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-143710 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 126472,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125954 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 144224,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-143710 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,11419284147488054802,16695258512747261959,524288 --field-trial-handle=3,i,6321397429310877126,15069539625718046132,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=7,i,10888750868293065347,994906110398631344,4 --trace-process-track-uuid=3190708989122997041 "
         },
         {
-          "process_id": 126497,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125954 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 144230,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-143710 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         },
         {
-          "process_id": 126498,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-125954 --locales-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec "
+          "process_id": 144254,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-143710 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
+        },
+        {
+          "process_id": 144255,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --type=zygote --no-sandbox --enable-crash-reporter=, --change-stack-guard-on-fork=enable --user-data-dir=/tmp/lathe-markdown-143710 --locales-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec/locales --log-severity=warning --resources-dir-path=/home/an/.cache/lathe-p5-r2-final/application/libexec "
         }
+      ],
+      "loaded_libraries": [
+        "/home/an/.cache/fontconfig/2300eef321c393bfd76478a5c0e95b23-le64.cache-12",
+        "/home/an/.cache/fontconfig/d589a48862398ed80a3d6066f4f56f4c-le64.cache-12",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/chrome_100_percent.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/chrome_200_percent.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/icudtl.dat",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXcomposite.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdamage.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXext.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXfixes.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXi.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXrandr.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXrender.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-1.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatk-bridge-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libatspi.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libavahi-client.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libavahi-common.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbrotlicommon.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbrotlidec.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbz2.so.1.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcairo.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcap.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcef.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcom_err.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libcups.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdatrie.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdbus-1.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdrm.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfontconfig.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfreetype.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libfribidi.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgcrypt.so.20",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmp.so.10",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgnutls.so.30",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgpg-error.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgraphite2.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgssapi_krb5.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libharfbuzz.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libhogweed.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libidn2.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libk5crypto.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkeyutils.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkrb5.so.3",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libkrb5support.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblz4.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblzma.so.5",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnettle.so.8",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnspr4.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnss3.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libnssutil3.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libp11-kit.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpango-1.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpixman-1.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libplc4.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libplds4.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpng16.so.16",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libresolv.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libsmime3.so",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libsystemd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libtasn1.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libthai.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libudev.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libunistring.so.5",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libvulkan.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-render.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-shm.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libzstd.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/locales/en-US.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/resources.pak",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/v8_context_snapshot.bin",
+        "/home/an/.cache/lathe-p5-r2-final/data1/db/0-beta/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data1/db/0-global/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data1/prompts/prompts-library-db.0.mdb/data.mdb",
+        "/home/an/.cache/lathe-p5-r2-final/data1/prompts/prompts-library-db.0.mdb/lock.mdb",
+        "/home/an/.cache/mesa_shader_cache/index",
+        "/tmp/lathe-markdown-143710/BrowserMetrics/BrowserMetrics-6AD0335F-2315E.pma",
+        "/tmp/lathe-markdown-143710/Default/Cookies",
+        "/tmp/lathe-markdown-143710/Default/DawnGraphiteCache/data_0",
+        "/tmp/lathe-markdown-143710/Default/DawnGraphiteCache/data_1",
+        "/tmp/lathe-markdown-143710/Default/DawnGraphiteCache/data_2",
+        "/tmp/lathe-markdown-143710/Default/DawnGraphiteCache/data_3",
+        "/tmp/lathe-markdown-143710/Default/DawnGraphiteCache/index",
+        "/tmp/lathe-markdown-143710/Default/DawnWebGPUCache/data_0",
+        "/tmp/lathe-markdown-143710/Default/DawnWebGPUCache/data_1",
+        "/tmp/lathe-markdown-143710/Default/DawnWebGPUCache/data_2",
+        "/tmp/lathe-markdown-143710/Default/DawnWebGPUCache/data_3",
+        "/tmp/lathe-markdown-143710/Default/DawnWebGPUCache/index",
+        "/tmp/lathe-markdown-143710/Default/Favicons",
+        "/tmp/lathe-markdown-143710/Default/GPUCache/data_0",
+        "/tmp/lathe-markdown-143710/Default/GPUCache/data_1",
+        "/tmp/lathe-markdown-143710/Default/GPUCache/data_2",
+        "/tmp/lathe-markdown-143710/Default/GPUCache/data_3",
+        "/tmp/lathe-markdown-143710/Default/GPUCache/index",
+        "/tmp/lathe-markdown-143710/Default/History",
+        "/tmp/lathe-markdown-143710/Default/ServerCertificate",
+        "/tmp/lathe-markdown-143710/Default/declarative_performance_observer.db",
+        "/usr/lib/locale/C.utf8/LC_ADDRESS",
+        "/usr/lib/locale/C.utf8/LC_COLLATE",
+        "/usr/lib/locale/C.utf8/LC_CTYPE",
+        "/usr/lib/locale/C.utf8/LC_IDENTIFICATION",
+        "/usr/lib/locale/C.utf8/LC_MEASUREMENT",
+        "/usr/lib/locale/C.utf8/LC_MESSAGES/SYS_LC_MESSAGES",
+        "/usr/lib/locale/C.utf8/LC_MONETARY",
+        "/usr/lib/locale/C.utf8/LC_NAME",
+        "/usr/lib/locale/C.utf8/LC_NUMERIC",
+        "/usr/lib/locale/C.utf8/LC_PAPER",
+        "/usr/lib/locale/C.utf8/LC_TELEPHONE",
+        "/usr/lib/locale/C.utf8/LC_TIME",
+        "/usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache",
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+        "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0",
+        "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1",
+        "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so",
+        "/usr/lib/x86_64-linux-gnu/libasound.so.2.0.0",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+        "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72",
+        "/usr/lib/x86_64-linux-gnu/libelf-0.190.so",
+        "/usr/lib/x86_64-linux-gnu/libgallium-25.2.8-0ubuntu0.24.04.4.so",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+        "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6",
+        "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1",
+        "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+        "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0",
+        "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4",
+        "/usr/lib/x86_64-linux-gnu/libva-drm.so.2.2000.0",
+        "/usr/lib/x86_64-linux-gnu/libva.so.2.2000.0",
+        "/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.22.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14",
+        "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
       ],
       "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
       "display": ":0",
@@ -1116,27 +1558,279 @@
       "session_type": "x11"
     },
     {
-      "name": "missing-runtime",
+      "name": "missing-resources",
       "result": {
         "success": false,
-        "error": "Markdown editor runtime is incomplete: missing libcef.so in /home/an/.cache/lathe-phase5-installed-linux-review1-green/missing-runtime/incomplete-runtime. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
-        "source_preserved": true
+        "error": "Markdown editor runtime is incomplete: missing resources.pak in /home/an/.cache/lathe-p5-r2-final/application/libexec. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true,
+        "source_opened": true,
+        "source_open_error": null
       },
       "exit_code": 0,
       "processes": [
         {
-          "process_id": 126828,
-          "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
-          "command_line": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-phase5-installed-linux-review1-green/missing-runtime/user-data /home/an/.cache/lathe-phase5-installed-linux-review1-green/missing-runtime/fixture.md "
+          "process_id": 144586,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-p5-r2-final/data2 /home/an/.cache/lathe-p5-r2-final/missing-resources/fixture.md "
+        },
+        {
+          "process_id": 145066,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --printenv "
         }
+      ],
+      "loaded_libraries": [
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdrm.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblzma.so.5",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libvulkan.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-shm.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libzstd.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/data2/db/0-beta/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data2/db/0-global/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data2/prompts/prompts-library-db.0.mdb/data.mdb",
+        "/home/an/.cache/lathe-p5-r2-final/data2/prompts/prompts-library-db.0.mdb/lock.mdb",
+        "/home/an/.cache/mesa_shader_cache/index",
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+        "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0",
+        "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1",
+        "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so",
+        "/usr/lib/x86_64-linux-gnu/libasound.so.2.0.0",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+        "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72",
+        "/usr/lib/x86_64-linux-gnu/libelf-0.190.so",
+        "/usr/lib/x86_64-linux-gnu/libgallium-25.2.8-0ubuntu0.24.04.4.so",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+        "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6",
+        "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1",
+        "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+        "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0",
+        "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4",
+        "/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.22.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14",
+        "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
       ],
       "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
       "display": null,
       "wayland_display": "/run/user/1000/wayland-0",
       "session_type": "wayland"
+    },
+    {
+      "name": "missing-library-wayland",
+      "result": {
+        "success": false,
+        "error": "Markdown editor runtime is incomplete: missing libcef.so in /home/an/.cache/lathe-p5-r2-final/application/libexec. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true,
+        "source_opened": true,
+        "source_open_error": null
+      },
+      "exit_code": 0,
+      "processes": [
+        {
+          "process_id": 145358,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-p5-r2-final/data3 /home/an/.cache/lathe-p5-r2-final/missing-library-wayland/fixture.md "
+        }
+      ],
+      "loaded_libraries": [
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdrm.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblzma.so.5",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libvulkan.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-shm.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libzstd.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/data3/db/0-beta/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data3/db/0-global/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data3/prompts/prompts-library-db.0.mdb/data.mdb",
+        "/home/an/.cache/lathe-p5-r2-final/data3/prompts/prompts-library-db.0.mdb/lock.mdb",
+        "/home/an/.cache/mesa_shader_cache/index",
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+        "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0",
+        "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1",
+        "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so",
+        "/usr/lib/x86_64-linux-gnu/libasound.so.2.0.0",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+        "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72",
+        "/usr/lib/x86_64-linux-gnu/libelf-0.190.so",
+        "/usr/lib/x86_64-linux-gnu/libgallium-25.2.8-0ubuntu0.24.04.4.so",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+        "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6",
+        "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1",
+        "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+        "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0",
+        "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4",
+        "/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.22.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14",
+        "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+      ],
+      "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+      "display": null,
+      "wayland_display": "/run/user/1000/wayland-0",
+      "session_type": "wayland"
+    },
+    {
+      "name": "missing-library-x11",
+      "result": {
+        "success": false,
+        "error": "Markdown editor runtime is incomplete: missing libcef.so in /home/an/.cache/lathe-p5-r2-final/application/libexec. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true,
+        "source_opened": true,
+        "source_open_error": null
+      },
+      "exit_code": 0,
+      "processes": [
+        {
+          "process_id": 146129,
+          "executable": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+          "command_line": "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor --user-data-dir /home/an/.cache/lathe-p5-r2-final/data4 /home/an/.cache/lathe-p5-r2-final/missing-library-x11/fixture.md "
+        }
+      ],
+      "loaded_libraries": [
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/lathe-editor",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libX11-xcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXau.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libXdmcp.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libblkid.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libbsd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libdrm.so.2",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libexpat.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libffi.so.8",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgbm.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgio-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libglib-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgmodule-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libgobject-2.0.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/liblzma.so.5",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmd.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libmount.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libpcre2-8.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libselinux.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libstdc++.so.6",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libvulkan.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-shm.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb-xkb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxcb.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon-x11.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libxkbcommon.so.0",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libz.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/application/libexec/libzstd.so.1",
+        "/home/an/.cache/lathe-p5-r2-final/data4/db/0-beta/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data4/db/0-global/db.sqlite-shm",
+        "/home/an/.cache/lathe-p5-r2-final/data4/prompts/prompts-library-db.0.mdb/data.mdb",
+        "/home/an/.cache/lathe-p5-r2-final/data4/prompts/prompts-library-db.0.mdb/lock.mdb",
+        "/home/an/.cache/mesa_shader_cache/index",
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+        "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0",
+        "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1",
+        "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so",
+        "/usr/lib/x86_64-linux-gnu/libasound.so.2.0.0",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+        "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.125.0",
+        "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72",
+        "/usr/lib/x86_64-linux-gnu/libelf-0.190.so",
+        "/usr/lib/x86_64-linux-gnu/libgallium-25.2.8-0ubuntu0.24.04.4.so",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+        "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6",
+        "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1",
+        "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+        "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0",
+        "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4",
+        "/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.22.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0",
+        "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14",
+        "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+      ],
+      "fixture_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+      "display": ":0",
+      "wayland_display": "",
+      "session_type": "x11"
     }
   ],
-  "executable_implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb",
-  "packaging_commit": "c8500e935fbde8b55da132b347b3f041dd3bdd34",
-  "repack_basis": "Existing b7 release executables and pinned CEF runtime, repacked by fixed script/package-fork-linux; no Rust/C++/frontend source change."
+  "implementation_commit": "49dcc0038e9d49821218b208d4de3aa3be9b03c9",
+  "surviving_installed_processes": 0,
+  "standalone_cef_ldd_limit": "Standalone CEF ldd lacks the main executable inherited RPATH. Main/direct CEF preflight selections and every bundled live process-map path are verified separately."
 }

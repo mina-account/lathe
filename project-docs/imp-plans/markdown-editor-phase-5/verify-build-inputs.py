@@ -43,10 +43,27 @@ for item in manifest['post_build_packaging']:
         cwd=root,
     )
     assert canonical_hash(packaged) == item['current_packaging_snapshot']['canonical_sha256'], item['path']
+bindings = json.loads((root / 'crates/cef_dll_sys/upstream.json').read_text())
+for item in manifest.get('post_build_verification', []):
+    assert item['path'] not in paths, 'Verification tool duplicated as unchanged input'
+    original = subprocess.check_output(
+        ['git', 'show', f"{manifest['implementation_commit']}:{item['path']}"], cwd=root,
+    )
+    assert canonical_hash(original) == item['implementation_commit_snapshot']['canonical_sha256'], item['path']
+    assert canonical_hash((root / item['path']).read_bytes()) == item['current_verification_snapshot']['canonical_sha256'], item['path']
+for item in bindings['files']:
+    path = f"crates/cef_dll_sys/bindings/{item['path']}"
+    assert hashlib.sha256((root / path).read_bytes()).hexdigest() == item['sha256'], path
+    original = subprocess.check_output(
+        ['git', 'show', f"{manifest['implementation_commit']}:{path}"], cwd=root,
+    )
+    assert hashlib.sha256(original).hexdigest() == item['sha256'], path
 print(json.dumps({
     'implementation_commit': manifest['implementation_commit'],
     'unchanged_canonical_records_verified': len(paths),
     'post_build_documentation_snapshots_verified': len(manifest['post_build_documentation']),
     'packaging_commit': manifest['packaging_commit'],
     'post_build_packaging_snapshots_verified': len(manifest['post_build_packaging']),
+    'exact_upstream_binding_files_verified': len(bindings['files']),
+    'post_build_verification_snapshots_verified': len(manifest.get('post_build_verification', [])),
 }))

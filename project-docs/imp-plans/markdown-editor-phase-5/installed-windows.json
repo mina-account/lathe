@@ -5,8 +5,8 @@
       "fixture_sha256": "CE694A10CB8DA7CD5EB88ABD2F801454EB943A03383E30DE46853043302B46E7",
       "result": {
         "success": true,
-        "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-        "process_id": 67648,
+        "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+        "process_id": 20468,
         "cef": "154.0.34",
         "modes": [
           {
@@ -334,45 +334,49 @@
             ]
           }
         ],
-        "source_preserved": true
+        "source_preserved": true,
+        "history_verified": true,
+        "source_opened": true,
+        "history_error": null,
+        "source_open_error": null
       },
       "name": "normal",
       "processes": [
         {
-          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --no-pre-read-main-dll --start-stack-profiler --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-67648\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\" --metrics-shmem-handle=4456,i,2435411917894175128,6124995455717151606,524288 --field-trial-handle=4356,i,4829799765491360396,9572481890856502275,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4336,i,82615020418372600,9751781092408198937,4 --trace-process-track-uuid=3190708989122997041 --enable-logging=handle --log-file=4528 --mojo-platform-channel-handle=4520 /prefetch:11",
-          "parent_process_id": 67648,
-          "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-          "process_id": 25804
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --type=utility --utility-sub-type=storage.mojom.StorageService --lang=en-US --service-sandbox-type=service --no-sandbox --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-20468\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\libcef.dll\" --metrics-shmem-handle=4604,i,8927952554901598522,15050398312360769765,524288 --field-trial-handle=4300,i,10329478612814723257,5405978248874310607,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4304,i,5593296974047794016,18237058742961787951,4 --trace-process-track-uuid=3190708990060038890 --enable-logging=handle --log-file=4632 --mojo-platform-channel-handle=4624 /prefetch:13",
+          "parent_process_id": 20468,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 4956
         },
         {
-          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe\" --type=renderer --no-pre-read-main-dll --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-67648\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\" --no-sandbox --disable-gpu-compositing --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.75 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --launch-time-ticks=1892385666545 --metrics-shmem-handle=5352,i,13698604351564700171,8341636479989294199,1572864 --field-trial-handle=4356,i,4829799765491360396,9572481890856502275,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4336,i,82615020418372600,9751781092408198937,4 --trace-process-track-uuid=3190708990997080739 --enable-logging=handle --log-file=5404 --mojo-platform-channel-handle=5396 /prefetch:1",
-          "parent_process_id": 67648,
-          "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-          "process_id": 79084
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --type=renderer --start-stack-profiler --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-20468\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\libcef.dll\" --no-sandbox --disable-gpu-compositing --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.75 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --launch-time-ticks=1911302870451 --metrics-shmem-handle=5284,i,12564960539973185030,9944622055487989499,1572864 --field-trial-handle=4300,i,10329478612814723257,5405978248874310607,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4304,i,5593296974047794016,18237058742961787951,4 --trace-process-track-uuid=3190708991934122588 --enable-logging=handle --log-file=5296 --mojo-platform-channel-handle=5292 /prefetch:1",
+          "parent_process_id": 20468,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 52688
         },
         {
-          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe\" --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --no-pre-read-main-dll --start-stack-profiler --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-67648\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\" --gpu-preferences=WAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAQAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAoAAAAAAAAAAgAAAAAAAAADAAAAAEAAAAAAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --use-gl=angle --use-angle=d3d11-warp-webgl --metrics-shmem-handle=4160,i,7849793487331224382,6004096589061547052,262144 --field-trial-handle=4356,i,4829799765491360396,9572481890856502275,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4336,i,82615020418372600,9751781092408198937,4 --trace-process-track-uuid=3190708988185955192 --enable-logging=handle --log-file=4368 --mojo-platform-channel-handle=4352 /prefetch:2",
-          "parent_process_id": 67648,
-          "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-          "process_id": 15028
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --start-stack-profiler --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-20468\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\libcef.dll\" --gpu-preferences=WAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAQAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAoAAAAAAAAAAgAAAAAAAAADAAAAAEAAAAAAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --use-gl=angle --use-angle=d3d11-warp-webgl --metrics-shmem-handle=4088,i,10657661940843592262,16857353393374824736,262144 --field-trial-handle=4300,i,10329478612814723257,5405978248874310607,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4304,i,5593296974047794016,18237058742961787951,4 --trace-process-track-uuid=3190708988185955192 --enable-logging=handle --log-file=4324 --mojo-platform-channel-handle=4296 /prefetch:2",
+          "parent_process_id": 20468,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 4000
         },
         {
-          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe\" --type=utility --utility-sub-type=storage.mojom.StorageService --lang=en-US --service-sandbox-type=service --no-sandbox --no-pre-read-main-dll --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-67648\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\" --metrics-shmem-handle=4700,i,2368931564468028011,2654918185174391945,524288 --field-trial-handle=4356,i,4829799765491360396,9572481890856502275,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4336,i,82615020418372600,9751781092408198937,4 --trace-process-track-uuid=3190708990060038890 --enable-logging=handle --log-file=4724 --mojo-platform-channel-handle=4720 /prefetch:13",
-          "parent_process_id": 67648,
-          "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-          "process_id": 14340
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-20468\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\libcef.dll\" --no-sandbox --disable-gpu-compositing --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.75 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --launch-time-ticks=1911302877351 --metrics-shmem-handle=5316,i,11051528439876518906,10981146099797343382,1572864 --field-trial-handle=4300,i,10329478612814723257,5405978248874310607,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4304,i,5593296974047794016,18237058742961787951,4 --trace-process-track-uuid=3190708990997080739 --enable-logging=handle --log-file=5328 --mojo-platform-channel-handle=5204 /prefetch:1",
+          "parent_process_id": 20468,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 39664
         },
         {
-          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:\\tmp\\lathe-phase5-installed-windows-b7-exit/normal/user-data C:\\tmp\\lathe-phase5-installed-windows-b7-exit/normal/fixture.md ",
-          "parent_process_id": 15264,
-          "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-          "process_id": 67648
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --start-stack-profiler --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-20468\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\libcef.dll\" --metrics-shmem-handle=4280,i,9928741815862240727,16031651206719930659,524288 --field-trial-handle=4300,i,10329478612814723257,5405978248874310607,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4304,i,5593296974047794016,18237058742961787951,4 --trace-process-track-uuid=3190708989122997041 --enable-logging=handle --log-file=4332 --mojo-platform-channel-handle=4312 /prefetch:11",
+          "parent_process_id": 20468,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 13348
         },
         {
-          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe\" --type=renderer --no-pre-read-main-dll --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-67648\" --locales-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\" --no-sandbox --disable-gpu-compositing --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.75 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --launch-time-ticks=1892385660383 --metrics-shmem-handle=5324,i,16714983529876750304,16406738108744574454,1572864 --field-trial-handle=4356,i,4829799765491360396,9572481890856502275,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4336,i,82615020418372600,9751781092408198937,4 --trace-process-track-uuid=3190708991934122588 --enable-logging=handle --log-file=5336 --mojo-platform-channel-handle=5332 /prefetch:1",
-          "parent_process_id": 67648,
-          "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-          "process_id": 81736
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:/tmp/lathe-phase5-installed-windows-review2-final/normal/user-data C:/tmp/lathe-phase5-installed-windows-review2-final/normal/fixture.md ",
+          "parent_process_id": 30480,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 20468
         }
       ],
       "exit_code": 0
@@ -381,26 +385,56 @@
       "fixture_sha256": "CE694A10CB8DA7CD5EB88ABD2F801454EB943A03383E30DE46853043302B46E7",
       "result": {
         "success": false,
-        "error": "Markdown editor runtime is incomplete: missing libcef.dll in C:\\tmp\\lathe-phase5-installed-windows-b7-exit/missing-runtime/incomplete-runtime. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
-        "source_preserved": true
+        "error": "Markdown editor runtime is incomplete: missing resources.pak in C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true,
+        "source_opened": true,
+        "source_open_error": null
       },
-      "name": "missing-runtime",
+      "name": "missing-resources",
       "processes": [
         {
-          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:\\tmp\\lathe-phase5-installed-windows-b7-exit/missing-runtime/user-data C:\\tmp\\lathe-phase5-installed-windows-b7-exit/missing-runtime/fixture.md ",
-          "parent_process_id": 15264,
-          "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit\\application\\libexec\\lathe-editor.exe",
-          "process_id": 21052
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:/tmp/lathe-phase5-installed-windows-review2-final/missing-resources/user-data C:/tmp/lathe-phase5-installed-windows-review2-final/missing-resources/fixture.md ",
+          "parent_process_id": 30480,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 70960
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "fixture_sha256": "CE694A10CB8DA7CD5EB88ABD2F801454EB943A03383E30DE46853043302B46E7",
+      "result": {
+        "success": false,
+        "error": "Markdown editor runtime is incomplete: missing libcef.dll in C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true,
+        "source_opened": true,
+        "source_open_error": null
+      },
+      "name": "missing-library",
+      "processes": [
+        {
+          "command_line": "\"C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:/tmp/lathe-phase5-installed-windows-review2-final/missing-library/user-data C:/tmp/lathe-phase5-installed-windows-review2-final/missing-library/fixture.md ",
+          "parent_process_id": 30480,
+          "executable": "C:\\tmp\\lathe-phase5-installed-windows-review2-final\\application\\libexec\\lathe-editor.exe",
+          "process_id": 42736
         }
       ],
       "exit_code": 0
     }
   ],
-  "archive_sha256": "DA665F416611EE7449B8371C87F7EDCF00C725261F29FB5B959DCF5D0D66863D",
-  "archive": "C:\\tmp\\markdown-browser-probe-target\\release\\Lathe-1.10.2-x86_64-windows.zip",
+  "archive_sha256": "411CDF950C63397A69A94A1E75EABEF2932B9981292EAB14B22DE99517B5DF94",
+  "archive": "C:/tmp/markdown-browser-probe-target/release/Lathe-1.10.2-x86_64-windows.zip",
   "cef_override_normal": null,
-  "executable": "C:\\tmp\\lathe-phase5-installed-windows-b7-exit/application/libexec/lathe-editor.exe",
-  "executable_sha256": "559E007AA1C9A87585ABC87985E8047F84DEB12C99FFE271FD9F986301A4CA9B",
+  "executable": "C:/tmp/lathe-phase5-installed-windows-review2-final/application/libexec/lathe-editor.exe",
+  "executable_sha256": "01E4CA3AE402A8126A6B81BF3EB120AE378686654507E7E09F4CF21F2D748070",
   "node_on_path": false,
-  "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb"
+  "runtime_files_verified": 234,
+  "surviving_installed_processes": 0,
+  "cef_pe_import": false,
+  "implementation_commit": "49dcc0038e9d49821218b208d4de3aa3be9b03c9",
+  "inno": {
+    "path": "C:\\tmp\\markdown-browser-probe-target\\release\\Lathe-1.10.2-x86_64-windows-setup.exe",
+    "bytes": 226324120,
+    "sha256": "64317faea975408af7bd68a084c249de26a78dcfbd2ed60b4e277e8e69477625"
+  }
 }
