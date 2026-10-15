@@ -130,6 +130,8 @@ async fn verify_source_access(
         )
     })?;
     let workspace = workspace.context("Installed item has no workspace")?;
+    let focus = item.read_with(cx, |item, cx| item.focus_handle(cx))?;
+    window.update(cx, |_, window, cx| window.focus(&focus, cx))?;
     let mut dispatched = false;
     for _ in 0..50 {
         dispatched = window.update(cx, |_, window, cx| {
