@@ -608,6 +608,7 @@ mod tests {
             tool_permissions,
             sandbox_permissions: Default::default(),
             show_turn_stats: false,
+            show_ai_account_menu: true,
             super_compact_mode: false,
             show_merge_conflict_indicator: true,
             max_idle_retained_threads: 5,
