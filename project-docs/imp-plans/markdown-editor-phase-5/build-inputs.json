@@ -193,12 +193,6 @@
       "canonical_sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6"
     },
     {
-      "path": "project-docs/imp-plans/markdown-viewer-editor.md",
-      "bytes": 44959,
-      "sha256": "26b50e6b5e16865a5f5d75c252714e9d08771e13ab3a0c4adf374b177b0568da",
-      "canonical_sha256": "67ec596f5f344673c8a2c68c4fa27a36652b562cd08a4f7cb74d6a98b8a0fa97"
-    },
-    {
       "path": "script/build-fork-linux",
       "bytes": 3405,
       "sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b",
@@ -257,6 +251,24 @@
       "bytes": 2788,
       "sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398",
       "canonical_sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398"
+    }
+  ],
+  "scope": "The files array records 41 unchanged implementation/build/supporting files. The plan is documentation, not a compiled input, and its post-build completion update is recorded separately.",
+  "canonical_hash_rule": "SHA256 of file bytes after CRLF-to-LF normalization; raw bytes/hash describe the original Windows snapshot and may differ after Git checkout.",
+  "post_build_documentation": [
+    {
+      "path": "project-docs/imp-plans/markdown-viewer-editor.md",
+      "reason": "Evidence completion commit c6811e9a90515f1e5eba7f92307f1be2136c01b3 marks Phase5 complete after production artifacts were built; no production rebuild required.",
+      "implementation_commit_snapshot": {
+        "bytes": 44959,
+        "sha256": "26b50e6b5e16865a5f5d75c252714e9d08771e13ab3a0c4adf374b177b0568da",
+        "canonical_sha256": "67ec596f5f344673c8a2c68c4fa27a36652b562cd08a4f7cb74d6a98b8a0fa97"
+      },
+      "current_documentation_snapshot": {
+        "bytes": 45700,
+        "sha256": "a0223379e3f47e0d6e5d3bc0d8e0c4a9c3ff77e612df3f6bc12172136967d050",
+        "canonical_sha256": "a0223379e3f47e0d6e5d3bc0d8e0c4a9c3ff77e612df3f6bc12172136967d050"
+      }
     }
   ]
 }

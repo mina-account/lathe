@@ -230,7 +230,9 @@
   "final_source_identity": {
     "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb",
     "canonical_input_files_unchanged": 41,
-    "evidence_only_change": "Plan status and this evidence directory; production/build/runtime inputs match the recorded implementation commit."
+    "evidence_only_change": "The 41 unchanged implementation/build/supporting records match b7. The plan completion update is intentionally post-build documentation, separately recorded with original and current canonical hashes; remaining edits are evidence only.",
+    "manifest_files_total_before_split": 42,
+    "post_build_documentation_files": 1
   },
   "final_scoped_validation": {
     "rustfmt": "pass; edition2024 skip_children=true on changed Rust files; workspace.rs only11-line existing-format typed seam, baseline whole-file format excluded",
