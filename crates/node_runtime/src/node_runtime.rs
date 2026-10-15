@@ -27,9 +27,8 @@ const NODE_CA_CERTS_ENV_VAR: &str = "NODE_EXTRA_CA_CERTS";
 
 /// Asks the user whether a download may proceed. Supplied by the project layer, which owns the
 /// settings and the prompt; this crate only knows what it is about to fetch.
-pub type DownloadConsent = Arc<
-    dyn Fn(NodeDownloadRequest) -> futures::future::BoxFuture<'static, bool> + Send + Sync,
->;
+pub type DownloadConsent =
+    Arc<dyn Fn(NodeDownloadRequest) -> futures::future::BoxFuture<'static, bool> + Send + Sync>;
 
 /// What the user is being asked to approve.
 #[derive(Debug, Clone)]
@@ -1137,9 +1136,7 @@ impl SystemNodeRuntime {
             .await?
             .path;
         let scratch_dir = paths::node_dir().clone();
-        fs::create_dir_all(&scratch_dir).await.ok();
-        _ = fs::remove_dir_all(scratch_dir.join("cache")).await;
-        fs::create_dir(scratch_dir.join("cache")).await.ok();
+        initialize_system_npm_cache(&scratch_dir).await?;
 
         Ok(Self {
             node,
@@ -1153,6 +1150,11 @@ impl SystemNodeRuntime {
         let npm = which::which("npm").map_err(DetectError::NotInPath)?;
         Self::new(node, npm).await.map_err(DetectError::Other)
     }
+}
+
+async fn initialize_system_npm_cache(scratch_dir: &Path) -> Result<()> {
+    fs::create_dir_all(scratch_dir.join("cache")).await?;
+    Ok(())
 }
 
 enum DetectError {
@@ -1459,6 +1461,35 @@ mod tests {
         deserialize_npm_info_from_response, find_node_path, proxy_argument,
         select_npm_package_version, should_install_npm_package_version,
     };
+
+    #[test]
+    fn system_npm_cache_survives_initialization() -> Result<()> {
+        smol::block_on(async {
+            let directory = tempfile::tempdir()?;
+            let scratch_dir = directory.path().join("node runtime");
+            super::initialize_system_npm_cache(&scratch_dir).await?;
+            let sentinel = scratch_dir.join("cache").join("sentinel");
+            fs::write(&sentinel, "cached metadata")?;
+            super::initialize_system_npm_cache(&scratch_dir).await?;
+            assert_eq!(fs::read_to_string(sentinel)?, "cached metadata");
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn system_npm_cache_reports_creation_errors() -> Result<()> {
+        smol::block_on(async {
+            let directory = tempfile::tempdir()?;
+            let scratch_dir = directory.path().join("node");
+            fs::write(&scratch_dir, "not a directory")?;
+            assert!(
+                super::initialize_system_npm_cache(&scratch_dir)
+                    .await
+                    .is_err()
+            );
+            Ok(())
+        })
+    }
 
     #[test]
     fn test_node_lookup_distinguishes_basenames_and_relative_paths() -> Result<()> {
