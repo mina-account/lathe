@@ -1,0 +1,1104 @@
+{
+  "implementation_commit": "59f87b700e595eefa56651defe2bcd9ee35e7ab3",
+  "packaging_commit": "59f87b700e595eefa56651defe2bcd9ee35e7ab3",
+  "base_commit": "165aee9c781e7eb52eb579606a1a54eb4e77b9fc",
+  "rust": "1.98.1",
+  "frontend_node": "24.16.0",
+  "cef": "154.0.34",
+  "bindings": "154.5.0",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 596,
+      "sha256": "0b8e4c0f71bb507d500c6c4fbb510b540b4b5496ae84b00e8d37a05ee4cc1474",
+      "canonical_sha256": "78724013bb4dcdbd87a58fdf2240e0f6dfaf997f7e891202029c2ab9b4ba075a"
+    },
+    {
+      "path": ".github/workflows/lathe_linux_ci.yml",
+      "bytes": 7417,
+      "sha256": "ef89cc0535b90041c177d45f1e37d8ebd26423fe84c89487807d9284e4b62722",
+      "canonical_sha256": "9f2ef244dcb529a57592669b3fe059871c26d57b402b7da6b6c68763a7bc1355"
+    },
+    {
+      "path": ".github/workflows/release_fork.yml",
+      "bytes": 30087,
+      "sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20",
+      "canonical_sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20"
+    },
+    {
+      "path": "Cargo.lock",
+      "bytes": 499733,
+      "sha256": "ab0d474259f3fcbcb87afc4d611dba0a25ad7d8770204235f4453b492a54b615",
+      "canonical_sha256": "ab0d474259f3fcbcb87afc4d611dba0a25ad7d8770204235f4453b492a54b615"
+    },
+    {
+      "path": "Cargo.toml",
+      "bytes": 45202,
+      "sha256": "d0ef404ddb7ce9b82fbb3da400905f8fcf96cc1dc9e2e12945b52e42414c9cc6",
+      "canonical_sha256": "96e2c502fd17558cd66230a4db499bd8cecefb8a4adce2d9448a620275a07a3a"
+    },
+    {
+      "path": "assets/keymaps/default-linux.json",
+      "bytes": 61853,
+      "sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7",
+      "canonical_sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7"
+    },
+    {
+      "path": "assets/keymaps/default-windows.json",
+      "bytes": 61689,
+      "sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747",
+      "canonical_sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747"
+    },
+    {
+      "path": "assets/settings/default.json",
+      "bytes": 128155,
+      "sha256": "b1b47e692810c785503ce2eae726d44b7b704f000cd7c2e2607527d2d990dc44",
+      "canonical_sha256": "5b276d658f44f1498328739bae780e09460ab50068192a9dc1bf35b63372da40"
+    },
+    {
+      "path": "crates/cef_dll_sys/.gitattributes",
+      "bytes": 41,
+      "sha256": "d4abe1c0c56ba7d48ac21766535fdd0482def132291092b15de8503e8174a67a",
+      "canonical_sha256": "d4abe1c0c56ba7d48ac21766535fdd0482def132291092b15de8503e8174a67a"
+    },
+    {
+      "path": "crates/cef_dll_sys/Cargo.toml",
+      "bytes": 409,
+      "sha256": "0a5335a451b254ce3a685d2d9fbfd5c7d46676a3708320f8d92e944b488814cb",
+      "canonical_sha256": "0a5335a451b254ce3a685d2d9fbfd5c7d46676a3708320f8d92e944b488814cb"
+    },
+    {
+      "path": "crates/cef_dll_sys/LICENSE-APACHE",
+      "bytes": 10847,
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "canonical_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    {
+      "path": "crates/cef_dll_sys/LICENSE-MIT",
+      "bytes": 1065,
+      "sha256": "968a067d2458015543add393bbde51ef3f330ea122cf7b3380ea62e5a8945aee",
+      "canonical_sha256": "968a067d2458015543add393bbde51ef3f330ea122cf7b3380ea62e5a8945aee"
+    },
+    {
+      "path": "crates/cef_dll_sys/README.md",
+      "bytes": 2996,
+      "sha256": "747da7bf3854b72c48c16559e6157055206fb3a724ba273aa4b1efe22b661ecc",
+      "canonical_sha256": "747da7bf3854b72c48c16559e6157055206fb3a724ba273aa4b1efe22b661ecc"
+    },
+    {
+      "path": "crates/cef_dll_sys/bindings/aarch64_pc_windows_msvc.rs",
+      "bytes": 2381745,
+      "sha256": "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
+      "canonical_sha256": "bd47d258f0d6c99b573397a88766144d2755d19c581f2787cb75a853bfbe7932"
+    },
+    {
+      "path": "crates/cef_dll_sys/bindings/aarch64_unknown_linux_gnu.rs",
+      "bytes": 2333615,
+      "sha256": "aaf53a81b7b2f745d0764005666f4e2c7e75e2fe266f5c0b4548b5a3b66ffee0",
+      "canonical_sha256": "aaf53a81b7b2f745d0764005666f4e2c7e75e2fe266f5c0b4548b5a3b66ffee0"
+    },
+    {
+      "path": "crates/cef_dll_sys/bindings/x86_64_pc_windows_msvc.rs",
+      "bytes": 2381745,
+      "sha256": "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
+      "canonical_sha256": "bd47d258f0d6c99b573397a88766144d2755d19c581f2787cb75a853bfbe7932"
+    },
+    {
+      "path": "crates/cef_dll_sys/bindings/x86_64_unknown_linux_gnu.rs",
+      "bytes": 2333614,
+      "sha256": "40637562e0b267799e75ff739c42889733a24b75d3c91d1cb49947d4ed3e8bfe",
+      "canonical_sha256": "40637562e0b267799e75ff739c42889733a24b75d3c91d1cb49947d4ed3e8bfe"
+    },
+    {
+      "path": "crates/cef_dll_sys/build.rs",
+      "bytes": 6558,
+      "sha256": "e394f5b1d5c964fb4505741e8965a1a49eb729892d2aa1c528e88c36689a848c",
+      "canonical_sha256": "e394f5b1d5c964fb4505741e8965a1a49eb729892d2aa1c528e88c36689a848c"
+    },
+    {
+      "path": "crates/cef_dll_sys/cef_dll_sys.rs",
+      "bytes": 4805,
+      "sha256": "1e31e7d790fdd0bb43a2a20cf5350e3ed7874261644cda30ca6480ab0ef4819b",
+      "canonical_sha256": "1e31e7d790fdd0bb43a2a20cf5350e3ed7874261644cda30ca6480ab0ef4819b"
+    },
+    {
+      "path": "crates/cef_dll_sys/upstream.json",
+      "bytes": 727,
+      "sha256": "9a5960796632cca0b20a662c7136b21f272eb6ec1df42478bff7cc4e0f38715a",
+      "canonical_sha256": "9a5960796632cca0b20a662c7136b21f272eb6ec1df42478bff7cc4e0f38715a"
+    },
+    {
+      "path": "crates/lathe_hooks/src/lathe_hooks.rs",
+      "bytes": 3090,
+      "sha256": "6b462c56e40ebbaedb6341c093581a1cee6f947038460c4478f8ca786d9412c3",
+      "canonical_sha256": "69589b26808c52ea9bccaa9c1358d357ef1d622a8b1805d7483b4e9891fc251d"
+    },
+    {
+      "path": "crates/markdown_editor/CEF-LICENSE.txt",
+      "bytes": 1691,
+      "sha256": "2e69c36a7eaa4fa153426eab635c607ea0356cbc7a68a70f42a49e8ab8eb8106",
+      "canonical_sha256": "058c3827ffb827ff3edda471ae7e1bb1d1aa5931985f0126043ccd33409e792f"
+    },
+    {
+      "path": "crates/markdown_editor/Cargo.toml",
+      "bytes": 2612,
+      "sha256": "64c22b988b543c7beb26656c1066b62e816d7e4806ce70bd858eafd0c6673664",
+      "canonical_sha256": "19b7df80e224c31d8d72d6ef95de83cf7c41c9c7ee49f2ace07596466ed7530c"
+    },
+    {
+      "path": "crates/markdown_editor/NOTICES.md",
+      "bytes": 69693,
+      "sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae",
+      "canonical_sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae"
+    },
+    {
+      "path": "crates/markdown_editor/frontend/browser-test.mjs",
+      "bytes": 122672,
+      "sha256": "481a6575a550b6e6bff6a08b6753b458e04bca81daee6b4fe02a3ca52fcf0030",
+      "canonical_sha256": "481a6575a550b6e6bff6a08b6753b458e04bca81daee6b4fe02a3ca52fcf0030"
+    },
+    {
+      "path": "crates/markdown_editor/frontend/package-lock.json",
+      "bytes": 3361,
+      "sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
+      "canonical_sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797"
+    },
+    {
+      "path": "crates/markdown_editor/frontend/rich.js",
+      "bytes": 68776,
+      "sha256": "2fa6ab907c417268ee82ba7813bf7f3a0aaa8f056f28c84d5b9bfb4a72f5a4d5",
+      "canonical_sha256": "2fa6ab907c417268ee82ba7813bf7f3a0aaa8f056f28c84d5b9bfb4a72f5a4d5"
+    },
+    {
+      "path": "crates/markdown_editor/frontend/rich.ts",
+      "bytes": 69197,
+      "sha256": "5bd3992f99a9d978a55261a760834df2da2a3dfcd67b22dd0df0d671c0379c9a",
+      "canonical_sha256": "5bd3992f99a9d978a55261a760834df2da2a3dfcd67b22dd0df0d671c0379c9a"
+    },
+    {
+      "path": "crates/markdown_editor/frontend/vendor/manifest.json",
+      "bytes": 60417,
+      "sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804",
+      "canonical_sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804"
+    },
+    {
+      "path": "crates/markdown_editor/installed-fixture.md",
+      "bytes": 507,
+      "sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+      "canonical_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7"
+    },
+    {
+      "path": "crates/markdown_editor/src/browser.rs",
+      "bytes": 44517,
+      "sha256": "31587555837f926f904d0162a6df7dc855b6a2b26a7e01230e88266b3314975c",
+      "canonical_sha256": "31587555837f926f904d0162a6df7dc855b6a2b26a7e01230e88266b3314975c"
+    },
+    {
+      "path": "crates/markdown_editor/src/installation_check.rs",
+      "bytes": 16342,
+      "sha256": "826ae2798dad90bceca849ea01644cde0e38683ebca7a655f28ea9ba6321d205",
+      "canonical_sha256": "826ae2798dad90bceca849ea01644cde0e38683ebca7a655f28ea9ba6321d205"
+    },
+    {
+      "path": "crates/markdown_editor/src/item.rs",
+      "bytes": 162780,
+      "sha256": "a017702295cd6de149b214074d52d0d694da8f27a832ae1c6130fc12a69603d5",
+      "canonical_sha256": "a017702295cd6de149b214074d52d0d694da8f27a832ae1c6130fc12a69603d5"
+    },
+    {
+      "path": "crates/markdown_editor/src/markdown_editor.rs",
+      "bytes": 749,
+      "sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161",
+      "canonical_sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161"
+    },
+    {
+      "path": "crates/markdown_editor/src/opening.rs",
+      "bytes": 40316,
+      "sha256": "3c11759859c26bc4e2074e541ed31313358d062d350bcd6ec41ff604a69b6857",
+      "canonical_sha256": "3c11759859c26bc4e2074e541ed31313358d062d350bcd6ec41ff604a69b6857"
+    },
+    {
+      "path": "crates/markdown_editor/src/packaged_resources.rs",
+      "bytes": 60384,
+      "sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194",
+      "canonical_sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194"
+    },
+    {
+      "path": "crates/markdown_editor/src/protocol.rs",
+      "bytes": 49603,
+      "sha256": "fa6547ea0df7a4a9e9ef9cc741277c0b100fb6cf9875b3115bccdb19dbb5c1fd",
+      "canonical_sha256": "8fb2f9c08a39f6ae196a18313781f0a475071b8b359a568cc5daefb46efc5fe2"
+    },
+    {
+      "path": "crates/markdown_editor/src/settings.rs",
+      "bytes": 1421,
+      "sha256": "b4d9726cc9d70c5ddee3a0e16862798b15cca1216cc65046a11bc6d69d4a2c28",
+      "canonical_sha256": "d86bfeff4806e425ebae78abf08ec37f130c6237f10cf545d60c95618c2184ba"
+    },
+    {
+      "path": "crates/markdown_preview/Cargo.toml",
+      "bytes": 1058,
+      "sha256": "6906333b8b01b1a95173a6dd3f8d1ed7a3af8d1a4c5542c97449f502f15fed21",
+      "canonical_sha256": "b9e523c870e1ddb2d9187692043bb1a616a550b3601240ea869558ca190f513f"
+    },
+    {
+      "path": "crates/markdown_preview/src/markdown_preview_view.rs",
+      "bytes": 168132,
+      "sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789",
+      "canonical_sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789"
+    },
+    {
+      "path": "crates/project_panel/Cargo.toml",
+      "bytes": 1669,
+      "sha256": "0017de97913ae58c78d233124510d9358111566e664246a0fd605eb94b99aded",
+      "canonical_sha256": "d71b044e6b4c12c22b8684abfc1161524344cfc8770d984cdc6f96fc6cdedd69"
+    },
+    {
+      "path": "crates/project_panel/src/project_panel.rs",
+      "bytes": 347230,
+      "sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29",
+      "canonical_sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29"
+    },
+    {
+      "path": "crates/settings_content/src/settings_content.rs",
+      "bytes": 55383,
+      "sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f",
+      "canonical_sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f"
+    },
+    {
+      "path": "crates/settings_ui/src/page_data.rs",
+      "bytes": 546883,
+      "sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c",
+      "canonical_sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c"
+    },
+    {
+      "path": "crates/settings_ui/src/settings_ui.rs",
+      "bytes": 299543,
+      "sha256": "057d671c249ea044c49da2335f8c9ed3a0a43ae7a31e6fa6b73eda134132ddb4",
+      "canonical_sha256": "aa5d168d3c4e522ee507482cb89e94d66093a0f3e780fc3f7d9fb3ebf5e4e26c"
+    },
+    {
+      "path": "crates/workspace/Cargo.toml",
+      "bytes": 2401,
+      "sha256": "caa4294d4087ef4a4742a42d213c00e99b34c3cda95ace43c19acf5674b433bd",
+      "canonical_sha256": "6875d8488fe2c425d60e02fa0b18bf8601829af29e7077fc3cbc530f0be5eefc"
+    },
+    {
+      "path": "crates/workspace/src/pane.rs",
+      "bytes": 364595,
+      "sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0",
+      "canonical_sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0"
+    },
+    {
+      "path": "crates/workspace/src/workspace.rs",
+      "bytes": 813090,
+      "sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d",
+      "canonical_sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d"
+    },
+    {
+      "path": "docs/src/languages/markdown.md",
+      "bytes": 8343,
+      "sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6",
+      "canonical_sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6"
+    },
+    {
+      "path": "project-docs/imp-plans/markdown-editor-phase-5/verify-installed-linux.py",
+      "bytes": 9019,
+      "sha256": "8425cda64ea43a15f811fea6dd68b5a6a0fc0c5481c7b563797b91d5a6f1a6ce",
+      "canonical_sha256": "8425cda64ea43a15f811fea6dd68b5a6a0fc0c5481c7b563797b91d5a6f1a6ce"
+    },
+    {
+      "path": "project-docs/imp-plans/markdown-editor-phase-5/verify-installed-windows.ps1",
+      "bytes": 5846,
+      "sha256": "beb0749f3161cc13b5fdd30afb58c9b45f72eada7d8c8309de877a6788de7717",
+      "canonical_sha256": "beb0749f3161cc13b5fdd30afb58c9b45f72eada7d8c8309de877a6788de7717"
+    },
+    {
+      "path": "script/build-fork-linux",
+      "bytes": 3405,
+      "sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b",
+      "canonical_sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b"
+    },
+    {
+      "path": "script/build-fork-windows.ps1",
+      "bytes": 10146,
+      "sha256": "b308ea82eb4f4e1b34cbbae6343d1a96c67deb6e145c6851d41b3ea5766c9e93",
+      "canonical_sha256": "a59e27c4b685fb360c0d57fc4d8d40527447128d73ef193cb13c1cc598c5809a"
+    },
+    {
+      "path": "script/build-markdown-frontend",
+      "bytes": 212,
+      "sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede",
+      "canonical_sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede"
+    },
+    {
+      "path": "script/build-markdown-frontend.ps1",
+      "bytes": 615,
+      "sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9",
+      "canonical_sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9"
+    },
+    {
+      "path": "script/install-fork-linux",
+      "bytes": 4299,
+      "sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6",
+      "canonical_sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6"
+    },
+    {
+      "path": "script/install-fork-windows.ps1",
+      "bytes": 6917,
+      "sha256": "e0b1b34cebe7eae03f6bbd9306fedb17faa5c2611c55d61b34366b3cdf756e0c",
+      "canonical_sha256": "6e18d32a87920fa4c848e8c5adfad29bb2e9f0ee4b3be85cc8b842d421bbf22f"
+    },
+    {
+      "path": "script/package-fork-linux",
+      "bytes": 4890,
+      "sha256": "7cc986b7f7bd9d1a7ee480e0511b5d9d33a51e3cd958f596cbb6d16d42e2d1be",
+      "canonical_sha256": "7cc986b7f7bd9d1a7ee480e0511b5d9d33a51e3cd958f596cbb6d16d42e2d1be"
+    },
+    {
+      "path": "script/package-fork-windows.ps1",
+      "bytes": 13215,
+      "sha256": "e25a5ef1d38a22ebab9f9cff3d4875501f21026ddd086ccc0c1332fc2f90a748",
+      "canonical_sha256": "db04b70e022e3c0c080e1cd6e0fc71e9bc13c17ea38a05b5c7acb03ae382168c"
+    },
+    {
+      "path": "script/package-markdown-runtime.mjs",
+      "bytes": 3929,
+      "sha256": "3dc20e715119eb2caf00ed726f150b800da96c30bb641c35ba62f006e79d0346",
+      "canonical_sha256": "3dc20e715119eb2caf00ed726f150b800da96c30bb641c35ba62f006e79d0346"
+    },
+    {
+      "path": "script/test-markdown-runtime.mjs",
+      "bytes": 2788,
+      "sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398",
+      "canonical_sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398"
+    }
+  ],
+  "post_build_documentation": [
+    {
+      "path": "project-docs/imp-plans/markdown-viewer-editor.md",
+      "implementation_commit_snapshot": {
+        "bytes": 46205,
+        "sha256": "2f047dea22d27146520b7fe19668805411d31771df057d6431b112660f43202a",
+        "canonical_sha256": "2f047dea22d27146520b7fe19668805411d31771df057d6431b112660f43202a"
+      },
+      "current_documentation_snapshot": {
+        "bytes": 46657,
+        "sha256": "1c967b419574c614a680a26020bac4eaee3f09dc4705488d79527546f16d19c6",
+        "canonical_sha256": "1c967b419574c614a680a26020bac4eaee3f09dc4705488d79527546f16d19c6"
+      }
+    },
+    {
+      "path": "project-docs/imp-plans/markdown-editor-phase-5/README.md",
+      "implementation_commit_snapshot": {
+        "bytes": 28134,
+        "sha256": "4d4a0b42db7cbc2b6841e79d8ba4f8f900a2fd1974eb586a6855f1fb891825ca",
+        "canonical_sha256": "4d4a0b42db7cbc2b6841e79d8ba4f8f900a2fd1974eb586a6855f1fb891825ca"
+      },
+      "current_documentation_snapshot": {
+        "bytes": 10621,
+        "sha256": "d07af613a4395c31d0ff52fd1b9a1d40fa8dea34c60315212006841465e26ae8",
+        "canonical_sha256": "d07af613a4395c31d0ff52fd1b9a1d40fa8dea34c60315212006841465e26ae8"
+      }
+    }
+  ],
+  "post_build_verification": [],
+  "post_build_packaging": [],
+  "historical_superseded_basis": {
+    "implementation_commit": "49dcc0038e9d49821218b208d4de3aa3be9b03c9",
+    "packaging_commit": "49dcc0038e9d49821218b208d4de3aa3be9b03c9",
+    "base_commit": "165aee9c781e7eb52eb579606a1a54eb4e77b9fc",
+    "rust": "1.98.1",
+    "frontend_node": "24.16.0",
+    "cef": "154.0.34",
+    "bindings": "154.5.0",
+    "files": [
+      {
+        "path": ".gitattributes",
+        "bytes": 596,
+        "sha256": "0b8e4c0f71bb507d500c6c4fbb510b540b4b5496ae84b00e8d37a05ee4cc1474",
+        "canonical_sha256": "78724013bb4dcdbd87a58fdf2240e0f6dfaf997f7e891202029c2ab9b4ba075a"
+      },
+      {
+        "path": ".github/workflows/lathe_linux_ci.yml",
+        "bytes": 7417,
+        "sha256": "ef89cc0535b90041c177d45f1e37d8ebd26423fe84c89487807d9284e4b62722",
+        "canonical_sha256": "9f2ef244dcb529a57592669b3fe059871c26d57b402b7da6b6c68763a7bc1355"
+      },
+      {
+        "path": ".github/workflows/release_fork.yml",
+        "bytes": 30087,
+        "sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20",
+        "canonical_sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20"
+      },
+      {
+        "path": "Cargo.lock",
+        "bytes": 499733,
+        "sha256": "ab0d474259f3fcbcb87afc4d611dba0a25ad7d8770204235f4453b492a54b615",
+        "canonical_sha256": "ab0d474259f3fcbcb87afc4d611dba0a25ad7d8770204235f4453b492a54b615"
+      },
+      {
+        "path": "Cargo.toml",
+        "bytes": 45202,
+        "sha256": "d0ef404ddb7ce9b82fbb3da400905f8fcf96cc1dc9e2e12945b52e42414c9cc6",
+        "canonical_sha256": "96e2c502fd17558cd66230a4db499bd8cecefb8a4adce2d9448a620275a07a3a"
+      },
+      {
+        "path": "assets/keymaps/default-linux.json",
+        "bytes": 61853,
+        "sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7",
+        "canonical_sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7"
+      },
+      {
+        "path": "assets/keymaps/default-windows.json",
+        "bytes": 61689,
+        "sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747",
+        "canonical_sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747"
+      },
+      {
+        "path": "assets/settings/default.json",
+        "bytes": 128155,
+        "sha256": "b1b47e692810c785503ce2eae726d44b7b704f000cd7c2e2607527d2d990dc44",
+        "canonical_sha256": "5b276d658f44f1498328739bae780e09460ab50068192a9dc1bf35b63372da40"
+      },
+      {
+        "path": "crates/cef_dll_sys/.gitattributes",
+        "bytes": 41,
+        "sha256": "d4abe1c0c56ba7d48ac21766535fdd0482def132291092b15de8503e8174a67a",
+        "canonical_sha256": "d4abe1c0c56ba7d48ac21766535fdd0482def132291092b15de8503e8174a67a"
+      },
+      {
+        "path": "crates/cef_dll_sys/Cargo.toml",
+        "bytes": 409,
+        "sha256": "0a5335a451b254ce3a685d2d9fbfd5c7d46676a3708320f8d92e944b488814cb",
+        "canonical_sha256": "0a5335a451b254ce3a685d2d9fbfd5c7d46676a3708320f8d92e944b488814cb"
+      },
+      {
+        "path": "crates/cef_dll_sys/LICENSE-APACHE",
+        "bytes": 10847,
+        "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+        "canonical_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      },
+      {
+        "path": "crates/cef_dll_sys/LICENSE-MIT",
+        "bytes": 1065,
+        "sha256": "968a067d2458015543add393bbde51ef3f330ea122cf7b3380ea62e5a8945aee",
+        "canonical_sha256": "968a067d2458015543add393bbde51ef3f330ea122cf7b3380ea62e5a8945aee"
+      },
+      {
+        "path": "crates/cef_dll_sys/README.md",
+        "bytes": 2996,
+        "sha256": "747da7bf3854b72c48c16559e6157055206fb3a724ba273aa4b1efe22b661ecc",
+        "canonical_sha256": "747da7bf3854b72c48c16559e6157055206fb3a724ba273aa4b1efe22b661ecc"
+      },
+      {
+        "path": "crates/cef_dll_sys/bindings/aarch64_pc_windows_msvc.rs",
+        "bytes": 2381745,
+        "sha256": "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
+        "canonical_sha256": "bd47d258f0d6c99b573397a88766144d2755d19c581f2787cb75a853bfbe7932"
+      },
+      {
+        "path": "crates/cef_dll_sys/bindings/aarch64_unknown_linux_gnu.rs",
+        "bytes": 2333615,
+        "sha256": "aaf53a81b7b2f745d0764005666f4e2c7e75e2fe266f5c0b4548b5a3b66ffee0",
+        "canonical_sha256": "aaf53a81b7b2f745d0764005666f4e2c7e75e2fe266f5c0b4548b5a3b66ffee0"
+      },
+      {
+        "path": "crates/cef_dll_sys/bindings/x86_64_pc_windows_msvc.rs",
+        "bytes": 2381745,
+        "sha256": "709c3702ac6ec80611a085287578590e3785e127c9585a82c33ed2093c4feae3",
+        "canonical_sha256": "bd47d258f0d6c99b573397a88766144d2755d19c581f2787cb75a853bfbe7932"
+      },
+      {
+        "path": "crates/cef_dll_sys/bindings/x86_64_unknown_linux_gnu.rs",
+        "bytes": 2333614,
+        "sha256": "40637562e0b267799e75ff739c42889733a24b75d3c91d1cb49947d4ed3e8bfe",
+        "canonical_sha256": "40637562e0b267799e75ff739c42889733a24b75d3c91d1cb49947d4ed3e8bfe"
+      },
+      {
+        "path": "crates/cef_dll_sys/build.rs",
+        "bytes": 6558,
+        "sha256": "e394f5b1d5c964fb4505741e8965a1a49eb729892d2aa1c528e88c36689a848c",
+        "canonical_sha256": "e394f5b1d5c964fb4505741e8965a1a49eb729892d2aa1c528e88c36689a848c"
+      },
+      {
+        "path": "crates/cef_dll_sys/cef_dll_sys.rs",
+        "bytes": 4805,
+        "sha256": "1e31e7d790fdd0bb43a2a20cf5350e3ed7874261644cda30ca6480ab0ef4819b",
+        "canonical_sha256": "1e31e7d790fdd0bb43a2a20cf5350e3ed7874261644cda30ca6480ab0ef4819b"
+      },
+      {
+        "path": "crates/lathe_hooks/src/lathe_hooks.rs",
+        "bytes": 3090,
+        "sha256": "6b462c56e40ebbaedb6341c093581a1cee6f947038460c4478f8ca786d9412c3",
+        "canonical_sha256": "69589b26808c52ea9bccaa9c1358d357ef1d622a8b1805d7483b4e9891fc251d"
+      },
+      {
+        "path": "crates/markdown_editor/CEF-LICENSE.txt",
+        "bytes": 1691,
+        "sha256": "2e69c36a7eaa4fa153426eab635c607ea0356cbc7a68a70f42a49e8ab8eb8106",
+        "canonical_sha256": "058c3827ffb827ff3edda471ae7e1bb1d1aa5931985f0126043ccd33409e792f"
+      },
+      {
+        "path": "crates/markdown_editor/Cargo.toml",
+        "bytes": 2612,
+        "sha256": "64c22b988b543c7beb26656c1066b62e816d7e4806ce70bd858eafd0c6673664",
+        "canonical_sha256": "19b7df80e224c31d8d72d6ef95de83cf7c41c9c7ee49f2ace07596466ed7530c"
+      },
+      {
+        "path": "crates/markdown_editor/NOTICES.md",
+        "bytes": 69693,
+        "sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae",
+        "canonical_sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae"
+      },
+      {
+        "path": "crates/markdown_editor/frontend/package-lock.json",
+        "bytes": 3361,
+        "sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
+        "canonical_sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797"
+      },
+      {
+        "path": "crates/markdown_editor/frontend/vendor/manifest.json",
+        "bytes": 60417,
+        "sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804",
+        "canonical_sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804"
+      },
+      {
+        "path": "crates/markdown_editor/installed-fixture.md",
+        "bytes": 507,
+        "sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+        "canonical_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7"
+      },
+      {
+        "path": "crates/markdown_editor/src/browser.rs",
+        "bytes": 44517,
+        "sha256": "31587555837f926f904d0162a6df7dc855b6a2b26a7e01230e88266b3314975c",
+        "canonical_sha256": "31587555837f926f904d0162a6df7dc855b6a2b26a7e01230e88266b3314975c"
+      },
+      {
+        "path": "crates/markdown_editor/src/installation_check.rs",
+        "bytes": 11463,
+        "sha256": "3f077eda9865084cee6b1ef69ace37b9e80988067b23c75428027e0103193b91",
+        "canonical_sha256": "3f077eda9865084cee6b1ef69ace37b9e80988067b23c75428027e0103193b91"
+      },
+      {
+        "path": "crates/markdown_editor/src/item.rs",
+        "bytes": 156049,
+        "sha256": "bef6e54ce09fe08a7273b070cf167e829f927f921b1bb836f9885d224ed1a271",
+        "canonical_sha256": "bef6e54ce09fe08a7273b070cf167e829f927f921b1bb836f9885d224ed1a271"
+      },
+      {
+        "path": "crates/markdown_editor/src/markdown_editor.rs",
+        "bytes": 749,
+        "sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161",
+        "canonical_sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161"
+      },
+      {
+        "path": "crates/markdown_editor/src/opening.rs",
+        "bytes": 40316,
+        "sha256": "3c11759859c26bc4e2074e541ed31313358d062d350bcd6ec41ff604a69b6857",
+        "canonical_sha256": "3c11759859c26bc4e2074e541ed31313358d062d350bcd6ec41ff604a69b6857"
+      },
+      {
+        "path": "crates/markdown_editor/src/packaged_resources.rs",
+        "bytes": 60384,
+        "sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194",
+        "canonical_sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194"
+      },
+      {
+        "path": "crates/markdown_editor/src/settings.rs",
+        "bytes": 1421,
+        "sha256": "b4d9726cc9d70c5ddee3a0e16862798b15cca1216cc65046a11bc6d69d4a2c28",
+        "canonical_sha256": "d86bfeff4806e425ebae78abf08ec37f130c6237f10cf545d60c95618c2184ba"
+      },
+      {
+        "path": "crates/markdown_preview/Cargo.toml",
+        "bytes": 1058,
+        "sha256": "6906333b8b01b1a95173a6dd3f8d1ed7a3af8d1a4c5542c97449f502f15fed21",
+        "canonical_sha256": "b9e523c870e1ddb2d9187692043bb1a616a550b3601240ea869558ca190f513f"
+      },
+      {
+        "path": "crates/markdown_preview/src/markdown_preview_view.rs",
+        "bytes": 168132,
+        "sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789",
+        "canonical_sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789"
+      },
+      {
+        "path": "crates/project_panel/Cargo.toml",
+        "bytes": 1669,
+        "sha256": "0017de97913ae58c78d233124510d9358111566e664246a0fd605eb94b99aded",
+        "canonical_sha256": "d71b044e6b4c12c22b8684abfc1161524344cfc8770d984cdc6f96fc6cdedd69"
+      },
+      {
+        "path": "crates/project_panel/src/project_panel.rs",
+        "bytes": 347230,
+        "sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29",
+        "canonical_sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29"
+      },
+      {
+        "path": "crates/settings_content/src/settings_content.rs",
+        "bytes": 55383,
+        "sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f",
+        "canonical_sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f"
+      },
+      {
+        "path": "crates/settings_ui/src/page_data.rs",
+        "bytes": 546883,
+        "sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c",
+        "canonical_sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c"
+      },
+      {
+        "path": "crates/settings_ui/src/settings_ui.rs",
+        "bytes": 299543,
+        "sha256": "057d671c249ea044c49da2335f8c9ed3a0a43ae7a31e6fa6b73eda134132ddb4",
+        "canonical_sha256": "aa5d168d3c4e522ee507482cb89e94d66093a0f3e780fc3f7d9fb3ebf5e4e26c"
+      },
+      {
+        "path": "crates/workspace/Cargo.toml",
+        "bytes": 2401,
+        "sha256": "caa4294d4087ef4a4742a42d213c00e99b34c3cda95ace43c19acf5674b433bd",
+        "canonical_sha256": "6875d8488fe2c425d60e02fa0b18bf8601829af29e7077fc3cbc530f0be5eefc"
+      },
+      {
+        "path": "crates/workspace/src/pane.rs",
+        "bytes": 364595,
+        "sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0",
+        "canonical_sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0"
+      },
+      {
+        "path": "crates/workspace/src/workspace.rs",
+        "bytes": 813090,
+        "sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d",
+        "canonical_sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d"
+      },
+      {
+        "path": "docs/src/languages/markdown.md",
+        "bytes": 8343,
+        "sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6",
+        "canonical_sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6"
+      },
+      {
+        "path": "project-docs/imp-plans/markdown-editor-phase-5/verify-installed-windows.ps1",
+        "bytes": 5487,
+        "sha256": "6673344f6fa1380bcfdf5dcb064c6b8bc9f154a393a899d8d904905aa9f559d6",
+        "canonical_sha256": "6673344f6fa1380bcfdf5dcb064c6b8bc9f154a393a899d8d904905aa9f559d6"
+      },
+      {
+        "path": "script/build-fork-linux",
+        "bytes": 3405,
+        "sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b",
+        "canonical_sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b"
+      },
+      {
+        "path": "script/build-fork-windows.ps1",
+        "bytes": 10146,
+        "sha256": "b308ea82eb4f4e1b34cbbae6343d1a96c67deb6e145c6851d41b3ea5766c9e93",
+        "canonical_sha256": "a59e27c4b685fb360c0d57fc4d8d40527447128d73ef193cb13c1cc598c5809a"
+      },
+      {
+        "path": "script/build-markdown-frontend",
+        "bytes": 212,
+        "sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede",
+        "canonical_sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede"
+      },
+      {
+        "path": "script/build-markdown-frontend.ps1",
+        "bytes": 615,
+        "sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9",
+        "canonical_sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9"
+      },
+      {
+        "path": "script/install-fork-linux",
+        "bytes": 4299,
+        "sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6",
+        "canonical_sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6"
+      },
+      {
+        "path": "script/install-fork-windows.ps1",
+        "bytes": 6917,
+        "sha256": "e0b1b34cebe7eae03f6bbd9306fedb17faa5c2611c55d61b34366b3cdf756e0c",
+        "canonical_sha256": "6e18d32a87920fa4c848e8c5adfad29bb2e9f0ee4b3be85cc8b842d421bbf22f"
+      },
+      {
+        "path": "script/package-fork-linux",
+        "bytes": 4890,
+        "sha256": "7cc986b7f7bd9d1a7ee480e0511b5d9d33a51e3cd958f596cbb6d16d42e2d1be",
+        "canonical_sha256": "7cc986b7f7bd9d1a7ee480e0511b5d9d33a51e3cd958f596cbb6d16d42e2d1be"
+      },
+      {
+        "path": "script/package-fork-windows.ps1",
+        "bytes": 13215,
+        "sha256": "e25a5ef1d38a22ebab9f9cff3d4875501f21026ddd086ccc0c1332fc2f90a748",
+        "canonical_sha256": "db04b70e022e3c0c080e1cd6e0fc71e9bc13c17ea38a05b5c7acb03ae382168c"
+      },
+      {
+        "path": "script/package-markdown-runtime.mjs",
+        "bytes": 3929,
+        "sha256": "3dc20e715119eb2caf00ed726f150b800da96c30bb641c35ba62f006e79d0346",
+        "canonical_sha256": "3dc20e715119eb2caf00ed726f150b800da96c30bb641c35ba62f006e79d0346"
+      },
+      {
+        "path": "script/test-markdown-runtime.mjs",
+        "bytes": 2788,
+        "sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398",
+        "canonical_sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398"
+      }
+    ],
+    "post_build_documentation": [
+      {
+        "path": "project-docs/imp-plans/markdown-viewer-editor.md",
+        "implementation_commit_snapshot": {
+          "bytes": 46146,
+          "sha256": "745cc2667574676de0ee0682b48aed6900a68e884cc8d783152940cf857639b9",
+          "canonical_sha256": "745cc2667574676de0ee0682b48aed6900a68e884cc8d783152940cf857639b9"
+        },
+        "current_documentation_snapshot": {
+          "bytes": 46205,
+          "sha256": "2f047dea22d27146520b7fe19668805411d31771df057d6431b112660f43202a",
+          "canonical_sha256": "2f047dea22d27146520b7fe19668805411d31771df057d6431b112660f43202a"
+        }
+      },
+      {
+        "path": "project-docs/imp-plans/markdown-editor-phase-5/README.md",
+        "implementation_commit_snapshot": {
+          "bytes": 23498,
+          "sha256": "d61ecbdbc6325d8ced0eebd68b3024f7b203e5f211fe03b92023820a11256df8",
+          "canonical_sha256": "d61ecbdbc6325d8ced0eebd68b3024f7b203e5f211fe03b92023820a11256df8"
+        },
+        "current_documentation_snapshot": {
+          "bytes": 28134,
+          "sha256": "4d4a0b42db7cbc2b6841e79d8ba4f8f900a2fd1974eb586a6855f1fb891825ca",
+          "canonical_sha256": "4d4a0b42db7cbc2b6841e79d8ba4f8f900a2fd1974eb586a6855f1fb891825ca"
+        }
+      },
+      {
+        "path": "crates/cef_dll_sys/upstream.json",
+        "implementation_commit_snapshot": {
+          "bytes": 999,
+          "sha256": "b6f4e24806aa87754d63103ed334841fa6bf08838739b5ba4fe8ce9e7052aa71",
+          "canonical_sha256": "b6f4e24806aa87754d63103ed334841fa6bf08838739b5ba4fe8ce9e7052aa71"
+        },
+        "current_documentation_snapshot": {
+          "bytes": 727,
+          "sha256": "9a5960796632cca0b20a662c7136b21f272eb6ec1df42478bff7cc4e0f38715a",
+          "canonical_sha256": "9a5960796632cca0b20a662c7136b21f272eb6ec1df42478bff7cc4e0f38715a"
+        }
+      }
+    ],
+    "post_build_verification": [
+      {
+        "path": "project-docs/imp-plans/markdown-editor-phase-5/verify-installed-linux.py",
+        "implementation_commit_snapshot": {
+          "bytes": 7836,
+          "sha256": "e66bcb17c94cd2f5f3a2cc8dfe3f0a9d9925a3bd68005abc46c5a7a81842322c",
+          "canonical_sha256": "e66bcb17c94cd2f5f3a2cc8dfe3f0a9d9925a3bd68005abc46c5a7a81842322c"
+        },
+        "current_verification_snapshot": {
+          "bytes": 8709,
+          "sha256": "f5e04a9cc61920377d2efafcb1c6616655ebb036e5c7f82825fb155ba2e56580",
+          "canonical_sha256": "f5e04a9cc61920377d2efafcb1c6616655ebb036e5c7f82825fb155ba2e56580"
+        }
+      }
+    ],
+    "post_build_packaging": [],
+    "historical_superseded_basis": {
+      "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb",
+      "base_commit": "165aee9c781e7eb52eb579606a1a54eb4e77b9fc",
+      "rust": "1.98.1",
+      "frontend_node": "24.16.0",
+      "cef": "154.0.34",
+      "bindings": "154.5.0",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "bytes": 596,
+          "sha256": "0b8e4c0f71bb507d500c6c4fbb510b540b4b5496ae84b00e8d37a05ee4cc1474",
+          "canonical_sha256": "78724013bb4dcdbd87a58fdf2240e0f6dfaf997f7e891202029c2ab9b4ba075a"
+        },
+        {
+          "path": ".github/workflows/release_fork.yml",
+          "bytes": 30087,
+          "sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20",
+          "canonical_sha256": "889c2f7a62e6210f9cae50c64fe7549084651bc2ef9e65f1eeda93cb9f545e20"
+        },
+        {
+          "path": "Cargo.lock",
+          "bytes": 499861,
+          "sha256": "25a57cf2ff9088f1161d88bd9d15fccb0a877724b2988eb34432e0eb4307b081",
+          "canonical_sha256": "25a57cf2ff9088f1161d88bd9d15fccb0a877724b2988eb34432e0eb4307b081"
+        },
+        {
+          "path": "assets/keymaps/default-linux.json",
+          "bytes": 61853,
+          "sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7",
+          "canonical_sha256": "f4b6450716ad060846563776f438a74a269bd5e40f88b83365304254d01273b7"
+        },
+        {
+          "path": "assets/keymaps/default-windows.json",
+          "bytes": 61689,
+          "sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747",
+          "canonical_sha256": "7ccfdfa68fb3666346dc957fba3d90cb08221e6b610b772ec186aeea64eab747"
+        },
+        {
+          "path": "assets/settings/default.json",
+          "bytes": 128155,
+          "sha256": "b1b47e692810c785503ce2eae726d44b7b704f000cd7c2e2607527d2d990dc44",
+          "canonical_sha256": "5b276d658f44f1498328739bae780e09460ab50068192a9dc1bf35b63372da40"
+        },
+        {
+          "path": "crates/lathe_hooks/src/lathe_hooks.rs",
+          "bytes": 3090,
+          "sha256": "6b462c56e40ebbaedb6341c093581a1cee6f947038460c4478f8ca786d9412c3",
+          "canonical_sha256": "69589b26808c52ea9bccaa9c1358d357ef1d622a8b1805d7483b4e9891fc251d"
+        },
+        {
+          "path": "crates/markdown_editor/CEF-LICENSE.txt",
+          "bytes": 1691,
+          "sha256": "2e69c36a7eaa4fa153426eab635c607ea0356cbc7a68a70f42a49e8ab8eb8106",
+          "canonical_sha256": "058c3827ffb827ff3edda471ae7e1bb1d1aa5931985f0126043ccd33409e792f"
+        },
+        {
+          "path": "crates/markdown_editor/Cargo.toml",
+          "bytes": 2612,
+          "sha256": "64c22b988b543c7beb26656c1066b62e816d7e4806ce70bd858eafd0c6673664",
+          "canonical_sha256": "19b7df80e224c31d8d72d6ef95de83cf7c41c9c7ee49f2ace07596466ed7530c"
+        },
+        {
+          "path": "crates/markdown_editor/NOTICES.md",
+          "bytes": 69693,
+          "sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae",
+          "canonical_sha256": "dcf759eccf5b2bc2dec399e2000e7a2232aa158ed48c12a507f8cafedd7ef1ae"
+        },
+        {
+          "path": "crates/markdown_editor/frontend/package-lock.json",
+          "bytes": 3361,
+          "sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797",
+          "canonical_sha256": "650bd0000f079471861c85e4118b574de7b6a2d074688fd3d0e902feabe6e797"
+        },
+        {
+          "path": "crates/markdown_editor/frontend/vendor/manifest.json",
+          "bytes": 60417,
+          "sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804",
+          "canonical_sha256": "71037e5bfadb2c360ba6213276e094f30f3ef767d4ea41ca55023084cecec804"
+        },
+        {
+          "path": "crates/markdown_editor/installed-fixture.md",
+          "bytes": 507,
+          "sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7",
+          "canonical_sha256": "ce694a10cb8da7cd5eb88abd2f801454eb943a03383e30de46853043302b46e7"
+        },
+        {
+          "path": "crates/markdown_editor/src/browser.rs",
+          "bytes": 43478,
+          "sha256": "9128f829f33a10a4abcf86239e9bc1865e61b1d79fb1cfea3726787e7bdce093",
+          "canonical_sha256": "9128f829f33a10a4abcf86239e9bc1865e61b1d79fb1cfea3726787e7bdce093"
+        },
+        {
+          "path": "crates/markdown_editor/src/installation_check.rs",
+          "bytes": 8616,
+          "sha256": "05275252a4ba0c32981204abc69590a8b52b2d5d61dd09d62552594c1df3b4fe",
+          "canonical_sha256": "05275252a4ba0c32981204abc69590a8b52b2d5d61dd09d62552594c1df3b4fe"
+        },
+        {
+          "path": "crates/markdown_editor/src/item.rs",
+          "bytes": 155638,
+          "sha256": "5e2a4f1ec68b885fa9e869ed37eec34e730ff31cf0ad5dada21e1df9f0fe56bf",
+          "canonical_sha256": "5e2a4f1ec68b885fa9e869ed37eec34e730ff31cf0ad5dada21e1df9f0fe56bf"
+        },
+        {
+          "path": "crates/markdown_editor/src/markdown_editor.rs",
+          "bytes": 749,
+          "sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161",
+          "canonical_sha256": "44a94bf95f85c2647539c08a122c4b1f456cdf0df0a17ea44c38b8199672c161"
+        },
+        {
+          "path": "crates/markdown_editor/src/opening.rs",
+          "bytes": 34144,
+          "sha256": "6f70690295809a403056871e233ac4f7dd7d85908a6425b0e1b87003e6e2d4ea",
+          "canonical_sha256": "6f70690295809a403056871e233ac4f7dd7d85908a6425b0e1b87003e6e2d4ea"
+        },
+        {
+          "path": "crates/markdown_editor/src/packaged_resources.rs",
+          "bytes": 60384,
+          "sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194",
+          "canonical_sha256": "843f3b8785427866957280e7b43489f0631d8248b82131752f4481b830862194"
+        },
+        {
+          "path": "crates/markdown_editor/src/settings.rs",
+          "bytes": 1421,
+          "sha256": "b4d9726cc9d70c5ddee3a0e16862798b15cca1216cc65046a11bc6d69d4a2c28",
+          "canonical_sha256": "d86bfeff4806e425ebae78abf08ec37f130c6237f10cf545d60c95618c2184ba"
+        },
+        {
+          "path": "crates/markdown_preview/Cargo.toml",
+          "bytes": 1058,
+          "sha256": "6906333b8b01b1a95173a6dd3f8d1ed7a3af8d1a4c5542c97449f502f15fed21",
+          "canonical_sha256": "b9e523c870e1ddb2d9187692043bb1a616a550b3601240ea869558ca190f513f"
+        },
+        {
+          "path": "crates/markdown_preview/src/markdown_preview_view.rs",
+          "bytes": 168132,
+          "sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789",
+          "canonical_sha256": "77076e5493ce53acca14a24faa8aedf925ded1a8bd349320a3757d57951a0789"
+        },
+        {
+          "path": "crates/project_panel/Cargo.toml",
+          "bytes": 1669,
+          "sha256": "0017de97913ae58c78d233124510d9358111566e664246a0fd605eb94b99aded",
+          "canonical_sha256": "d71b044e6b4c12c22b8684abfc1161524344cfc8770d984cdc6f96fc6cdedd69"
+        },
+        {
+          "path": "crates/project_panel/src/project_panel.rs",
+          "bytes": 347230,
+          "sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29",
+          "canonical_sha256": "6046486244e7d553584c65836d110cb21e7749dfaede43a949e3e00e29b65d29"
+        },
+        {
+          "path": "crates/settings_content/src/settings_content.rs",
+          "bytes": 55383,
+          "sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f",
+          "canonical_sha256": "9a2794897a9f8610d56e7e64ed87f0254a429e15ae7c401cec2f57e0e705179f"
+        },
+        {
+          "path": "crates/settings_ui/src/page_data.rs",
+          "bytes": 546883,
+          "sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c",
+          "canonical_sha256": "5afcfc660ae5f81792af3011d26d3cad665971fc0856e0553630087ebc87db9c"
+        },
+        {
+          "path": "crates/settings_ui/src/settings_ui.rs",
+          "bytes": 299543,
+          "sha256": "057d671c249ea044c49da2335f8c9ed3a0a43ae7a31e6fa6b73eda134132ddb4",
+          "canonical_sha256": "aa5d168d3c4e522ee507482cb89e94d66093a0f3e780fc3f7d9fb3ebf5e4e26c"
+        },
+        {
+          "path": "crates/workspace/Cargo.toml",
+          "bytes": 2401,
+          "sha256": "caa4294d4087ef4a4742a42d213c00e99b34c3cda95ace43c19acf5674b433bd",
+          "canonical_sha256": "6875d8488fe2c425d60e02fa0b18bf8601829af29e7077fc3cbc530f0be5eefc"
+        },
+        {
+          "path": "crates/workspace/src/pane.rs",
+          "bytes": 364595,
+          "sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0",
+          "canonical_sha256": "0ded38d707025add58199ba8019f0d21305d24bc5e0bf801e4438e8b82978bf0"
+        },
+        {
+          "path": "crates/workspace/src/workspace.rs",
+          "bytes": 813090,
+          "sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d",
+          "canonical_sha256": "81a1dca822acb8e37da418387d570bdeefa30c85ff653ccc7081c2976df4e69d"
+        },
+        {
+          "path": "docs/src/languages/markdown.md",
+          "bytes": 8343,
+          "sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6",
+          "canonical_sha256": "0c1686adb650ed520a001945708d05623ac4a74e2d520b91b578ef17032e73e6"
+        },
+        {
+          "path": "script/build-fork-linux",
+          "bytes": 3405,
+          "sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b",
+          "canonical_sha256": "820b359107cc7584dd8ef7b6c3789034af42ab777f0ad365814c8ab9a026098b"
+        },
+        {
+          "path": "script/build-fork-windows.ps1",
+          "bytes": 10146,
+          "sha256": "b308ea82eb4f4e1b34cbbae6343d1a96c67deb6e145c6851d41b3ea5766c9e93",
+          "canonical_sha256": "a59e27c4b685fb360c0d57fc4d8d40527447128d73ef193cb13c1cc598c5809a"
+        },
+        {
+          "path": "script/build-markdown-frontend",
+          "bytes": 212,
+          "sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede",
+          "canonical_sha256": "92f19af71f4dc65d52e791d874e4745979bcb23982e3fd798caf39e221493ede"
+        },
+        {
+          "path": "script/build-markdown-frontend.ps1",
+          "bytes": 615,
+          "sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9",
+          "canonical_sha256": "d005bea6c631dbe3705e2dc1d913b7577dbfa37a8f9e59fed7fe8722422ecbb9"
+        },
+        {
+          "path": "script/install-fork-linux",
+          "bytes": 4299,
+          "sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6",
+          "canonical_sha256": "1770c740e280dbd1e57f3cc977bfa3475457b277717576dc743b131c2cd240d6"
+        },
+        {
+          "path": "script/install-fork-windows.ps1",
+          "bytes": 6917,
+          "sha256": "e0b1b34cebe7eae03f6bbd9306fedb17faa5c2611c55d61b34366b3cdf756e0c",
+          "canonical_sha256": "6e18d32a87920fa4c848e8c5adfad29bb2e9f0ee4b3be85cc8b842d421bbf22f"
+        },
+        {
+          "path": "script/package-fork-windows.ps1",
+          "bytes": 13215,
+          "sha256": "e25a5ef1d38a22ebab9f9cff3d4875501f21026ddd086ccc0c1332fc2f90a748",
+          "canonical_sha256": "db04b70e022e3c0c080e1cd6e0fc71e9bc13c17ea38a05b5c7acb03ae382168c"
+        },
+        {
+          "path": "script/package-markdown-runtime.mjs",
+          "bytes": 3785,
+          "sha256": "a06d1fd498e3b4deb5d22deace6724de8903cff874e83b5e7b752179fbfee35c",
+          "canonical_sha256": "a06d1fd498e3b4deb5d22deace6724de8903cff874e83b5e7b752179fbfee35c"
+        },
+        {
+          "path": "script/test-markdown-runtime.mjs",
+          "bytes": 2788,
+          "sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398",
+          "canonical_sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398"
+        }
+      ],
+      "scope": "The files array records 40 unchanged implementation/build/supporting files matching b7. Two Linux packaging/CI inputs are recorded separately at packaging_commit. Production executable code and all Windows build/package inputs are unchanged. The plan is post-build documentation.",
+      "canonical_hash_rule": "SHA256 of file bytes after CRLF-to-LF normalization; raw bytes/hash describe the original Windows snapshot and may differ after Git checkout.",
+      "post_build_documentation": [
+        {
+          "path": "project-docs/imp-plans/markdown-viewer-editor.md",
+          "reason": "Phase5 completion and review1 packaging/CI evidence update; no compiled production source change.",
+          "implementation_commit_snapshot": {
+            "bytes": 44959,
+            "sha256": "26b50e6b5e16865a5f5d75c252714e9d08771e13ab3a0c4adf374b177b0568da",
+            "canonical_sha256": "67ec596f5f344673c8a2c68c4fa27a36652b562cd08a4f7cb74d6a98b8a0fa97"
+          },
+          "current_documentation_snapshot": {
+            "bytes": 46146,
+            "sha256": "745cc2667574676de0ee0682b48aed6900a68e884cc8d783152940cf857639b9",
+            "canonical_sha256": "745cc2667574676de0ee0682b48aed6900a68e884cc8d783152940cf857639b9"
+          }
+        }
+      ],
+      "packaging_commit": "c8500e935fbde8b55da132b347b3f041dd3bdd34",
+      "post_build_packaging": [
+        {
+          "path": "script/package-fork-linux",
+          "reason": "Review1 Linux dependency staging or build-only toolchain fix; no executable/frontend/runtime source change.",
+          "implementation_commit_snapshot": {
+            "bytes": 4653,
+            "sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e",
+            "canonical_sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e"
+          },
+          "current_packaging_snapshot": {
+            "bytes": 4859,
+            "sha256": "a93870cddb29ac4bd981afd3aac95ebbd48130c1b35e26264396e1885173edc4",
+            "canonical_sha256": "a93870cddb29ac4bd981afd3aac95ebbd48130c1b35e26264396e1885173edc4"
+          }
+        },
+        {
+          "path": ".github/workflows/lathe_linux_ci.yml",
+          "reason": "Review1 Linux dependency staging or build-only toolchain fix; no executable/frontend/runtime source change.",
+          "implementation_commit_snapshot": {
+            "bytes": 6983,
+            "sha256": "bdd89f1cb08398a7f9f1cd75d7b59e248f472b23c3bebb8af6a00d351ab95d2c",
+            "canonical_sha256": "bdd89f1cb08398a7f9f1cd75d7b59e248f472b23c3bebb8af6a00d351ab95d2c"
+          },
+          "current_packaging_snapshot": {
+            "bytes": 7417,
+            "sha256": "ef89cc0535b90041c177d45f1e37d8ebd26423fe84c89487807d9284e4b62722",
+            "canonical_sha256": "9f2ef244dcb529a57592669b3fe059871c26d57b402b7da6b6c68763a7bc1355"
+          }
+        }
+      ]
+    }
+  }
+}

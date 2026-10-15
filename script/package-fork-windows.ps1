@@ -101,6 +101,8 @@ try {
 
     Copy-Item $zedExe "$appDir/libexec/lathe-editor.exe" -Force
     Copy-Item $cliExe "$appDir/bin/lathe.exe"            -Force
+    & node "$PSScriptRoot/package-markdown-runtime.mjs" $cargoOut "$appDir/libexec"
+    if ($LASTEXITCODE -ne 0) { throw 'Pinned Markdown runtime packaging failed.' }
 
     # --- Bundle ConPTY (terminal runtime) ---
     Write-Output "--- Downloading ConPTY ---"
@@ -160,7 +162,7 @@ try {
     & "$PSScriptRoot/sign-windows.ps1" "$appDir/libexec/lathe-editor.exe" "$appDir/bin/lathe.exe" "$appDir/tools/auto_update_helper.exe"
 
     # --- Archive ---
-    $outDir = 'target/release'
+    $outDir = Join-Path $cargoRoot 'release'
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null
     $archiveName = "Lathe-$version-$Architecture-windows.zip"
     $archivePath = Join-Path $outDir $archiveName

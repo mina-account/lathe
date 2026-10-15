@@ -1,0 +1,267 @@
+[
+  {
+    "log": "C:\\tmp\\lathe-phase5-opening-red.log",
+    "sha256": "d0cebce5e00cd41688a44a3d5f7076bf9140cf5532579b3f78a4abbceac06502",
+    "failure_excerpt": [
+      "running 3 tests",
+      "test opening::tests::choices_only_apply_to_the_two_markdown_extensions_and_retain_clicked_identity ... ok",
+      "test opening::tests::explicit_defaults_preserve_legacy_when_unset_and_route_only_markdown ... FAILED",
+      "test opening::tests::clicked_path_and_inactive_tab_override_active_document_and_share_buffer ... ok",
+      "",
+      "failures:",
+      "",
+      "---- opening::tests::explicit_defaults_preserve_legacy_when_unset_and_route_only_markdown stdout ----",
+      "",
+      "thread 'opening::tests::explicit_defaults_preserve_legacy_when_unset_and_route_only_markdown' (85572) panicked at crates\\markdown_editor\\src\\opening.rs:206:189:",
+      "visual item",
+      "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "",
+      "",
+      "failures:",
+      "    opening::tests::explicit_defaults_preserve_legacy_when_unset_and_route_only_markdown",
+      "",
+      "test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 78 filtered out; finished in 1.19s",
+      "",
+      "error: test failed, to rerun pass `-p markdown_editor --lib`"
+    ]
+  },
+  {
+    "log": "C:\\tmp\\lathe-phase5-keymap-red.log",
+    "sha256": "585d9853c50f9bc9f23109e1fc491a1e10eed18c87b6dd1eec900415e5a4e452",
+    "failure_excerpt": [
+      "    ^",
+      "",
+      "AssertionError [ERR_ASSERTION]: windows: shortcut absent after clear/load default keymaps",
+      "    at file:///C:/tmp/lathe-phase5-keymap-check.mjs:5:10",
+      "    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)",
+      "    at async node:internal/modules/esm/loader:633:26",
+      "    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {"
+    ]
+  },
+  {
+    "log": "C:\\tmp\\lathe-phase5-standalone-red.log",
+    "sha256": "58b37d5720c037e59dae1b892c858ffbd8d39af72bfc7bec45184248c0714d8a",
+    "failure_excerpt": [
+      "test opening::tests::choices_only_apply_to_the_two_markdown_extensions_and_retain_clicked_identity ... ok",
+      "test opening::tests::platform_shortcut_survives_keymap_reload_and_respects_focus ... ok",
+      "test opening::tests::standalone_file_worktrees_resolve_extension_from_absolute_path ... FAILED",
+      "test opening::tests::explicit_defaults_preserve_legacy_when_unset_and_route_only_markdown ... ok",
+      "test opening::tests::legacy_and_explicit_preview_defaults_create_one_selected_item ... ok",
+      "test opening::tests::clicked_path_and_inactive_tab_override_active_document_and_share_buffer ... ok",
+      "",
+      "failures:",
+      "",
+      "---- opening::tests::standalone_file_worktrees_resolve_extension_from_absolute_path stdout ----",
+      "",
+      "thread 'opening::tests::standalone_file_worktrees_resolve_extension_from_absolute_path' (81200) panicked at crates/markdown_editor/src/opening.rs:806:14:",
+      "standalone visual",
+      "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "",
+      "",
+      "failures:",
+      "    opening::tests::standalone_file_worktrees_resolve_extension_from_absolute_path",
+      "",
+      "test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 79 filtered out; finished in 1.78s",
+      "",
+      "error: test failed, to rerun pass `-p markdown_editor --lib`"
+    ]
+  },
+  {
+    "log": "C:\\tmp\\lathe-phase5-preview-precedence-red.log",
+    "sha256": "3f534c6f7e3dac34847c69b7e63fc5eea59dacef32f1be1ab0e1f52bbdded258",
+    "failure_excerpt": [
+      "test opening::tests::platform_shortcut_survives_keymap_reload_and_respects_focus ... ok",
+      "test opening::tests::standalone_file_worktrees_resolve_extension_from_absolute_path ... ok",
+      "test opening::tests::explicit_preview_default_overrides_legacy_and_buffer_language ... FAILED",
+      "test opening::tests::legacy_and_explicit_preview_defaults_create_one_selected_item ... ok",
+      "test opening::tests::explicit_defaults_preserve_legacy_when_unset_and_route_only_markdown ... ok",
+      "test opening::tests::clicked_path_and_inactive_tab_override_active_document_and_share_buffer ... ok",
+      "",
+      "failures:",
+      "",
+      "---- opening::tests::explicit_preview_default_overrides_legacy_and_buffer_language stdout ----",
+      "",
+      "thread 'opening::tests::explicit_preview_default_overrides_legacy_and_buffer_language' (102345) panicked at crates/markdown_editor/src/opening.rs:943:9:",
+      "assertion failed: workspace.read_with(cx,",
+      "    |workspace, cx|",
+      "        { workspace.active_item_as::<MarkdownPreviewView>(cx).is_some() })",
+      "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "",
+      "",
+      "failures:",
+      "    opening::tests::explicit_preview_default_overrides_legacy_and_buffer_language",
+      "",
+      "test result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 79 filtered out; finished in 1.90s",
+      "",
+      "error: test failed, to rerun pass `-p markdown_editor --lib`"
+    ]
+  },
+  {
+    "log": "C:\\tmp\\lathe-phase5-mode-ready-red-linux-corrected.log",
+    "sha256": "2c1845cf41ad9b57dc2e5e6c059d9bcd936383a1841ad6d5b9ccb4f8fe802cf9",
+    "failure_excerpt": [
+      "",
+      "running 1 test",
+      "test item::tests::mode_actions_before_frontend_ready_are_restored_on_ready ... FAILED",
+      "",
+      "failures:",
+      "",
+      "---- item::tests::mode_actions_before_frontend_ready_are_restored_on_ready stdout ----",
+      "",
+      "thread 'item::tests::mode_actions_before_frontend_ready_are_restored_on_ready' (106054) panicked at crates/markdown_editor/src/item.rs:1410:13:",
+      "assertion `left == right` failed",
+      "  left: Ir",
+      " right: Preview",
+      "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "",
+      "",
+      "failures:",
+      "    item::tests::mode_actions_before_frontend_ready_are_restored_on_ready",
+      "",
+      "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 87 filtered out; finished in 0.16s",
+      "",
+      "error: test failed, to rerun pass `-p markdown_editor --lib`"
+    ]
+  },
+  {
+    "log": "C:\\tmp\\lathe-phase5-raster-red-linux.log",
+    "sha256": "ddfa9bbe53bcdd1592ba1eff794bc479ef9e9a785a0cc4af9ab8b0f49e398f10",
+    "failure_excerpt": [
+      "",
+      "running 1 test",
+      "test browser::tests::large_high_dpi_viewports_keep_raster_frames_bounded ... FAILED",
+      "",
+      "failures:",
+      "",
+      "---- browser::tests::large_high_dpi_viewports_keep_raster_frames_bounded stdout ----",
+      "",
+      "thread 'browser::tests::large_high_dpi_viewports_keep_raster_frames_bounded' (114244) panicked at crates/markdown_editor/src/browser.rs:150:13:",
+      "assertion failed: frame_bytes((width as f64 * f64::from(scale)).ceil() as i32,",
+      "        (height as f64 * f64::from(scale)).ceil() as i32).is_ok()",
+      "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "",
+      "",
+      "failures:",
+      "    browser::tests::large_high_dpi_viewports_keep_raster_frames_bounded",
+      "",
+      "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 88 filtered out; finished in 0.00s",
+      "",
+      "error: test failed, to rerun pass `-p markdown_editor --lib`"
+    ]
+  },
+  {
+    "log": "/mnt/c/tmp/lathe-phase5-fix1-red.log",
+    "sha256": "ed1e2c88371378503e0f2738765a7d3680337d1edcc0206ed27033d1302e9eed",
+    "failure_excerpt": [
+      "AssertionError: libnspr4.so: selected /lib/x86_64-linux-gnu/libnspr4.so instead of bundled /home/an/.cache/lathe-phase5-installed-linux-review1-red/application/lib/libnspr4.so"
+    ],
+    "basis": "Updated installed helper against original c5ae09 Linux archive, prior to fixed repack. No native application launched because dependency gate failed first."
+  },
+  {
+    "log": "/mnt/c/tmp/lathe-phase5-fix1-ci-red.log",
+    "sha256": "f2d05dd064170e2ce7dbd682d58f4fcf15527d6ba6269bd0c7aa6ee38bec82b7",
+    "failure_excerpt": [
+      "NO_NODE_FRONTEND_EXIT 127",
+      "script/build-markdown-frontend: line 4: npm: command not found",
+      "AssertionError: .github/workflows/lathe_linux_ci.yml/build-linux: no Node/npm provisioning before build-fork-linux"
+    ],
+    "basis": "Actual frontend invocation without Node/npm plus original workflow requirement check; fixed step covers both matrix architectures."
+  },
+  {
+    "name": "review2-stopped-source-opening",
+    "log": "C:\\tmp\\lathe-phase5-fix2-source-red.log",
+    "sha256": "e91f28ce04e7abee1222ced02bc5c3ae6564b2f31ca08f5e313f641bb770def7",
+    "failure_excerpt": [
+      "source remains accessible: Restart or recover the stopped visual session before saving/closing"
+    ],
+    "basis": "Original44cb source/installed packages; actual installed library physically absent, without runtime override for loader cases"
+  },
+  {
+    "name": "review2-actual-missing-library-windows",
+    "log": "C:\\tmp\\lathe-phase5-fix2-loader-red-windows.log",
+    "sha256": "b10b41f198644f5d430db554c7dcdb787012056925a52df9ca457ec443dd1100",
+    "failure_excerpt": ["EXPECTED_RED_ACTUAL_LIBRARY_ABSENT -1073741515"],
+    "basis": "Original44cb source/installed packages; actual installed library physically absent, without runtime override for loader cases",
+    "diagnostic": {
+      "runtime_override": null,
+      "actual_library_absent": true,
+      "retained_handle": 2536,
+      "exit_code": -1073741515
+    }
+  },
+  {
+    "name": "review2-actual-missing-library-linux",
+    "log": "C:\\tmp\\lathe-phase5-fix2-loader-red-linux.log",
+    "sha256": "98058660d6fe4747f41d54c8217f43ef734dd3f3c730d800d63bcd14cc9f0e7c",
+    "failure_excerpt": [
+      "EXPECTED_RED_ACTUAL_LIBRARY_ABSENT 127 /home/an/.cache/lathe-phase5-installed-review2-red/application/libexec/lathe-editor: error while loading shared libraries: libcef.so: cannot open shared object file: No such file or directory"
+    ],
+    "basis": "Original44cb source/installed packages; actual installed library physically absent, without runtime override for loader cases"
+  },
+  {
+    "name": "review3-visible-browser-heading",
+    "log": "C:/tmp/lathe-phase5-fix3-browser-red.log",
+    "sha256": "d0d41e7f867af7ecbe11780c56aaedfbae994963bb803729b7f3df9ad7dceb44",
+    "basis": "69f6774b37d7ecad7597503254cb423aacb72150 before production navigation fix",
+    "failure_excerpt": [
+      "✖ host fragments navigate the visible destination after initial rendering and release later user scroll (970.3275ms)",
+      "ℹ tests 1",
+      "ℹ suites 0",
+      "ℹ pass 0",
+      "ℹ fail 1",
+      "ℹ cancelled 0",
+      "ℹ skipped 0",
+      "ℹ todo 0",
+      "ℹ duration_ms 2061.7509",
+      "",
+      "✖ failing tests:",
+      "",
+      "test at browser-test.mjs:51:1",
+      "✖ host fragments navigate the visible destination after initial rendering and release later user scroll (970.3275ms)",
+      "  AssertionError [ERR_ASSERTION]: ir: startup fragment overrides initial reading position",
+      "  ",
+      "  false !== true",
+      "  ",
+      "      at TestContext.<anonymous> (file:///C:/tmp/wt-markdown-editor-phase-5/crates/markdown_editor/frontend/browser-test.mjs:61:16)",
+      "      at async Test.run (node:internal/test_runner/test:1313:7)",
+      "      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {",
+      "    generatedMessage: false,",
+      "    code: 'ERR_ASSERTION',",
+      "    actual: false,",
+      "    expected: true,",
+      "    operator: 'strictEqual',",
+      "    diff: 'simple'",
+      "  }"
+    ]
+  },
+  {
+    "name": "review3-native-default-visual-ready",
+    "log": "C:/tmp/lathe-phase5-fix3-native-red.log",
+    "sha256": "0813dc68731eb36ec2e0794d1c4078ba8c6d4ff2088ceec55987c26646070067",
+    "basis": "69f6774b37d7ecad7597503254cb423aacb72150 before production navigation fix",
+    "failure_excerpt": [
+      "test item::tests::relative_link_to_unopened_visual_destination_waits_for_ready ... FAILED",
+      "---- item::tests::relative_link_to_unopened_visual_destination_waits_for_ready stdout ----",
+      "thread 'item::tests::relative_link_to_unopened_visual_destination_waits_for_ready' (76244) panicked at crates\\markdown_editor\\src\\item.rs:1767:9:",
+      "  left: Object {\"kind\": String(\"document\"), \"revision\": Number(0), \"text\": String(\"intro\\n\\n# Target {#日本}\\n\\nbody\"), \"writable\": Bool(true), \"draft\": Null}",
+      " right: Object {\"kind\": String(\"navigate\"), \"fragment\": String(\"日本\")}",
+      "failing seed: 0",
+      "    item::tests::relative_link_to_unopened_visual_destination_waits_for_ready",
+      "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 92 filtered out; finished in 0.22s"
+    ]
+  },
+  {
+    "name": "installed-source-action-before-rendered-tab",
+    "log": "C:\\tmp\\lathe-phase5-fix3-installed-linux-before-readiness.log",
+    "sha256": "3966a34b6d33360457cb0902e97e2c1c5ccfbdede5621288982d5e15b08785c7",
+    "basis": "b013af27f5f4f15215a88967d701bf4b40843e47 installed Wayland",
+    "failure": "Visible linked Unicode heading passed; immediate Open Source dispatch did not activate the original shared Buffer. Readiness now requires the original active focused tab and available action path before dispatch."
+  },
+  {
+    "name": "installed-startup-focus-precondition",
+    "log": "C:\\tmp\\lathe-phase5-fix3-installed-linux-before-focus.log",
+    "sha256": "c9df5c1fb3d6b6c5866beebf558bca31e2e0a3e7c4d4ca6f0fc00e10f23e84b3",
+    "basis": "39d6120a96b260b28a3efc1fe80f741903604d19 installed Linux",
+    "failure": "Both normal backends passed. Missing resources preserved source but did not satisfy the newly required focus precondition. Harness now explicitly focuses the original tab before awaiting its rendered action path."
+  }
+]

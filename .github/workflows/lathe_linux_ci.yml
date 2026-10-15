@@ -121,6 +121,13 @@ jobs:
       - name: Install Linux dependencies
         run: script/linux
 
+      - name: Install Markdown frontend build toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: npm
+          cache-dependency-path: crates/markdown_editor/frontend/package-lock.json
+
       - name: Build
         env:
           # Same env as release_fork.yml's build so CI artifacts are

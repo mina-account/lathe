@@ -5,3 +5,8 @@
 crates/zed/resources/windows/zed.sh text eol=lf
 project-docs/imp-plans/markdown-browser-probe/run-offscreen.sh text eol=lf
 project-docs/imp-plans/markdown-editor-phase-4/run-linux.sh text eol=lf
+script/build-markdown-frontend text eol=lf
+script/build-fork-linux text eol=lf
+script/package-fork-linux text eol=lf
+script/install-fork-linux text eol=lf
+crates/markdown_editor/installed-fixture.md text eol=lf

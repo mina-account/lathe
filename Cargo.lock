@@ -2852,14 +2852,12 @@ dependencies = [
 [[package]]
 name = "cef-dll-sys"
 version = "154.5.0+154.0.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a52b7101d21b13aaa09e5047510bc6b6720140de0ee2a65d132b9fd70fbf5f69"
 dependencies = [
  "anyhow",
- "cc",
- "cmake",
  "download-cef",
- "serde_json",
+ "libloading 0.8.9",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -10860,12 +10858,15 @@ dependencies = [
  "http_client",
  "image",
  "language",
+ "lathe_hooks",
  "log",
+ "markdown_preview",
  "path",
  "png 0.18.0",
  "project",
  "pulldown-cmark 0.13.4",
  "raw-window-handle",
+ "schemars 1.0.4",
  "serde",
  "serde_json",
  "settings",
@@ -10889,6 +10890,7 @@ dependencies = [
  "fs",
  "gpui",
  "language",
+ "lathe_hooks",
  "log",
  "markdown",
  "project",
@@ -14332,6 +14334,7 @@ dependencies = [
  "gpui",
  "itertools 0.14.0",
  "language",
+ "lathe_hooks",
  "log",
  "markdown",
  "markdown_preview",
@@ -22328,6 +22331,7 @@ dependencies = [
  "http_client",
  "itertools 0.14.0",
  "language",
+ "lathe_hooks",
  "log",
  "markdown",
  "menu",

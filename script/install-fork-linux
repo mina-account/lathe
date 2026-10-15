@@ -37,7 +37,7 @@ case "$channel" in
 esac
 
 # Find the tarball from package-fork-linux output
-tarball=$(ls "${target_dir}/release"/Lathe-*-linux.tar.gz 2>/dev/null | head -1)
+tarball="${LATHE_ARCHIVE_PATH:-$(ls "${target_dir}/release"/Lathe-*-linux.tar.gz 2>/dev/null | head -1)}"
 
 if [ -z "$tarball" ]; then
     echo "Error: Linux tarball not found in ${target_dir}/release/"
@@ -45,7 +45,7 @@ if [ -z "$tarball" ]; then
     exit 1
 fi
 
-install_dir="${HOME}/.local/share/lathe${suffix}"
+install_dir="${LATHE_INSTALL_ROOT:-${HOME}/.local/share/lathe${suffix}}"
 bin_dir="${HOME}/.local/bin"
 desktop_dir="${HOME}/.local/share/applications"
 icon_dir_512="${HOME}/.local/share/icons/hicolor/512x512/apps"
@@ -55,21 +55,29 @@ echo "=== Installing ${app_name} ==="
 echo "  From: ${tarball}"
 echo "  To:   ${install_dir}"
 
-# Clean previous installation
-if [ -d "$install_dir" ]; then
-    echo "Removing existing installation..."
-    rm -rf "$install_dir"
-fi
-
 # Extract to a temp dir first
 temp_dir=$(mktemp -d)
 trap 'rm -rf "$temp_dir"' EXIT
 
 tar -xzf "$tarball" -C "$temp_dir"
+staged_runtime="$temp_dir/lathe${suffix}.app/libexec"
+for file in libcef.so icudtl.dat resources.pak chrome_100_percent.pak chrome_200_percent.pak v8_context_snapshot.bin locales/en-US.pak CEF-LICENSE.txt markdown-editor-notices/NOTICES.md; do
+    test -f "$staged_runtime/$file" || { echo "Markdown runtime missing $file. Reinstall a complete Lathe package." >&2; exit 1; }
+done
+(cd "$staged_runtime" && sha256sum --check markdown-runtime.sha256)
+if [ -d "$install_dir" ]; then
+    echo "Removing existing installation..."
+    test "$(realpath "$install_dir")" != / || { echo 'Cannot install at the filesystem root.' >&2; exit 1; }
+    rm -rf -- "$install_dir"
+fi
 
 # Move app directory into place
 mkdir -p "$install_dir"
 mv "$temp_dir/lathe${suffix}.app"/* "$install_dir/"
+if [ "${LATHE_INSTALL_NO_SHELL:-0}" = 1 ]; then
+    echo "Installed ${app_name} at ${install_dir} without shell integration."
+    exit 0
+fi
 
 # Symlink CLI to ~/.local/bin
 mkdir -p "$bin_dir"

@@ -610,6 +610,12 @@
     },
   },
   {
+    "context": "Editor && (extension == md || extension == markdown) || MarkdownEditor",
+    "bindings": {
+      "ctrl-shift-alt-m": "markdown_editor::Open",
+    },
+  },
+  {
     "context": "Editor && extension == md",
     "use_key_equivalents": true,
     "bindings": {

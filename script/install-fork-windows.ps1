@@ -1,6 +1,8 @@
 [CmdletBinding()]
 Param(
-    [Parameter()][string]$ArchivePath
+    [Parameter()][string]$ArchivePath,
+    [Parameter()][string]$InstallDirectory,
+    [Parameter()][switch]$NoShellIntegration
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,7 +39,7 @@ if (-not (Test-Path $ArchivePath)) {
 
 # --- Install location ---
 $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\Lathe'
-$installDir  = Join-Path $installRoot "lathe$suffix"
+$installDir  = if ($InstallDirectory) { [IO.Path]::GetFullPath($InstallDirectory) } else { Join-Path $installRoot "lathe$suffix" }
 $binDir      = Join-Path $installDir 'bin'
 
 Write-Output "=== Installing $appName ==="
@@ -45,7 +47,8 @@ Write-Output "  From: $ArchivePath"
 Write-Output "  To:   $installDir"
 
 # --- Detect a running instance and ask the user before overwriting ---
-$running = Get-Process -Name 'lathe-editor', 'lathe' -ErrorAction SilentlyContinue
+$running = Get-Process -Name 'lathe-editor', 'lathe' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -eq (Join-Path $installDir 'libexec/lathe-editor.exe') -or $_.Path -eq (Join-Path $installDir 'bin/lathe.exe') }
 if ($running) {
     Write-Output ""
     Write-Output "An existing Lathe process is running. Close it before installing, or it will be terminated."
@@ -58,13 +61,6 @@ if ($running) {
         exit 1
     }
 }
-
-# --- Clean previous install ---
-if (Test-Path $installDir) {
-    Write-Output "Removing existing installation..."
-    Remove-Item -Path $installDir -Recurse -Force
-}
-New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 
 # --- Extract via temp dir, then move contents into installDir ---
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
@@ -79,12 +75,39 @@ try {
         Write-Error "Archive layout unexpected: missing 'lathe$suffix/' at root of $ArchivePath"
         exit 1
     }
+    $runtimeDirectory = Join-Path $inner 'libexec'
+    $manifestPath = Join-Path $runtimeDirectory 'markdown-runtime.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Markdown runtime manifest is missing. Reinstall a complete Lathe package.' }
+    foreach ($file in @('libcef.dll','icudtl.dat','resources.pak','chrome_100_percent.pak','chrome_200_percent.pak','v8_context_snapshot.bin','locales/en-US.pak','CEF-LICENSE.txt','markdown-editor-notices/NOTICES.md')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $runtimeDirectory $file) -PathType Leaf)) { throw "Markdown runtime missing $file. Reinstall a complete Lathe package." }
+    }
+    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    if ($manifest.cef -ne '154.0.34' -or $manifest.bindings -ne '154.5.0') { throw 'The archive has an incompatible Markdown runtime.' }
+    foreach ($file in $manifest.files) {
+        $runtimeFile = [IO.Path]::GetFullPath((Join-Path $runtimeDirectory $file.path))
+        if (-not $runtimeFile.StartsWith(([IO.Path]::GetFullPath($runtimeDirectory) + [IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid runtime manifest path.' }
+        if ((Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash -ne $file.sha256) { throw "Markdown runtime checksum mismatch: $($file.path)" }
+    }
+    if ([IO.Path]::GetPathRoot($installDir) -eq $installDir) { throw 'Cannot install at a filesystem root.' }
+    if (Test-Path -LiteralPath $installDir) {
+        Write-Output "Removing existing installation..."
+        Remove-Item -LiteralPath $installDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     Get-ChildItem -Path $inner -Force | ForEach-Object {
         Move-Item -Path $_.FullName -Destination $installDir -Force
     }
 }
 finally {
-    Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    $resolvedTemporaryDirectory = [IO.Path]::GetFullPath($tempDir)
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    if (-not $resolvedTemporaryDirectory.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase) -or $resolvedTemporaryDirectory -eq $temporaryRoot) { throw 'Unsafe installer temporary directory.' }
+    Remove-Item -LiteralPath $resolvedTemporaryDirectory -Recurse -Force
+}
+
+if ($NoShellIntegration) {
+    Write-Output "Installed $appName at $installDir without shell integration."
+    return
 }
 
 # --- Add bin/ to user PATH (idempotent) ---

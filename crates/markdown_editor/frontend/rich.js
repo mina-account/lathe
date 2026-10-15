@@ -104,7 +104,10 @@ const bridge = new DocumentBridge(parameters.get("session") ?? "", parameters.ge
     message => console.log("LATHE_MARKDOWN:" + JSON.stringify(message)), show, text => { imageNotice=null;status.textContent=text;updateImageNotice(); });
 (window       ).latheMarkdown = bridge;
 const receive = bridge.receive.bind(bridge);
+let pendingFragment                = null;
+let splitPreviewReady = false;
 bridge.receive = message => {
+    if(message.kind==="navigate") { pendingFragment=message.fragment; navigatePendingFragment(); return; }
     if(message.kind==="resources_reset") {
         resourceGeneration++;
         for(const url of imageUrls)URL.revokeObjectURL(url);imageUrls.clear();
@@ -513,7 +516,7 @@ function captureScope(target      , deletion                      ) {
 }
 function build(selected = selection(), oldText = active().textContent ?? "") {
     if (bridge.composing) return;
-    ready = false; projecting = true;
+    ready = false; projecting = true; splitPreviewReady = false;
     const currentGeneration = ++generation;
     if (editor) editor.destroy();
     container.replaceChildren();
@@ -529,7 +532,7 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
         preview:{delay:0,mode:"both",actions:[],hljs:{enable:false,lineNumber:false,style:preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github")},
             math:{engine:"KaTeX",inlineDigit:true},
             markdown:{sanitize:true,codeBlockPreview:false,mathBlockPreview:false,footnotes:true,toc:false},
-            theme:{current:"",path:location.origin + "/vendor"},render:{media:{enable:false}},transform:(html       ) => sanitize(html,false,true),parse:() => { renderOutline();if(ready) { renderMath(editor.vditor.preview.previewElement);void loadImages(editor.vditor.preview.previewElement);void highlightCode(editor.vditor.preview.previewElement); } }},
+            theme:{current:"",path:location.origin + "/vendor"},render:{media:{enable:false}},transform:(html       ) => sanitize(html,false,true),parse:() => { if(currentGeneration!==generation)return;splitPreviewReady=true;renderOutline();if(ready) { renderMath(editor.vditor.preview.previewElement);void loadImages(editor.vditor.preview.previewElement);void highlightCode(editor.vditor.preview.previewElement);navigatePendingFragment(); } }},
         hint:{emojiPath:"",parse:false}, link:{isOpen:false,click:(element            ) => openLink(linkDestination(element))}, image:{isPreview:false},
         input:() => commit(),
         after:() => {
@@ -547,6 +550,7 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
             renderViewer(); renderOutline(); renderSourceBlocks(); permissions();
             restoreSelection(selected,oldText); restoreScroll(preferences.scroll);
             applyAppearance(); void loadImages(renderedRoot());
+            navigatePendingFragment();
             status.textContent = bridge.blocked ? "Visual draft retained; use Recover Draft." : "Markdown Editor";
             updateFind();
         },
@@ -780,12 +784,21 @@ function openLink(url        ) {
     if (url.startsWith("#")) {
         let fragment        ;
         try { fragment = decodeURIComponent(url.slice(1)); } catch { return; }
-        const root = preferences.mode === "sv" ? editor.vditor.preview.previewElement : active();
-        const target = [...root.querySelectorAll             ("[id]")].find(element=>element.id===fragment)
-            ?? headingElements().find(heading => heading.dataset.anchor === fragment || heading.dataset.explicitAnchor === fragment);
-        target?.scrollIntoView({block:"start"}); return;
+        pendingFragment=fragment; navigatePendingFragment(); return;
     }
     bridge.emit({kind:"open_link",url});
+}
+function navigatePendingFragment() {
+    if(!ready || (preferences.mode==="sv"&&!splitPreviewReady) || pendingFragment===null)return;
+    const fragment=pendingFragment;pendingFragment=null;
+    const root=renderedRoot();
+    const target=[...root.querySelectorAll             ("[id]")].find(element=>element.id===fragment)
+        ?? headingElements().find(heading=>heading.dataset.anchor===fragment||heading.dataset.explicitAnchor===fragment);
+    if(target) {
+        // Invalidate resource callbacks that captured the saved position before this invocation.
+        readingGeneration++;
+        target.scrollIntoView({block:"start"});
+    }
 }
 function linkDestination(element            )        {
     const href=element.getAttribute("href"); if (href) return href;
