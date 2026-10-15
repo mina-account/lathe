@@ -141,6 +141,68 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn large_high_dpi_viewports_keep_raster_frames_bounded() -> Result<()> {
+        for (width, height, requested) in [
+            (3840, 2160, 2.),
+            (2560, 1440, 2.),
+            (7680, 4320, 1.),
+            (i32::MAX, 1, f32::MAX),
+            (i32::MAX, i32::MAX, f32::MAX),
+        ] {
+            let scale = raster_scale(width, height, requested)?;
+            assert!(scale > 0. && scale <= requested);
+            assert!(
+                frame_bytes(
+                    (width as f64 * f64::from(scale)).ceil() as i32,
+                    (height as f64 * f64::from(scale)).ceil() as i32
+                )
+                .is_ok()
+            );
+        }
+        assert_eq!(raster_scale(1200, 800, 1.)?, 1.);
+        assert_eq!(raster_scale(1280, 720, 1.5)?, 1.5);
+        for scale in [0., -1., f32::NAN, f32::INFINITY] {
+            assert!(raster_scale(1200, 800, scale).is_err());
+        }
+        assert!(raster_scale(0, 800, 1.).is_err());
+        Ok(())
+    }
+}
+
+fn raster_scale(width: i32, height: i32, requested: f32) -> Result<f32> {
+    if width <= 0 || height <= 0 || !requested.is_finite() || requested <= 0. {
+        bail!("Invalid browser viewport or scale");
+    }
+    let fits = |scale: f32, rounding_margin: i32| {
+        let dimension = |length: i32| {
+            let double = (f64::from(length) * f64::from(scale)).ceil();
+            let single = (length as f32 * scale).ceil();
+            (double.max(f64::from(single)).max(1.) as i32).saturating_add(rounding_margin)
+        };
+        frame_bytes(dimension(width), dimension(height)).is_ok()
+    };
+    if fits(requested, 0) {
+        return Ok(requested);
+    }
+    // Positive finite f32 bit patterns are ordered; keep logical geometry while
+    // selecting the largest raster scale that leaves room for CEF rounding.
+    let mut lower = 0;
+    let mut upper = requested.to_bits();
+    while lower < upper {
+        let middle = lower + (upper - lower).div_ceil(2);
+        if fits(f32::from_bits(middle), 1) {
+            lower = middle;
+        } else {
+            upper = middle - 1;
+        }
+    }
+    let scale = f32::from_bits(lower);
+    if scale <= 0. {
+        bail!("Browser viewport cannot fit the bounded raster budget");
+    }
+    Ok(scale)
 }
 
 fn frame_bytes(width: i32, height: i32) -> Result<usize> {
@@ -188,6 +250,10 @@ pub fn run_subprocess_if_invoked() {
     if !std::env::args().any(|argument| argument.starts_with("--type=")) {
         return;
     }
+    if let Err(error) = runtime_directory().and_then(|runtime| load_runtime(&runtime)) {
+        eprintln!("Markdown browser subprocess: {error:#}");
+        std::process::exit(1);
+    }
     let args = cef::args::Args::new();
     let mut app = RuntimeApp::new();
     cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
@@ -199,6 +265,62 @@ pub fn run_subprocess_if_invoked() {
     std::process::exit(if result >= 0 { result } else { 1 });
 }
 
+fn preflight_runtime(runtime: &std::path::Path) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    let library = "libcef.dll";
+    #[cfg(target_os = "linux")]
+    let library = "libcef.so";
+    for path in [
+        library,
+        "icudtl.dat",
+        "resources.pak",
+        "chrome_100_percent.pak",
+        "chrome_200_percent.pak",
+        "v8_context_snapshot.bin",
+        "locales/en-US.pak",
+    ] {
+        if !runtime.join(path).is_file() {
+            bail!(
+                "Markdown editor runtime is incomplete: missing {path} in {}. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+                runtime.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn runtime_directory() -> Result<std::path::PathBuf> {
+    std::env::var_os("LATHE_MARKDOWN_CEF_RUNTIME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+        })
+        .ok_or_else(|| anyhow!("CEF runtime directory unavailable"))
+}
+
+fn load_runtime(runtime: &std::path::Path) -> Result<()> {
+    preflight_runtime(runtime)?;
+    #[cfg(target_os = "windows")]
+    let library = runtime.join("libcef.dll");
+    #[cfg(target_os = "linux")]
+    let library = runtime.join("libcef.so");
+    // Load only this validated runtime; never fall back to a library from PATH.
+    unsafe { cef::sys::load_library(&library) }.map_err(|error| {
+        anyhow!(
+            "Cannot load the pinned Markdown editor runtime {}: {error}. Reinstall the complete Lathe package, including its native dependencies.",
+            library.display()
+        )
+    })?;
+    if cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0).is_null() {
+        bail!(
+            "Markdown editor runtime has an incompatible CEF API. Reinstall the complete Lathe package."
+        );
+    }
+    Ok(())
+}
+
 fn initialize(cx: &mut gpui::App) -> Result<()> {
     if cx.background_executor().is_test() {
         bail!("CEF initialization is disabled in GPUI tests");
@@ -206,25 +328,16 @@ fn initialize(cx: &mut gpui::App) -> Result<()> {
     if cx.has_global::<Runtime>() {
         return Ok(());
     }
-    let runtime = std::env::var_os("LATHE_MARKDOWN_CEF_RUNTIME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::current_exe()
-                .ok()
-                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
-        })
-        .ok_or_else(|| anyhow!("CEF runtime directory unavailable"))?;
-    for path in ["icudtl.dat", "resources.pak", "locales"] {
-        if !runtime.join(path).exists() {
-            bail!(
-                "Pinned CEF runtime missing {path}; keep the build-copied 154.0.34 runtime beside the executable or set LATHE_MARKDOWN_CEF_RUNTIME to its flat runtime directory"
-            );
-        }
-    }
+    let runtime = runtime_directory()?;
+    load_runtime(&runtime)?;
+    log::info!(
+        "Markdown editor CEF runtime: {} (pinned 154.0.34)",
+        runtime.display()
+    );
     let args = cef::args::Args::new();
     let mut app = RuntimeApp::new();
-    cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
     let settings = cef::Settings {
+        browser_subprocess_path: std::env::current_exe()?.to_string_lossy().as_ref().into(),
         no_sandbox: 1,
         command_line_args_disabled: 1,
         windowless_rendering_enabled: 1,
@@ -738,9 +851,7 @@ impl BrowserSurface for Surface {
     fn bounds(&mut self, bounds: gpui::Bounds<gpui::Pixels>, scale: f32) -> Result<()> {
         let width = f32::from(bounds.size.width).floor().max(1.) as i32;
         let height = f32::from(bounds.size.height).floor().max(1.) as i32;
-        if !scale.is_finite() || scale <= 0. {
-            bail!("Invalid browser scale");
-        }
+        let scale = raster_scale(width, height, scale)?;
         let mut state = self
             .shared
             .lock()

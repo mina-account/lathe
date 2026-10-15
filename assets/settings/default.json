@@ -115,6 +115,9 @@
   },
   // Markdown preview settings
   "markdown_editor": {
+    // null retains markdown_preview.open_markdown_files_in_preview, then source.
+    "default_open_mode": null,
+    "mode": "instant_rendering",
     "image_save_folder": "assets",
     "use_app_theme_colors": true,
     "show_line_numbers": true,

@@ -25,7 +25,7 @@ before(async () => {
     browser = await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM ? {executablePath:process.env.PLAYWRIGHT_CHROMIUM} : {})});
 });
 after(async () => {await browser?.close(); server?.closeAllConnections(); await new Promise(resolve => server?.close(resolve));});
-async function open(source,mode="ir",writable=true) {
+async function open(source,mode="ir",writable=true,fragment=null) {
     const context = await browser.newContext(), page = await context.newPage();
     const errors = [], external = [];
     page.on("pageerror",error => errors.push(error.stack));
@@ -35,17 +35,44 @@ async function open(source,mode="ir",writable=true) {
     });
     await page.goto(`${origin}/index.html?session=browser-test&document=1`);
     await page.waitForFunction(() => window.latheMarkdown);
-    await page.evaluate(({source,mode,writable}) => {
+    await page.evaluate(({source,mode,writable,fragment}) => {
         window.testMessages=[];
         window.latheMarkdown.send = message => window.testMessages.push(message);
-        window.latheMarkdown.receive({kind:"preferences",preferences:{mode,outline:false,wrap:true,scroll:0}});
+        window.latheMarkdown.receive({kind:"preferences",preferences:{mode,outline:false,wrap:true,scroll:fragment===null?0:120}});
         window.latheMarkdown.receive({kind:"document",revision:0,text:source,writable,draft:null});
-    },{source,mode,writable});
+        if(fragment!==null)window.latheMarkdown.receive({kind:"navigate",fragment});
+    },{source,mode,writable,fragment});
     await page.waitForFunction(() => window.latheRich?.ready);
     const close=context.close.bind(context);
     context.close=async()=>{await close();assert.deepEqual(errors,[],"Browser exceptions");};
     return {page,context,errors,external};
 }
+
+test("host fragments navigate the visible destination after initial rendering and release later user scroll",async()=>{
+    const source="# Start\n\n"+"paragraph\n\n".repeat(80)+"# Target {#explicit}\n\n"+"paragraph\n\n".repeat(80)+"# Unicode Café 日本\n\n"+"tail\n\n".repeat(80);
+    for(const mode of ["ir","wysiwyg","sv","preview"]) {
+        const {page,context}=await open(source,mode,true,"explicit");
+        const visibleHeading=async fragment=>page.evaluate(fragment=>{
+            const rich=window.latheRich,root=document.getElementById('mode').value==='preview'?document.getElementById('viewer'):rich.editor.vditor[rich.editor.getCurrentMode()==='sv'?'preview':rich.editor.getCurrentMode()][rich.editor.getCurrentMode()==='sv'?'previewElement':'element'];
+            const heading=[...root.querySelectorAll('h1,h2,h3,h4,h5,h6')].find(heading=>heading.dataset.anchor===fragment||heading.dataset.explicitAnchor===fragment);
+            const bounds=heading?.getBoundingClientRect(),viewport=root.getBoundingClientRect();
+            return !!bounds&&bounds.top>=viewport.top-2&&bounds.top<Math.min(viewport.bottom,innerHeight)-20;
+        },fragment);
+        assert.equal(await visibleHeading("explicit"),true,`${mode}: startup fragment overrides initial reading position`);
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"navigate",fragment:"unicode-café-日本"}));
+        assert.equal(await visibleHeading("unicode-café-日本"),true,`${mode}: ready fragment`);
+        const pointer=await page.evaluate(()=>{
+            const root=document.getElementById('mode').value==='preview'?document.getElementById('viewer'):window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()==='sv'?'preview':window.latheRich.editor.getCurrentMode()][window.latheRich.editor.getCurrentMode()==='sv'?'previewElement':'element'];
+            const heading=[...root.querySelectorAll('h1')].find(heading=>heading.dataset.anchor==='unicode-café-日本'),bounds=heading.getBoundingClientRect();
+            return {x:bounds.left+50,y:bounds.top+10};
+        });
+        await page.mouse.move(pointer.x,pointer.y);await page.mouse.wheel(0,-100000);
+        await page.waitForTimeout(100);
+        assert.equal(await visibleHeading("unicode-café-日本"),false,`${mode}: later user navigation wins`);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        await context.close();
+    }
+});
 async function acknowledge(page) {
     await page.evaluate(() => {
         const bridge=window.latheMarkdown;

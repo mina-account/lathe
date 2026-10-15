@@ -1,0 +1,455 @@
+{
+  "proxy": "http://127.0.0.1:9",
+  "runs": [
+    {
+      "fixture_sha256": "CE694A10CB8DA7CD5EB88ABD2F801454EB943A03383E30DE46853043302B46E7",
+      "result": {
+        "success": true,
+        "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+        "process_id": 82784,
+        "cef": "154.0.34",
+        "modes": [
+          {
+            "version": "3.11.2",
+            "mode": "ir",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Raphaël 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "wysiwyg",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Raphaël 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "sv",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": false,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Raphaël 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          },
+          {
+            "version": "3.11.2",
+            "mode": "preview",
+            "source": "# Installed runtime\n\nInline $2x+1$ and $\\ce{H2O}$.\n\n```mermaid\ngraph TD; A-->B\n```\n\n```graphviz\ndigraph G { a -> b; }\n```\n\n```echarts\n{\"xAxis\":{\"data\":[\"A\",\"B\"]},\"yAxis\":{},\"series\":[{\"type\":\"bar\",\"data\":[1,2]}]}\n```\n\n```abc\nX:1\nT:Example\nK:C\nCDEF|\n```\n\n```flowchart\nst=>start: Start\ne=>end: End\nst->e\n```\n\n```markmap\n# Root\n- Child\n```\n\n```mindmap\n- Root\n    - Child\n```\n\n```smiles\nCCO\n```\n\n```math\nx^2\n```\n\n```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```\n\n```rust\nfn main() { let answer = 42; }\n```\n",
+            "viewer": true,
+            "mathVersion": "0.16.9",
+            "codeHighlighted": true,
+            "codeThemeLoaded": true,
+            "renderers": [
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "2x+1"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "HX2​O"
+              },
+              {
+                "language": "mermaid",
+                "state": "ready",
+                "text": "AB"
+              },
+              {
+                "language": "graphviz",
+                "state": "ready",
+                "text": "\n\nG\n\n\n\na\n\na\n\n\n\nb\n\nb\n\n\n\na->b\n\n\n\n\n"
+              },
+              {
+                "language": "echarts",
+                "state": "ready",
+                "text": "\n\n\n\n\n\n\n\n\n\n\n0\n0.5\n1\n1.5\n2\nA\nB\n\n\n\n"
+              },
+              {
+                "language": "abc",
+                "state": "ready",
+                "text": "Sheet Music for \"Example\"Example"
+              },
+              {
+                "language": "flowchart",
+                "state": "ready",
+                "text": "Created with Raphaël 2.3.0StartEnd"
+              },
+              {
+                "language": "markmap",
+                "state": "ready",
+                "text": "ChildRoot"
+              },
+              {
+                "language": "mindmap",
+                "state": "ready",
+                "text": "\n\n\n\n\nRoot\nChild\n\n"
+              },
+              {
+                "language": "smiles",
+                "state": "ready",
+                "text": "HO"
+              },
+              {
+                "language": "math",
+                "state": "ready",
+                "text": "x2"
+              },
+              {
+                "language": "plantuml",
+                "state": "error",
+                "text": "plantuml render error: Error: PlantUML requires an explicitly configured network service; it cannot render offline."
+              }
+            ]
+          }
+        ],
+        "navigation": {
+          "linked_source": "# Linked start\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\nparagraph\n\n# Linked target {#日本}\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\ntail\n\n",
+          "mode": "ir",
+          "fragment": "日本",
+          "visible": true,
+          "heading_top": 260.390625,
+          "viewport_top": 260
+        },
+        "navigation_error": null,
+        "source_preserved": true,
+        "history_verified": true,
+        "source_opened": true,
+        "history_error": null,
+        "source_open_error": null
+      },
+      "name": "normal",
+      "processes": [
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:/tmp/lp5-r3c-win/normal/user-data C:/tmp/lp5-r3c-win/normal/fixture.md ",
+          "parent_process_id": 32940,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 82784
+        },
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-82784\" --locales-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lp5-r3c-win\\application\\libexec\\libcef.dll\" --no-sandbox --disable-gpu-compositing --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.75 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --launch-time-ticks=1918682653288 --metrics-shmem-handle=5300,i,2452839795438862070,6289679794158882600,1572864 --field-trial-handle=4348,i,13641282188939598824,7783634402960244929,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4352,i,10647287440953451993,10810350667324936787,4 --trace-process-track-uuid=3190708990997080739 --enable-logging=handle --log-file=5320 --mojo-platform-channel-handle=5312 /prefetch:1",
+          "parent_process_id": 82784,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 57708
+        },
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-82784\" --locales-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lp5-r3c-win\\application\\libexec\\libcef.dll\" --no-sandbox --disable-gpu-compositing --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.75 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --launch-time-ticks=1918682647480 --metrics-shmem-handle=5284,i,1748276442230694940,5836252563272018878,1572864 --field-trial-handle=4348,i,13641282188939598824,7783634402960244929,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4352,i,10647287440953451993,10810350667324936787,4 --trace-process-track-uuid=3190708991934122588 --enable-logging=handle --log-file=5068 --mojo-platform-channel-handle=5048 /prefetch:1",
+          "parent_process_id": 82784,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 73364
+        },
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --type=utility --utility-sub-type=storage.mojom.StorageService --lang=en-US --service-sandbox-type=service --no-sandbox --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-82784\" --locales-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lp5-r3c-win\\application\\libexec\\libcef.dll\" --metrics-shmem-handle=4628,i,14013638190065007238,6025195758663280435,524288 --field-trial-handle=4348,i,13641282188939598824,7783634402960244929,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4352,i,10647287440953451993,10810350667324936787,4 --trace-process-track-uuid=3190708990060038890 --enable-logging=handle --log-file=4648 --mojo-platform-channel-handle=4640 /prefetch:13",
+          "parent_process_id": 82784,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 28024
+        },
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --start-stack-profiler --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-82784\" --locales-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lp5-r3c-win\\application\\libexec\\libcef.dll\" --metrics-shmem-handle=4372,i,6927678291034076959,7912082500528362590,524288 --field-trial-handle=4348,i,13641282188939598824,7783634402960244929,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4352,i,10647287440953451993,10810350667324936787,4 --trace-process-track-uuid=3190708989122997041 --enable-logging=handle --log-file=4108 --mojo-platform-channel-handle=4288 /prefetch:11",
+          "parent_process_id": 82784,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 73088
+        },
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --type=renderer --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-82784\" --locales-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lp5-r3c-win\\application\\libexec\\libcef.dll\" --no-sandbox --disable-gpu-compositing --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.75 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=7 --launch-time-ticks=1918684501097 --metrics-shmem-handle=2296,i,14023163508814256619,12460103427662164758,1572864 --field-trial-handle=4348,i,13641282188939598824,7783634402960244929,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4352,i,10647287440953451993,10810350667324936787,4 --trace-process-track-uuid=3190708992871164437 --enable-logging=handle --log-file=2224 --mojo-platform-channel-handle=2256 /prefetch:1",
+          "parent_process_id": 82784,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 20352
+        },
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --start-stack-profiler --user-data-dir=\"C:\\Users\\latha\\AppData\\Local\\Temp\\lathe-markdown-82784\" --locales-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\locales\" --log-severity=warning --resources-dir-path=\"C:\\tmp\\lp5-r3c-win\\application\\libexec\" --libcef-path=\"\\\\?\\C:\\tmp\\lp5-r3c-win\\application\\libexec\\libcef.dll\" --gpu-preferences=WAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAQAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAoAAAAAAAAAAgAAAAAAAAADAAAAAEAAAAAAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --use-gl=angle --use-angle=d3d11-warp-webgl --metrics-shmem-handle=4140,i,10877884107919175302,4309366865261893122,262144 --field-trial-handle=4348,i,13641282188939598824,7783634402960244929,262144 --enable-features=SingleAxisScrollContainers --disable-features=AutofillActorMode,GlicActorUi,KillOnInvalidNavigationHeaders,LensOverlay --variations-seed-version --pseudonymization-salt-handle=4352,i,10647287440953451993,10810350667324936787,4 --trace-process-track-uuid=3190708988185955192 --enable-logging=handle --log-file=4376 --mojo-platform-channel-handle=4344 /prefetch:2",
+          "parent_process_id": 82784,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 17496
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "fixture_sha256": "CE694A10CB8DA7CD5EB88ABD2F801454EB943A03383E30DE46853043302B46E7",
+      "result": {
+        "success": false,
+        "error": "Markdown editor runtime is incomplete: missing resources.pak in C:\\tmp\\lp5-r3c-win\\application\\libexec. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true,
+        "source_opened": true,
+        "source_open_error": null
+      },
+      "name": "missing-resources",
+      "processes": [
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:/tmp/lp5-r3c-win/missing-resources/user-data C:/tmp/lp5-r3c-win/missing-resources/fixture.md ",
+          "parent_process_id": 32940,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 13868
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "fixture_sha256": "CE694A10CB8DA7CD5EB88ABD2F801454EB943A03383E30DE46853043302B46E7",
+      "result": {
+        "success": false,
+        "error": "Markdown editor runtime is incomplete: missing libcef.dll in C:\\tmp\\lp5-r3c-win\\application\\libexec. Reinstall the complete Lathe package. Contributors require the matching flat CEF 154.0.34 runtime beside the executable, or LATHE_MARKDOWN_CEF_RUNTIME pointing to that folder.",
+        "source_preserved": true,
+        "source_opened": true,
+        "source_open_error": null
+      },
+      "name": "missing-library",
+      "processes": [
+        {
+          "command_line": "\"C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe\" --foreground --user-data-dir C:/tmp/lp5-r3c-win/missing-library/user-data C:/tmp/lp5-r3c-win/missing-library/fixture.md ",
+          "parent_process_id": 32940,
+          "executable": "C:\\tmp\\lp5-r3c-win\\application\\libexec\\lathe-editor.exe",
+          "process_id": 17196
+        }
+      ],
+      "exit_code": 0
+    }
+  ],
+  "archive_sha256": "7746A1A0C869458B10CC9D78F03A8D06B100402D7E3CDE12E20599B35300B61F",
+  "archive": "C:/tmp/markdown-browser-probe-target/release/Lathe-1.10.2-x86_64-windows.zip",
+  "cef_override_normal": null,
+  "executable": "C:/tmp/lp5-r3c-win/application/libexec/lathe-editor.exe",
+  "executable_sha256": "E3FD2187FC4B6325BBE55439919F3358BC086E013C11171EC557C7183ACD2218",
+  "node_on_path": false,
+  "surviving_installed_processes": 0,
+  "runtime_files_verified": 234,
+  "cef_pe_import": false,
+  "implementation_commit": "59f87b700e595eefa56651defe2bcd9ee35e7ab3",
+  "inno": {
+    "path": "C:\\tmp\\markdown-browser-probe-target\\release\\Lathe-1.10.2-x86_64-windows-setup.exe",
+    "sha256": "6D26797E297B2001E35C1D7358F008ECAA422597E4B176E2CC40241D10941CD8",
+    "bytes": 226297666
+  }
+}

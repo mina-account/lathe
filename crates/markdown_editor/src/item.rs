@@ -140,6 +140,7 @@ pub struct MarkdownEditor {
     pub(crate) active_asset_requests: usize,
     pub(crate) importing_images: bool,
     pending_drop_paths: Option<Vec<std::path::PathBuf>>,
+    pending_fragment: Option<String>,
 }
 
 fn heading_offset(text: &str, fragment: &str) -> Option<usize> {
@@ -211,6 +212,7 @@ fn document_preference_key(source: &Editor, buffer: &Buffer, cx: &App) -> Result
 pub fn init(cx: &mut App) {
     MarkdownEditorSettings::register(cx);
     workspace::register_serializable_item::<MarkdownEditor>(cx);
+    crate::opening::init(cx);
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     cx.bind_keys([
         gpui::KeyBinding::new("ctrl-z", editor::actions::Undo, Some("MarkdownEditor")),
@@ -254,40 +256,6 @@ pub fn init(cx: &mut App) {
         .map(|(key, mode)| gpui::KeyBinding::new(key, ChangeMode { mode }, Some("MarkdownEditor"))),
     );
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
-        #[cfg(all(feature = "browser", any(target_os = "windows", target_os = "linux")))]
-        workspace.register_action(|workspace, _: &Open, window, cx| {
-            let Some(source) = workspace.active_item_as::<Editor>(cx) else {
-                return;
-            };
-            let Some(buffer) = source.read(cx).buffer().read(cx).as_singleton() else {
-                return;
-            };
-            let eligible = buffer.read(cx).file().is_some_and(|file| {
-                file.path().extension().is_some_and(|extension| {
-                    extension.eq_ignore_ascii_case("md")
-                        || extension.eq_ignore_ascii_case("markdown")
-                })
-            }) || buffer
-                .read(cx)
-                .language()
-                .is_some_and(|language| language.name().0.eq_ignore_ascii_case("markdown"));
-            if !eligible {
-                return;
-            }
-            let item = cx.new(|cx| MarkdownEditor::new(source, buffer, window, cx));
-            item.update(cx, |item, cx| item.start_browser(cx));
-            workspace.active_pane().update(cx, |pane, cx| {
-                pane.add_item(Box::new(item), true, true, None, window, cx)
-            });
-        });
-        workspace.register_action(|workspace, _: &OpenSource, window, cx| {
-            if let Some(item) = workspace.active_item_as::<MarkdownEditor>(cx) {
-                let source = item.read(cx).source.clone();
-                workspace.active_pane().update(cx, |pane, cx| {
-                    pane.add_item(Box::new(source), true, true, None, window, cx)
-                });
-            }
-        });
         workspace.register_action(|workspace, _: &RecoverDraft, window, cx| {
             let Some(item) = workspace.active_item_as::<MarkdownEditor>(cx) else {
                 return;
@@ -340,6 +308,32 @@ pub fn init(cx: &mut App) {
 }
 
 impl MarkdownEditor {
+    fn control(&mut self, control: &'static str, cx: &mut Context<Self>) {
+        if let Err(error) =
+            self.browser_script(&format!("document.getElementById('{control}')?.click()"))
+        {
+            self.failed(error, cx);
+        }
+    }
+    pub(crate) fn request_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        let mode_name = match mode {
+            Mode::Ir => "ir",
+            Mode::Wysiwyg => "wysiwyg",
+            Mode::Sv => "sv",
+            Mode::Preview => "preview",
+        };
+        if self.surface.is_some() && self.browser_ready {
+            if let Err(error) =
+                self.browser_script(&format!("window.latheRich?.mode('{mode_name}')"))
+            {
+                self.failed(error, cx);
+            }
+        } else {
+            self.preferences.mode = mode;
+            self.persist_document_preferences(cx).detach_and_log_err(cx);
+            cx.notify();
+        }
+    }
     #[cfg(any(
         test,
         all(feature = "browser", any(target_os = "windows", target_os = "linux"))
@@ -423,6 +417,7 @@ impl MarkdownEditor {
             });
         let preferences = match preferences {
             Ok(preferences) => preferences.unwrap_or_else(|| ViewPreferences {
+                mode: crate::opening::mode(MarkdownEditorSettings::get_global(cx).mode),
                 outline: MarkdownEditorSettings::get_global(cx).default_open_outline,
                 ..ViewPreferences::default()
             }),
@@ -496,6 +491,7 @@ impl MarkdownEditor {
             active_asset_requests: 0,
             importing_images: false,
             pending_drop_paths: None,
+            pending_fragment: None,
         }
     }
 
@@ -529,6 +525,22 @@ impl MarkdownEditor {
     pub(crate) fn send(&mut self, message: HostMessage) -> Result<()> {
         if let Some(surface) = &mut self.surface {
             surface.send(&message)?;
+        }
+        Ok(())
+    }
+
+    fn navigate_to_fragment(&mut self, fragment: String) -> Result<()> {
+        self.pending_fragment = Some(fragment);
+        if self.browser_ready {
+            self.send_pending_fragment()?;
+        }
+        Ok(())
+    }
+
+    fn send_pending_fragment(&mut self) -> Result<()> {
+        if let Some(fragment) = self.pending_fragment.clone() {
+            self.send(HostMessage::Navigate { fragment })?;
+            self.pending_fragment = None;
         }
         Ok(())
     }
@@ -652,6 +664,10 @@ impl MarkdownEditor {
                 cx.emit(ItemEvent::UpdateTab);
             }
             ClientMessage::Copy { text, .. } => {
+                #[cfg(all(feature = "browser", any(target_os = "windows", target_os = "linux")))]
+                if crate::installation_check::receive(text, cx) {
+                    return Ok(());
+                }
                 #[cfg(feature = "test-support")]
                 {
                     self.copied_text = Some(text.clone());
@@ -732,8 +748,12 @@ impl MarkdownEditor {
                             })?
                             .await?;
                         if let Some(fragment) = fragment {
-                            window.update(cx, |_, window, cx| {
-                                if let Some(editor) = opened.act_as::<Editor>(cx) {
+                            window.update(cx, |_, window, cx| -> Result<()> {
+                                if let Some(visual) = opened.downcast::<MarkdownEditor>() {
+                                    visual.update(cx, |visual, _| {
+                                        visual.navigate_to_fragment(fragment)
+                                    })?;
+                                } else if let Some(editor) = opened.act_as::<Editor>(cx) {
                                     editor.update(cx, |editor, cx| {
                                         if let Some(offset) =
                                             heading_offset(&editor.text(cx), &fragment)
@@ -754,7 +774,8 @@ impl MarkdownEditor {
                                         }
                                     });
                                 }
-                            })?;
+                                Ok(())
+                            })??;
                         }
                         Ok(())
                     }
@@ -786,12 +807,14 @@ impl MarkdownEditor {
                 self.selection = *start..*end;
             }
             ClientMessage::Ready { .. } => {
+                log::info!("Markdown editor packaged frontend ready (Vditor 3.11.2)");
                 self.appearance_changed(cx);
                 self.browser_ready = true;
                 self.send(HostMessage::Preferences {
                     preferences: self.preferences.clone(),
                 })?;
                 self.send(self.protocol.document_message(self.writable(cx)))?;
+                self.send_pending_fragment()?;
             }
             ClientMessage::Draft {
                 sequence,
@@ -942,6 +965,18 @@ impl MarkdownEditor {
         }
         cx.emit(ItemEvent::UpdateTab);
         cx.notify();
+    }
+
+    pub(crate) fn flush_before_opening_source(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        // Opening the shared source keeps this Item and its recovery draft alive.
+        // A stopped renderer cannot acknowledge a flush, but must not block recovery.
+        if !self.accepting_input {
+            return Task::ready(Ok(()));
+        }
+        self.flush(cx)
     }
 
     pub fn flush(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {
@@ -1138,6 +1173,8 @@ impl MarkdownEditor {
     }
 
     pub fn start_browser(&mut self, cx: &mut Context<Self>) {
+        #[cfg(all(feature = "browser", any(target_os = "windows", target_os = "linux")))]
+        crate::installation_check::start(self, cx);
         self.stop_browser_pump();
         if let Some(surface) = &mut self.surface {
             match surface.poll() {
@@ -1288,7 +1325,8 @@ mod tests {
             outline: true,
             wrap: false,
             scroll: 321,
-            ..ViewPreferences::default()
+            content_theme: Some("dark".into()),
+            code_theme: Some("monokai".into()),
         };
         visual.update(cx, |item, cx| {
             item.receive(
@@ -1307,6 +1345,16 @@ mod tests {
         })
         .await
         .expect("close");
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |content| {
+                    let markdown = content.markdown_editor.get_or_insert_default();
+                    markdown.default_open_mode = Some(settings::MarkdownDefaultOpenMode::Source);
+                    markdown.mode = Some(settings::MarkdownEditorMode::Split);
+                    markdown.default_open_outline = Some(false);
+                })
+            });
+        });
         workspace.update_in(cx, |workspace, window, cx| {
             workspace.activate_item(&source, true, true, window, cx)
         });
@@ -1347,7 +1395,10 @@ mod tests {
                     .expect("other visual")
                     .read(cx)
                     .preferences,
-                ViewPreferences::default()
+                ViewPreferences {
+                    mode: Mode::Sv,
+                    ..ViewPreferences::default()
+                }
             )
         });
     }
@@ -1367,6 +1418,45 @@ mod tests {
             let source = cx.new(|cx| Editor::for_buffer(buffer.clone(), None, window, cx));
             MarkdownEditor::new(source, buffer, window, cx)
         })
+    }
+
+    #[gpui::test]
+    fn mode_actions_before_frontend_ready_are_restored_on_ready(cx: &mut TestAppContext) {
+        struct RecordingSurface(std::rc::Rc<std::cell::RefCell<Vec<HostMessage>>>);
+        impl BrowserSurface for RecordingSurface {
+            fn send(&mut self, message: &HostMessage) -> Result<()> {
+                self.0.borrow_mut().push(message.clone());
+                Ok(())
+            }
+            fn poll(&mut self) -> Result<Vec<ClientMessage>> {
+                Ok(Vec::new())
+            }
+            fn dispose(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+        let (item, cx) = fixture(cx, "# Modes\n");
+        let messages = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        item.update(cx, |item, cx| {
+            item.attach(Box::new(RecordingSurface(messages.clone())), cx)
+                .expect("surface");
+            assert!(!item.browser_ready);
+            item.request_mode(Mode::Wysiwyg, cx);
+            item.request_mode(Mode::Preview, cx);
+            assert_eq!(item.preferences.mode, Mode::Preview);
+            assert!(item.error().is_none());
+            item.receive(
+                ClientMessage::Ready {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                },
+                cx,
+            )
+            .expect("ready");
+            assert!(item.browser_ready);
+            assert_eq!(item.buffer.read(cx).snapshot().text(), "# Modes\n");
+        });
+        assert!(messages.borrow().iter().any(|message| matches!(message, HostMessage::Preferences {preferences} if preferences.mode == Mode::Preview)));
     }
 
     fn draft(
@@ -1643,6 +1733,151 @@ mod tests {
             cx.opened_url().as_deref(),
             Some("https://example.com/page#fragment")
         );
+    }
+
+    #[gpui::test(iterations = 5)]
+    async fn relative_link_to_unopened_visual_destination_waits_for_ready(cx: &mut TestAppContext) {
+        use gpui::UpdateGlobal;
+        use util::path;
+        struct RecordingSurface(std::rc::Rc<std::cell::RefCell<Vec<HostMessage>>>);
+        impl BrowserSurface for RecordingSurface {
+            fn send(&mut self, message: &HostMessage) -> Result<()> {
+                self.0.borrow_mut().push(message.clone());
+                Ok(())
+            }
+            fn poll(&mut self) -> Result<Vec<ClientMessage>> {
+                Ok(Vec::new())
+            }
+            fn dispose(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+        cx.update(|cx| {
+            cx.set_global(db::AppDatabase::test_new());
+            workspace::AppState::test(cx);
+            editor::init(cx);
+            markdown_preview::init(cx);
+            super::init(cx);
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |content| {
+                    content
+                        .markdown_editor
+                        .get_or_insert_default()
+                        .default_open_mode = Some(settings::MarkdownDefaultOpenMode::Editor);
+                    content
+                        .markdown_preview
+                        .get_or_insert_default()
+                        .open_markdown_files_in_preview = Some(true);
+                });
+            });
+        });
+        let filesystem = project::FakeFs::new(cx.executor());
+        filesystem.insert_tree(path!("/project"),serde_json::json!({"docs":{"current.md":"# Current","other file.md":"intro\n\n# Target {#日本}\n\nbody"}})).await;
+        let project = Project::test(filesystem, [path!("/project").as_ref()], cx).await;
+        let (multi, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi.read_with(cx, |multi, _| multi.workspace().clone());
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("worktree")
+                .read(cx)
+                .id()
+        });
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath {
+                        worktree_id,
+                        path: util::rel_path::rel_path("docs/current.md").into(),
+                    },
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("default visual source");
+        let visual = workspace
+            .read_with(cx, |workspace, cx| {
+                workspace
+                    .active_item(cx)
+                    .and_then(|item| item.downcast::<MarkdownEditor>())
+            })
+            .expect("actual default visual item");
+        assert_eq!(
+            workspace.read_with(cx, |workspace, cx| workspace.items(cx).count()),
+            1
+        );
+        visual.update(cx, |item, cx| {
+            item.receive(
+                ClientMessage::OpenLink {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    url: "other%20file.md#%E6%97%A5%E6%9C%AC".into(),
+                },
+                cx,
+            )
+            .expect("relative visual link")
+        });
+        cx.run_until_parked();
+        let destination = workspace
+            .read_with(cx, |workspace, cx| {
+                workspace
+                    .active_item(cx)
+                    .and_then(|item| item.downcast::<MarkdownEditor>())
+            })
+            .expect("actual default visual destination");
+        assert_ne!(visual, destination);
+        assert_eq!(
+            workspace.read_with(cx, |workspace, cx| workspace.items(cx).count()),
+            2
+        );
+        let messages = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        destination.update(cx, |item, cx| {
+            assert!(!item.browser_ready);
+            assert_eq!(
+                item.buffer
+                    .read(cx)
+                    .file()
+                    .expect("destination file")
+                    .path()
+                    .as_ref(),
+                util::rel_path::rel_path("docs/other file.md")
+            );
+            item.preferences.scroll = 120;
+            item.attach(Box::new(RecordingSurface(messages.clone())), cx)
+                .expect("surface");
+            assert!(!messages.borrow().iter().any(|message| {
+                serde_json::to_value(message).expect("message")["kind"] == "navigate"
+            }));
+            item.receive(
+                ClientMessage::Ready {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                },
+                cx,
+            )
+            .expect("frontend Ready");
+            assert_eq!(
+                item.buffer.read(cx).snapshot().text(),
+                "intro\n\n# Target {#日本}\n\nbody"
+            );
+            assert_eq!(item.preferences.scroll, 120);
+        });
+        let messages = messages.borrow();
+        let messages = messages
+            .iter()
+            .map(|message| serde_json::to_value(message).expect("message"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            messages.last().expect("navigation follows initialization"),
+            &serde_json::json!({"kind":"navigate","fragment":"日本"})
+        );
+        assert!(messages.iter().any(|message| message["kind"] == "document"));
     }
 
     #[gpui::test]
@@ -3367,7 +3602,8 @@ mod tests {
                 outline: true,
                 wrap: false,
                 scroll: 1234,
-                ..ViewPreferences::default()
+                content_theme: Some("dark".into()),
+                code_theme: Some("monokai".into()),
             }
         });
         let tasks = multi_workspace.update_in(cx, |multi, window, cx| {
@@ -3418,6 +3654,18 @@ mod tests {
         for task in tasks {
             task.await.expect("mixed cleanup");
         }
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |content| {
+                    let markdown = content.markdown_editor.get_or_insert_default();
+                    markdown.default_open_mode = Some(settings::MarkdownDefaultOpenMode::Source);
+                    markdown.mode = Some(settings::MarkdownEditorMode::Wysiwyg);
+                    markdown.default_open_outline = Some(false);
+                    markdown.content_theme = Some("light".into());
+                    markdown.code_theme = Some("github".into());
+                })
+            });
+        });
         let native_restored = multi_workspace
             .update_in(cx, |_, window, cx| {
                 Editor::deserialize(
@@ -3456,7 +3704,8 @@ mod tests {
                     outline: true,
                     wrap: false,
                     scroll: 1234,
-                    ..ViewPreferences::default()
+                    content_theme: Some("dark".into()),
+                    code_theme: Some("monokai".into()),
                 }
             );
         });
@@ -3830,6 +4079,26 @@ impl Render for MarkdownEditor {
             .size_full()
             .key_context("MarkdownEditor")
             .track_focus(&self.focus)
+            .on_action(cx.listener(|this, action: &crate::SetMode, _, cx| {
+                this.request_mode(crate::opening::mode(action.mode), cx)
+            }))
+            .on_action(
+                cx.listener(|this, _: &crate::CopyMarkdown, _, cx| {
+                    this.control("copy-markdown", cx)
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::CopyHtml, _, cx| this.control("copy-html", cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::InsertImage, _, cx| this.control("insert-image", cx)),
+            )
+            .on_action(cx.listener(|this, _: &crate::ToggleOutline, _, cx| {
+                this.control("outline-toggle", cx)
+            }))
+            .on_action(
+                cx.listener(|this, _: &crate::ResetPreferences, _, cx| this.control("reset", cx)),
+            )
             .on_action(cx.listener(|this, action: &Format, _, cx| {
                 if this.writable(cx) {
                     if let Err(error) = this

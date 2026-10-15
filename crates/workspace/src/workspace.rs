@@ -1055,7 +1055,7 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
 type BuildProjectItemFn =
     fn(AnyEntity, Entity<Project>, Option<&Pane>, &mut Window, &mut App) -> Box<dyn ItemHandle>;
 
-type BuildProjectItemForPathFn =
+pub type BuildProjectItemForPathFn =
     fn(
         &Entity<Project>,
         &ProjectPath,
@@ -1180,7 +1180,7 @@ impl ProjectItemRegistry {
     }
 }
 
-type WorkspaceItemBuilder =
+pub type WorkspaceItemBuilder =
     Box<dyn FnOnce(&mut Pane, &mut Window, &mut Context<Pane>) -> Box<dyn ItemHandle>>;
 
 impl Global for ProjectItemRegistry {}
@@ -1190,6 +1190,13 @@ impl Global for ProjectItemRegistry {}
 /// was added last.
 pub fn register_project_item<I: ProjectItem>(cx: &mut App) {
     cx.default_global::<ProjectItemRegistry>().register::<I>();
+}
+
+/// Path-specific openers do not replace builders keyed by project-item type.
+pub fn register_project_path_opener(open: BuildProjectItemForPathFn, cx: &mut App) {
+    cx.default_global::<ProjectItemRegistry>()
+        .build_project_item_for_path_fns
+        .push(open);
 }
 
 #[derive(Default)]

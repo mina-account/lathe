@@ -1,6 +1,6 @@
 # Implementation plan: Markdown viewer and editor
 
-Status: Phases 0 through 3 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the shared-buffer Item now provides confined, source-preserving Vditor 3.11.2 editing modes and viewer. Phases 4 through 6 remain pending: expanded resources/renderers/themes, complete opening/settings/install/packaging, and the user's full native/manual acceptance run.
+Status: Phases 0 through 4 are complete under the revised scope: the reference baseline is frozen, automated CPU offscreen CEF viability is verified on Windows/X11/Wayland, and the shared-buffer Item provides confined, source-preserving Vditor 3.11.2 modes, viewer, project images, local renderers, themes, and CSS. Phase 4 merged in [PR 6](https://github.com/mina-account/lathe/pull/6) after independent review 13 reported clean. Phase 5 opening/settings/persistence/install/packaging has current installed Windows evidence; earlier Linux results remain historical under the Windows-only validation revision. The user's Phase 6 full native/manual acceptance run remains pending.
 Created: 2026-10-12.
 Repository baseline: `b58ba5990a`, with existing local changes excluded from this plan.
 
@@ -11,6 +11,8 @@ Add a Markdown workspace item to Lathe with functional parity with [zaaack.markd
 The target is a complete editor, including formatting, image insertion, themes, custom CSS, extended Markdown syntax, and the reference extension's diagram support. A source editor with a read-only preview is an intermediate milestone, not completion of this plan.
 
 Scope revision: supported delivery platforms are Windows and Linux (X11 and Wayland). macOS checks, accessibility checks, and visual pixel-readback acceptance are excluded from deliverables. Historical evidence remains recorded. The user will run the full native/manual UI acceptance suite and resolve UI bugs at the end of all implementation phases, in Phase 6. Native input, IME, selection, shortcuts, focus, overlays, DPI, and workspace/window interactions still require implementation; automated correctness checks continue during each phase. Packaging and installed-runtime acceptance belong to Phase 5. This revision does not reduce feature parity, document fidelity, shared history, bridge validation, or security requirements.
+
+Validation revision (2026-10-14): From this point onward, run builds, tests, package/install checks and native/manual acceptance only in Windows environments. Linux implementation remains in scope; retain earlier Linux evidence as historical. No further Linux validation is required. This revision overrides earlier prospective Windows/Linux validation requirements without rewriting historical results.
 
 ## 2. Reference baseline and scope
 
@@ -253,19 +255,21 @@ Phase 4 evidence: [implementation, behavior-to-test and expected-red matrix, exa
 
 Depends on Phases 2-4.
 
-- [ ] Add palette actions, platform keymaps, project-panel/tab menus, editor selection, and configurable defaults with legacy-preview precedence.
-- [ ] Register settings and restore buffer identity, item path, mode, themes, outline, and reading position across reopen/restart.
-- [ ] Integrate locked frontend builds, CEF runtime/helper processes/notices, and assets into Windows/Linux build and packaging scripts; verify missing-runtime/install behavior and packaged installations without Node and without network access for local features.
-- [ ] Add user documentation covering modes, image destinations, settings, defaults, shortcuts, and renderer service requirements.
+- [x] Add palette actions, platform keymaps, project-panel/tab menus, editor selection, and configurable defaults with legacy-preview precedence.
+- [x] Register settings and restore buffer identity, item path, mode, themes, outline, and reading position across reopen/restart.
+- [x] Integrate locked frontend builds, CEF runtime/helper processes/notices, and assets into Windows/Linux build and packaging scripts; verify missing-runtime/install behavior and packaged installations without Node and without network access for local features.
+- [x] Add user documentation covering modes, image destinations, settings, defaults, shortcuts, and renderer service requirements.
 
-Exit: P13 and remaining lifecycle/settings requirements are implemented, installed-build/package checks pass, and automated routing regressions cover native preview and unrelated file opening. Full native/manual UI acceptance remains for Phase 6.
+Exit: P13 and remaining lifecycle/settings requirements are implemented, Windows installed-build/package checks pass, and automated routing regressions cover native preview and unrelated file opening. Full native/manual UI acceptance remains for Phase 6.
+
+Phase 5 evidence: [opening/settings/persistence, expected-red regressions, runtime/build integration, source and artifact hashes, final installed Windows checks and historical Linux results](markdown-editor-phase-5/README.md). Final Windows executables/packages were rebuilt from `59f87b700e595eefa56651defe2bcd9ee35e7ab3`. Windows native 93/93, protocol 13, browser 63/63, bridge 17/17, staging 2/2, loader 3 and scoped integration/application/lint checks pass with documented unchanged baseline exceptions and original source attribution. Relative Markdown links to unopened visual destinations now navigate the visible heading through frontend readiness; fresh installed Windows frontend link clicks verify heading bounds and exact Unicode-ID source. Installed Windows runs also verify all four modes/local renderers, shared source/history, physically absent libraries/resources with Reinstall guidance and same-Buffer source access, true primary exits 0 and no surviving helpers. All 234 runtime file hashes verify. Pinned dynamic CEF loading, automatic provisioning, CI Node 24.16.0, updater/signing/build integration and the bounded 16 MiB frame gate remain intact. Linux implementation and earlier evidence remain recorded, but the current Linux build was cancelled and further Linux validation is excluded by the user revision. Phases 0?4 requirements and user AI-prompt formatting remain preserved. Full native/manual Windows Phase 6 remains for the user.
 
 ### Phase 6: Release validation
 
 Depends on all previous phases.
 
-- [ ] Complete the parity matrix with baseline comparisons and evidence on each supported platform.
-- [ ] Have the user run the full native/manual UI acceptance suite on Windows/Linux after all implementation phases: hardware keyboard/pointer, IME composition/candidate placement, selection, focus, clipboard/shortcuts, native overlays/clipping, DPI, tab/pane/window interactions, moves, and multiple workspace windows. Resolve UI bugs from that run before final completion; do not claim these cases proven by synthetic smokes.
+- [ ] Complete the parity matrix with baseline comparisons and Windows evidence under the validation revision.
+- [ ] Have the user run the full native/manual UI acceptance suite on Windows after all implementation phases: hardware keyboard/pointer, IME composition/candidate placement, selection, focus, clipboard/shortcuts, native overlays/clipping, DPI, tab/pane/window interactions, moves, and multiple workspace windows. Resolve UI bugs from that run before final completion; do not claim these cases proven by synthetic smokes.
 - [ ] Run focused Rust/controller/frontend tests, required formatting/lint checks, and native-editor/preview/workspace regression checks.
 - [ ] Measure startup, typing response, renderer settling, and memory with representative large documents and multiple visual tabs; resolve responsiveness failures before declaring completion.
 - [ ] Review packaged dependencies/licenses and include notices for Vditor and redistributed renderers.

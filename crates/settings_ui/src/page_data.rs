@@ -10916,6 +10916,206 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
         ]
     }
 
+    fn markdown_editor_section() -> [SettingsPageItem; 11] {
+        [
+            SettingsPageItem::SectionHeader("Markdown Editor"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Default Editor",
+                description: "Choose Source, Preview, or Editor. Reset to retain the legacy preview setting.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.default_open_mode"),
+                    pick: |content| {
+                        const SOURCE: settings::MarkdownDefaultOpenMode =
+                            settings::MarkdownDefaultOpenMode::Source;
+                        const PREVIEW: settings::MarkdownDefaultOpenMode =
+                            settings::MarkdownDefaultOpenMode::Preview;
+                        content
+                            .markdown_editor
+                            .as_ref()
+                            .and_then(|markdown| markdown.default_open_mode.as_ref())
+                            .or(Some(
+                                if content
+                                    .markdown_preview
+                                    .as_ref()
+                                    .and_then(|markdown| markdown.open_markdown_files_in_preview)
+                                    .unwrap_or(false)
+                                {
+                                    &PREVIEW
+                                } else {
+                                    &SOURCE
+                                },
+                            ))
+                    },
+                    write: |content, value, _| {
+                        content
+                            .markdown_editor
+                            .get_or_insert_default()
+                            .default_open_mode = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Editing Mode",
+                description: "Initial visual mode; saved document preferences take precedence.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.mode"),
+                    pick: |content| content.markdown_editor.as_ref()?.mode.as_ref(),
+                    write: |content, value, _| {
+                        content.markdown_editor.get_or_insert_default().mode = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Image Folder",
+                description: "Image destination relative to the document, or ${projectRoot}/assets.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.image_save_folder"),
+                    pick: |content| content.markdown_editor.as_ref()?.image_save_folder.as_ref(),
+                    write: |content, value, _| {
+                        content
+                            .markdown_editor
+                            .get_or_insert_default()
+                            .image_save_folder = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown App Theme Colors",
+                description: "Use Lathe colors in the visual Markdown editor.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.use_app_theme_colors"),
+                    pick: |content| {
+                        content
+                            .markdown_editor
+                            .as_ref()?
+                            .use_app_theme_colors
+                            .as_ref()
+                    },
+                    write: |content, value, _| {
+                        content
+                            .markdown_editor
+                            .get_or_insert_default()
+                            .use_app_theme_colors = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Line Numbers",
+                description: "Show mode-aware source line numbers.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.show_line_numbers"),
+                    pick: |content| content.markdown_editor.as_ref()?.show_line_numbers.as_ref(),
+                    write: |content, value, _| {
+                        content
+                            .markdown_editor
+                            .get_or_insert_default()
+                            .show_line_numbers = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Outline",
+                description: "Show the outline when no document preference has been saved.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.default_open_outline"),
+                    pick: |content| {
+                        content
+                            .markdown_editor
+                            .as_ref()?
+                            .default_open_outline
+                            .as_ref()
+                    },
+                    write: |content, value, _| {
+                        content
+                            .markdown_editor
+                            .get_or_insert_default()
+                            .default_open_outline = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Custom CSS",
+                description: "CSS scoped to the visual Markdown editor.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.custom_css"),
+                    pick: |content| content.markdown_editor.as_ref()?.custom_css.as_ref(),
+                    write: |content, value, _| {
+                        content.markdown_editor.get_or_insert_default().custom_css = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Content Theme",
+                description: "Bundled Vditor content theme, or app theme when unset.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.content_theme"),
+                    pick: |content| content.markdown_editor.as_ref()?.content_theme.as_ref(),
+                    write: |content, value, _| {
+                        content
+                            .markdown_editor
+                            .get_or_insert_default()
+                            .content_theme = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown Code Theme",
+                description: "Bundled highlight.js code theme, or app theme when unset.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.code_theme"),
+                    pick: |content| content.markdown_editor.as_ref()?.code_theme.as_ref(),
+                    write: |content, value, _| {
+                        content.markdown_editor.get_or_insert_default().code_theme = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Markdown PlantUML Service",
+                description: "Explicit HTTPS PlantUML server root; this renderer requires network access.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("markdown_editor.plantuml_service"),
+                    pick: |content| content.markdown_editor.as_ref()?.plantuml_service.as_ref(),
+                    write: |content, value, _| {
+                        content
+                            .markdown_editor
+                            .get_or_insert_default()
+                            .plantuml_service = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
     fn global_only_miscellaneous_sub_section() -> [SettingsPageItem; 4] {
         [
             SettingsPageItem::SettingItem(SettingItem {
@@ -11083,6 +11283,7 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
             tasks_section(),
             miscellaneous_section(),
             global_only_miscellaneous_sub_section(),
+            markdown_editor_section(),
         )
     } else {
         concat_sections!(

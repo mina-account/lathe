@@ -216,6 +216,9 @@ pub enum HostMessage {
     Preferences {
         preferences: ViewPreferences,
     },
+    Navigate {
+        fragment: String,
+    },
     HistoryAccepted {
         request: u64,
         revision: u64,

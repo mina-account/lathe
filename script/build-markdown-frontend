@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/../crates/markdown_editor/frontend"
+npm ci --ignore-scripts
+node build.mjs
+node ../../../project-docs/imp-plans/markdown-editor-phase-4/verify-assets.mjs
