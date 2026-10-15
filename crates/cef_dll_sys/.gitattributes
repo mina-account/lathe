@@ -1,1 +1,1 @@
-bindings/*.rs -text
+bindings/*.rs -text whitespace=cr-at-eol
