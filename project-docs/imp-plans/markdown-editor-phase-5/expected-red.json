@@ -148,5 +148,23 @@
       "",
       "error: test failed, to rerun pass `-p markdown_editor --lib`"
     ]
+  },
+  {
+    "log": "/mnt/c/tmp/lathe-phase5-fix1-red.log",
+    "sha256": "ed1e2c88371378503e0f2738765a7d3680337d1edcc0206ed27033d1302e9eed",
+    "failure_excerpt": [
+      "AssertionError: libnspr4.so: selected /lib/x86_64-linux-gnu/libnspr4.so instead of bundled /home/an/.cache/lathe-phase5-installed-linux-review1-red/application/lib/libnspr4.so"
+    ],
+    "basis": "Updated installed helper against original c5ae09 Linux archive, prior to fixed repack. No native application launched because dependency gate failed first."
+  },
+  {
+    "log": "/mnt/c/tmp/lathe-phase5-fix1-ci-red.log",
+    "sha256": "f2d05dd064170e2ce7dbd682d58f4fcf15527d6ba6269bd0c7aa6ee38bec82b7",
+    "failure_excerpt": [
+      "NO_NODE_FRONTEND_EXIT 127",
+      "script/build-markdown-frontend: line 4: npm: command not found",
+      "AssertionError: .github/workflows/lathe_linux_ci.yml/build-linux: no Node/npm provisioning before build-fork-linux"
+    ],
+    "basis": "Actual frontend invocation without Node/npm plus original workflow requirement check; fixed step covers both matrix architectures."
   }
 ]

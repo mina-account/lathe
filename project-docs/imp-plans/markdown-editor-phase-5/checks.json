@@ -172,8 +172,8 @@
     },
     "linux": {
       "archive": "/home/an/.cache/lathe-browser-probe-target/release/Lathe-1.10.2-x86_64-linux.tar.gz",
-      "archive_sha256": "c5ae09bba66f82b497462866770b7f9bb4362bf442b7d221832e86e8d7036081",
-      "executable": "/home/an/.cache/lathe-phase5-installed-linux-b7-exit/application/libexec/lathe-editor",
+      "archive_sha256": "285ba9f82b195490ab5b868c05d650ed18d33bef85b9d1db2c11fe189afafff9",
+      "executable": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
       "executable_sha256": "a8f79163c02b39c7005329644813687254ea673bdb304c893fdce78a663a6c08",
       "runtime_files": 230,
       "backends": [
@@ -181,7 +181,11 @@
         "x11",
         "missing-runtime"
       ],
-      "surviving_installed_processes": []
+      "surviving_installed_processes": [],
+      "packaging_commit": "c8500e935fbde8b55da132b347b3f041dd3bdd34",
+      "ld_library_path": null,
+      "ld_preload": null,
+      "bundled_dependencies_verified": 84
     }
   },
   "native_counts": {
@@ -229,10 +233,12 @@
   "process_check": "Read-only Win32_Process executable-path query and Linux /proc/exe query after final jobs; no surviving primary/helper process under either final isolated installation.",
   "final_source_identity": {
     "implementation_commit": "b7d7b0e6eeb9f821ee069e9fd90f30a44fb819fb",
-    "canonical_input_files_unchanged": 41,
-    "evidence_only_change": "The 41 unchanged implementation/build/supporting records match b7. The plan completion update is intentionally post-build documentation, separately recorded with original and current canonical hashes; remaining edits are evidence only.",
+    "canonical_input_files_unchanged": 40,
+    "evidence_only_change": "The b7 production executables remain unchanged. Linux packaging/CI changed at packaging_commit; 40 records still match b7. Fresh Linux archive and installed acceptance replace old Linux package evidence. Windows artifacts and prior regressions/lint remain applicable because every compiled/frontend/runtime and Windows build/package input is unchanged.",
     "manifest_files_total_before_split": 42,
-    "post_build_documentation_files": 1
+    "post_build_documentation_files": 1,
+    "packaging_commit": "c8500e935fbde8b55da132b347b3f041dd3bdd34",
+    "post_build_packaging_files": 2
   },
   "final_scoped_validation": {
     "rustfmt": "pass; edition2024 skip_children=true on changed Rust files; workspace.rs only11-line existing-format typed seam, baseline whole-file format excluded",
@@ -240,5 +246,86 @@
     "json": "all9 evidence JSON files parse",
     "qa_helpers": "PowerShell parser and Python AST parse pass",
     "git_diff_check": "pass; repeated after staging"
+  },
+  "review_1_fixes": {
+    "commit": "c8500e935fbde8b55da132b347b3f041dd3bdd34",
+    "findings_fixed": 2,
+    "fresh_linux_repack_exit": 0,
+    "fresh_installed_runs": {
+      "wayland": 0,
+      "x11": 0,
+      "missing-runtime": 0
+    },
+    "linux_loader": {
+      "exit_code": 0,
+      "ld_library_path": null,
+      "ld_preload": null,
+      "cef_runtime_override": null,
+      "surviving_installed_processes": [],
+      "loader_trace": "/home/an/.cache/lathe-phase5-installed-linux-review1-green/loader-trace.log",
+      "stdout": "Usage: lathe-editor [OPTIONS] [PATHS_OR_URLS]...\n\nArguments:\n  [PATHS_OR_URLS]...\n          A sequence of space-separated paths or urls that you want to open.\n          \n          Use `path:line:row` syntax to open a file at a specific location. Non-existing paths and\n          directories will ignore `:line:row` suffix.\n          \n          URLs can either be `file://` or `zed://` scheme, or relative to <https://zed.dev>.\n\nOptions:\n      --diff <OLD_PATH> <NEW_PATH>\n          Pairs of file paths to diff. Can be specified multiple times. When directories are\n          provided, recurses into them and shows all changed files in a single multi-diff view\n\n      --user-data-dir <DIR>\n          Sets a custom directory for all user data (e.g., database, extensions, logs).\n          \n          This overrides the default platform-specific data directory location.\n          On macOS, the default is `~/Library/Application Support/Zed`.\n          On Linux/FreeBSD, the default is `$XDG_DATA_HOME/zed`.\n          On Windows, the default is `%LOCALAPPDATA%\\Lathe`.\n\n      --dev-container\n          Open the project in a dev container.\n          \n          Automatically triggers \"Reopen in Dev Container\" if a `.devcontainer/` configuration is\n          found in the project directory.\n\n      --dev-server-token <DEV_SERVER_TOKEN>\n          Instructs zed to run as a dev server on this machine. (not implemented)\n\n      --system-specs\n          Prints system specs.\n          \n          Useful for submitting issues on GitHub when encountering a bug that prevents Zed from\n          starting, so you can't run `zed: copy system specs to clipboard`\n\n  -h, --help\n          Print help (see a summary with '-h')",
+      "command": [
+        "/home/an/.cache/lathe-phase5-installed-linux-review1-green/application/libexec/lathe-editor",
+        "--help"
+      ],
+      "loader_trace_sha256": "1da9a389cbd533a511b66b6f11e3ef64ba9d28c7f189bf59dc8c93e596483370",
+      "bundled_init_verified": [
+        "libcef.so",
+        "libnspr4.so",
+        "libnss3.so",
+        "libnssutil3.so",
+        "libsmime3.so"
+      ]
+    },
+    "logs": [
+      {
+        "path": "/mnt/c/tmp/lathe-phase5-fix1-red.log",
+        "sha256": "ed1e2c88371378503e0f2738765a7d3680337d1edcc0206ed27033d1302e9eed"
+      },
+      {
+        "path": "/mnt/c/tmp/lathe-phase5-fix1-ci-red.log",
+        "sha256": "f2d05dd064170e2ce7dbd682d58f4fcf15527d6ba6269bd0c7aa6ee38bec82b7"
+      },
+      {
+        "path": "/mnt/c/tmp/lathe-phase5-fix1-build-package-green.log",
+        "sha256": "2a23489df361eaef0360c24c2459fa6b7d064c78a7d811cb2577524fe4f64159"
+      },
+      {
+        "path": "/mnt/c/tmp/lathe-phase5-fix1-installed-green.log",
+        "sha256": "b127caa2c33680f06c5d9c302fed14ec3b4ad9889c03c7b188c4178b2576d394"
+      },
+      {
+        "path": "/mnt/c/tmp/lathe-phase5-fix1-loader.log",
+        "sha256": "63f7ab1722a20ff483555851b1c22cf9c37e44bc4fc5d93d0df478d297aa3c80"
+      }
+    ],
+    "frontend_toolchain": {
+      "node": "24.16.0",
+      "npm": "11.13.0",
+      "npm_ci": "6 locked packages; 0 vulnerabilities",
+      "pinned_asset_hashes": 332,
+      "runtime_staging_tests": 2,
+      "linux_ci_matrix": [
+        "x86_64",
+        "aarch64"
+      ],
+      "workflow_validation": "PyYAML6.0.1 parse plus setup-node-before-build assertions for both actual Linux build callers; pinned Node frontend invocation passed locally. No remote CI dispatched."
+    },
+    "reused_windows": {
+      "reason": "Only Linux packaging/workflow and evidence changed; all compiled/frontend/runtime and Windows packaging inputs verified against b7. ZIP/Inno/installed executable rehashed unchanged. Prior Windows installed acceptance and native/clippy checks reused.",
+      "zip_sha256": "da665f416611ee7449b8371c87f7edcf00c725261f29fb5b959dcf5d0d66863d",
+      "inno_sha256": "81f80812d454f8ef6950e36fe2dbef14756d6aaa9008f54110c69222cfba5c3c",
+      "executable_sha256": "559e007aa1c9a87585abc87985e8047f84deb12c99ffe271fd9f986301a4ca9b"
+    },
+    "verification_scope": "Packaging/workflow-only fixes: no redundant full app build or Rust tests/clippy rerun. Previous native/regression/scoped wrapper results apply to unchanged production sources. bash syntax, YAML/toolchain checks, locked frontend/assets, runtime staging, new actual package/install/loader acceptance, Python AST and diff checks cover changes.",
+    "diagnostic_correction": "Installed main executable does not support --version (diagnostic exit2); rerun with supported --help exits0 and verifies bundled loader init. Three main GUI acceptance runs already exited0.",
+    "final_checks": {
+      "evidence_json_files_parsed": 9,
+      "python_ast_helpers": 2,
+      "bash_syntax": "pass",
+      "prettier_readme": "pass",
+      "git_diff_check": "pass",
+      "source_snapshot_verifier": "40 unchanged current/b7 inputs, 1 original/current plan, 2 original/current/fix-commit Linux packaging/CI inputs pass"
+    }
   }
 }

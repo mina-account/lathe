@@ -29,8 +29,24 @@ for item in manifest['post_build_documentation']:
     assert canonical_hash(original) == item['implementation_commit_snapshot']['canonical_sha256'], item['path']
     current = (root / item['path']).read_bytes()
     assert canonical_hash(current) == item['current_documentation_snapshot']['canonical_sha256'], item['path']
+for item in manifest['post_build_packaging']:
+    assert item['path'] not in paths, 'Changed packaging recorded as unchanged input'
+    original = subprocess.check_output(
+        ['git', 'show', f"{manifest['implementation_commit']}:{item['path']}"],
+        cwd=root,
+    )
+    assert canonical_hash(original) == item['implementation_commit_snapshot']['canonical_sha256'], item['path']
+    current = (root / item['path']).read_bytes()
+    assert canonical_hash(current) == item['current_packaging_snapshot']['canonical_sha256'], item['path']
+    packaged = subprocess.check_output(
+        ['git', 'show', f"{manifest['packaging_commit']}:{item['path']}"],
+        cwd=root,
+    )
+    assert canonical_hash(packaged) == item['current_packaging_snapshot']['canonical_sha256'], item['path']
 print(json.dumps({
     'implementation_commit': manifest['implementation_commit'],
     'unchanged_canonical_records_verified': len(paths),
     'post_build_documentation_snapshots_verified': len(manifest['post_build_documentation']),
+    'packaging_commit': manifest['packaging_commit'],
+    'post_build_packaging_snapshots_verified': len(manifest['post_build_packaging']),
 }))

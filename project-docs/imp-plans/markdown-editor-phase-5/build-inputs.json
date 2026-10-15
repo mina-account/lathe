@@ -229,12 +229,6 @@
       "canonical_sha256": "6e18d32a87920fa4c848e8c5adfad29bb2e9f0ee4b3be85cc8b842d421bbf22f"
     },
     {
-      "path": "script/package-fork-linux",
-      "bytes": 4653,
-      "sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e",
-      "canonical_sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e"
-    },
-    {
       "path": "script/package-fork-windows.ps1",
       "bytes": 13215,
       "sha256": "e25a5ef1d38a22ebab9f9cff3d4875501f21026ddd086ccc0c1332fc2f90a748",
@@ -253,21 +247,52 @@
       "canonical_sha256": "d0fc7322fbff50af4036aeb28d3463f4d216412abe148a4a9332efd6a19bb398"
     }
   ],
-  "scope": "The files array records 41 unchanged implementation/build/supporting files. The plan is documentation, not a compiled input, and its post-build completion update is recorded separately.",
+  "scope": "The files array records 40 unchanged implementation/build/supporting files matching b7. Two Linux packaging/CI inputs are recorded separately at packaging_commit. Production executable code and all Windows build/package inputs are unchanged. The plan is post-build documentation.",
   "canonical_hash_rule": "SHA256 of file bytes after CRLF-to-LF normalization; raw bytes/hash describe the original Windows snapshot and may differ after Git checkout.",
   "post_build_documentation": [
     {
       "path": "project-docs/imp-plans/markdown-viewer-editor.md",
-      "reason": "Evidence completion commit c6811e9a90515f1e5eba7f92307f1be2136c01b3 marks Phase5 complete after production artifacts were built; no production rebuild required.",
+      "reason": "Phase5 completion and review1 packaging/CI evidence update; no compiled production source change.",
       "implementation_commit_snapshot": {
         "bytes": 44959,
         "sha256": "26b50e6b5e16865a5f5d75c252714e9d08771e13ab3a0c4adf374b177b0568da",
         "canonical_sha256": "67ec596f5f344673c8a2c68c4fa27a36652b562cd08a4f7cb74d6a98b8a0fa97"
       },
       "current_documentation_snapshot": {
-        "bytes": 45700,
-        "sha256": "a0223379e3f47e0d6e5d3bc0d8e0c4a9c3ff77e612df3f6bc12172136967d050",
-        "canonical_sha256": "a0223379e3f47e0d6e5d3bc0d8e0c4a9c3ff77e612df3f6bc12172136967d050"
+        "bytes": 46146,
+        "sha256": "745cc2667574676de0ee0682b48aed6900a68e884cc8d783152940cf857639b9",
+        "canonical_sha256": "745cc2667574676de0ee0682b48aed6900a68e884cc8d783152940cf857639b9"
+      }
+    }
+  ],
+  "packaging_commit": "c8500e935fbde8b55da132b347b3f041dd3bdd34",
+  "post_build_packaging": [
+    {
+      "path": "script/package-fork-linux",
+      "reason": "Review1 Linux dependency staging or build-only toolchain fix; no executable/frontend/runtime source change.",
+      "implementation_commit_snapshot": {
+        "bytes": 4653,
+        "sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e",
+        "canonical_sha256": "e855d3a05570f770c33c4b68769ecab54d0e4de61ceefd75f8d72c961c8fc71e"
+      },
+      "current_packaging_snapshot": {
+        "bytes": 4859,
+        "sha256": "a93870cddb29ac4bd981afd3aac95ebbd48130c1b35e26264396e1885173edc4",
+        "canonical_sha256": "a93870cddb29ac4bd981afd3aac95ebbd48130c1b35e26264396e1885173edc4"
+      }
+    },
+    {
+      "path": ".github/workflows/lathe_linux_ci.yml",
+      "reason": "Review1 Linux dependency staging or build-only toolchain fix; no executable/frontend/runtime source change.",
+      "implementation_commit_snapshot": {
+        "bytes": 6983,
+        "sha256": "bdd89f1cb08398a7f9f1cd75d7b59e248f472b23c3bebb8af6a00d351ab95d2c",
+        "canonical_sha256": "bdd89f1cb08398a7f9f1cd75d7b59e248f472b23c3bebb8af6a00d351ab95d2c"
+      },
+      "current_packaging_snapshot": {
+        "bytes": 7417,
+        "sha256": "ef89cc0535b90041c177d45f1e37d8ebd26423fe84c89487807d9284e4b62722",
+        "canonical_sha256": "9f2ef244dcb529a57592669b3fe059871c26d57b402b7da6b6c68763a7bc1355"
       }
     }
   ]
