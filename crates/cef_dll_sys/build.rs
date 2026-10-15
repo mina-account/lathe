@@ -74,7 +74,7 @@ fn main() -> Result<()> {
         }
         impl Api {
             pub(crate) unsafe fn load(path: &std::path::Path) -> Result<Self, String> {
-                let library = unsafe { crate::open_library(path) }.map_err(|error| error.to_string())?;
+                let library = unsafe { crate::open_library(path) }.map_err(|error| format!("{error:?}"))?;
                 Ok(Self { #(#loads,)* library, path: path.to_owned() })
             }
         }

@@ -119,7 +119,10 @@ mod tests {
     #[ignore = "requires LATHE_TEST_CEF_LIBRARY pointing to the pinned native runtime"]
     fn complete_pinned_runtime_resolves_every_typed_entrypoint() {
         let path = std::env::var_os("LATHE_TEST_CEF_LIBRARY").expect("explicit pinned runtime");
-        let api = unsafe { bindings::Api::load(Path::new(&path)) }.expect("complete native API");
+        let path = Path::new(&path)
+            .canonicalize()
+            .expect("native fixture path");
+        let api = unsafe { bindings::Api::load(&path) }.expect("complete native API");
         assert!(api.path.is_file());
     }
 
@@ -127,11 +130,14 @@ mod tests {
     #[ignore = "requires LATHE_TEST_OTHER_LIBRARY pointing to an isolated native library without the CEF API"]
     fn missing_symbols_do_not_publish_an_api() {
         let path = std::env::var_os("LATHE_TEST_OTHER_LIBRARY").expect("explicit native fixture");
-        let error = match unsafe { bindings::Api::load(Path::new(&path)) } {
+        let path = Path::new(&path)
+            .canonicalize()
+            .expect("native fixture path");
+        let error = match unsafe { bindings::Api::load(&path) } {
             Ok(_) => panic!("Non-CEF library unexpectedly provided the complete API"),
             Err(error) => error,
         };
-        assert!(error.to_string().contains("cef_api_hash"), "{error}");
+        assert!(error.contains("cef_api_hash"), "{error}");
         assert!(API.get().is_none());
     }
 }
