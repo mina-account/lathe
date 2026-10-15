@@ -96,7 +96,9 @@ node script/package-markdown-runtime.mjs "$(dirname "$zed_binary")" "${app_dir}/
 
 # Bundle shared libraries
 echo "--- Bundling shared libraries ---"
-mkdir -p "${app_dir}/lib"
+# CEF's own RUNPATH is $ORIGIN and takes precedence over the executable's
+# inherited RPATH. Keep its dependencies beside libcef.so so normal launches
+# find the bundled closure without LD_LIBRARY_PATH or host-library fallback.
 # Exclusion list mirrors upstream bundle-linux's find_libs: ld-linux/libc
 # family and libasound stay host-provided (bundled ALSA breaks host plugin
 # discovery), but libstdc++ IS bundled on purpose so older distros without
@@ -106,7 +108,7 @@ ldd "$zed_binary" | \
     grep -v '\<\(libc.so\|libgcc_s.so\|libm.so\|libpthread.so\|libdl.so\|libasound.so\|libcef.so\)' | \
     while read -r lib; do
         if [ -f "$lib" ]; then
-            cp "$lib" "${app_dir}/lib/"
+            cp "$lib" "${app_dir}/libexec/"
         fi
     done
 

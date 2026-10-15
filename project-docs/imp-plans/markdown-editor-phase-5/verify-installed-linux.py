@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -15,9 +16,22 @@ environment = os.environ.copy()
 environment.update(PATH='/usr/bin:/bin', LATHE_ARCHIVE_PATH=str(archive), LATHE_INSTALL_ROOT=str(installation), LATHE_INSTALL_NO_SHELL='1')
 subprocess.run(['bash', str(source / 'script/install-fork-linux')], env=environment, check=True)
 executable = installation / 'libexec/lathe-editor'
-for key in ['CEF_PATH', 'LATHE_MARKDOWN_CEF_RUNTIME', 'NO_PROXY', 'no_proxy']:
+for key in ['CEF_PATH', 'LATHE_MARKDOWN_CEF_RUNTIME', 'LD_LIBRARY_PATH', 'LD_PRELOAD', 'NO_PROXY', 'no_proxy']:
     environment.pop(key, None)
-environment.update(LD_LIBRARY_PATH=f'{installation}/libexec:{installation}/lib', VK_ICD_FILENAMES='/usr/share/vulkan/icd.d/lvp_icd.json')
+environment.update(VK_ICD_FILENAMES='/usr/share/vulkan/icd.d/lvp_icd.json')
+dependencies = subprocess.check_output(['/usr/bin/ldd', str(executable)], env=environment, text=True)
+assert 'not found' not in dependencies, dependencies
+selected_dependencies = dict(re.findall(r'^\s*(\S+) => (/\S+)', dependencies, re.MULTILINE))
+bundled_dependencies = {}
+for name, selected in selected_dependencies.items():
+    for directory in [installation / 'libexec', installation / 'lib']:
+        bundled = directory / name
+        if bundled.is_file():
+            assert Path(selected).resolve() == bundled.resolve(), f'{name}: selected {selected} instead of bundled {bundled}'
+            bundled_dependencies[name] = {'path': str(bundled), 'sha256': hashlib.sha256(bundled.read_bytes()).hexdigest()}
+            break
+for name in ['libcef.so', 'libnspr4.so', 'libnss3.so', 'libnssutil3.so', 'libsmime3.so']:
+    assert name in bundled_dependencies, f'{name} is not loaded from the package'
 for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']:
     environment[key] = 'http://127.0.0.1:9'
 assert shutil.which('node', path=environment['PATH']) is None
@@ -59,6 +73,7 @@ for name in ['wayland', 'x11', 'missing-runtime']:
             time.sleep(.25)
         assert process.poll() is not None, f'Installed process {process.pid} timed out; retained for diagnosis'
     assert report.exists(), f'{name} exited {process.returncode} without report'
+    assert process.returncode == 0, f'{name} exited {process.returncode}'
     result = json.loads(report.read_text())
     if name == 'missing-runtime':
         assert not result['success'] and result['source_preserved'] and 'Reinstall' in result['error'], result
@@ -71,8 +86,6 @@ for name in ['wayland', 'x11', 'missing-runtime']:
 manifest = json.loads((installation / 'libexec/markdown-runtime.json').read_text())
 for item in manifest['files']:
     assert hashlib.sha256((installation / 'libexec' / item['path']).read_bytes()).hexdigest() == item['sha256']
-dependencies = subprocess.check_output(['/usr/bin/ldd', str(executable)], env=environment, text=True)
-assert str(installation / 'libexec/libcef.so') in dependencies
-output = {'archive':str(archive),'archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'executable':str(executable),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),'node_on_path':False,'proxy':'http://127.0.0.1:9','cef_override_normal':None,'runtime_files_verified':len(manifest['files']),'ldd':dependencies,'runs':runs}
+output = {'archive':str(archive),'archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'executable':str(executable),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),'node_on_path':False,'proxy':'http://127.0.0.1:9','cef_override_normal':None,'ld_library_path':None,'ld_preload':None,'runtime_files_verified':len(manifest['files']),'ldd':dependencies,'bundled_dependencies':bundled_dependencies,'runs':runs}
 (root / 'acceptance.json').write_text(json.dumps(output, indent=2))
 print('INSTALLED_LINUX_CHECKS_PASSED', flush=True)
