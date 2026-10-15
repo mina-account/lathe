@@ -197,5 +197,71 @@
       "EXPECTED_RED_ACTUAL_LIBRARY_ABSENT 127 /home/an/.cache/lathe-phase5-installed-review2-red/application/libexec/lathe-editor: error while loading shared libraries: libcef.so: cannot open shared object file: No such file or directory"
     ],
     "basis": "Original44cb source/installed packages; actual installed library physically absent, without runtime override for loader cases"
+  },
+  {
+    "name": "review3-visible-browser-heading",
+    "log": "C:/tmp/lathe-phase5-fix3-browser-red.log",
+    "sha256": "d0d41e7f867af7ecbe11780c56aaedfbae994963bb803729b7f3df9ad7dceb44",
+    "basis": "69f6774b37d7ecad7597503254cb423aacb72150 before production navigation fix",
+    "failure_excerpt": [
+      "✖ host fragments navigate the visible destination after initial rendering and release later user scroll (970.3275ms)",
+      "ℹ tests 1",
+      "ℹ suites 0",
+      "ℹ pass 0",
+      "ℹ fail 1",
+      "ℹ cancelled 0",
+      "ℹ skipped 0",
+      "ℹ todo 0",
+      "ℹ duration_ms 2061.7509",
+      "",
+      "✖ failing tests:",
+      "",
+      "test at browser-test.mjs:51:1",
+      "✖ host fragments navigate the visible destination after initial rendering and release later user scroll (970.3275ms)",
+      "  AssertionError [ERR_ASSERTION]: ir: startup fragment overrides initial reading position",
+      "  ",
+      "  false !== true",
+      "  ",
+      "      at TestContext.<anonymous> (file:///C:/tmp/wt-markdown-editor-phase-5/crates/markdown_editor/frontend/browser-test.mjs:61:16)",
+      "      at async Test.run (node:internal/test_runner/test:1313:7)",
+      "      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {",
+      "    generatedMessage: false,",
+      "    code: 'ERR_ASSERTION',",
+      "    actual: false,",
+      "    expected: true,",
+      "    operator: 'strictEqual',",
+      "    diff: 'simple'",
+      "  }"
+    ]
+  },
+  {
+    "name": "review3-native-default-visual-ready",
+    "log": "C:/tmp/lathe-phase5-fix3-native-red.log",
+    "sha256": "0813dc68731eb36ec2e0794d1c4078ba8c6d4ff2088ceec55987c26646070067",
+    "basis": "69f6774b37d7ecad7597503254cb423aacb72150 before production navigation fix",
+    "failure_excerpt": [
+      "test item::tests::relative_link_to_unopened_visual_destination_waits_for_ready ... FAILED",
+      "---- item::tests::relative_link_to_unopened_visual_destination_waits_for_ready stdout ----",
+      "thread 'item::tests::relative_link_to_unopened_visual_destination_waits_for_ready' (76244) panicked at crates\\markdown_editor\\src\\item.rs:1767:9:",
+      "  left: Object {\"kind\": String(\"document\"), \"revision\": Number(0), \"text\": String(\"intro\\n\\n# Target {#日本}\\n\\nbody\"), \"writable\": Bool(true), \"draft\": Null}",
+      " right: Object {\"kind\": String(\"navigate\"), \"fragment\": String(\"日本\")}",
+      "failing seed: 0",
+      "    item::tests::relative_link_to_unopened_visual_destination_waits_for_ready",
+      "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 92 filtered out; finished in 0.22s"
+    ]
+  },
+  {
+    "name": "installed-source-action-before-rendered-tab",
+    "log": "C:\\tmp\\lathe-phase5-fix3-installed-linux-before-readiness.log",
+    "sha256": "3966a34b6d33360457cb0902e97e2c1c5ccfbdede5621288982d5e15b08785c7",
+    "basis": "b013af27f5f4f15215a88967d701bf4b40843e47 installed Wayland",
+    "failure": "Visible linked Unicode heading passed; immediate Open Source dispatch did not activate the original shared Buffer. Readiness now requires the original active focused tab and available action path before dispatch."
+  },
+  {
+    "name": "installed-startup-focus-precondition",
+    "log": "C:\\tmp\\lathe-phase5-fix3-installed-linux-before-focus.log",
+    "sha256": "c9df5c1fb3d6b6c5866beebf558bca31e2e0a3e7c4d4ca6f0fc00e10f23e84b3",
+    "basis": "39d6120a96b260b28a3efc1fe80f741903604d19 installed Linux",
+    "failure": "Both normal backends passed. Missing resources preserved source but did not satisfy the newly required focus precondition. Harness now explicitly focuses the original tab before awaiting its rendered action path."
   }
 ]
