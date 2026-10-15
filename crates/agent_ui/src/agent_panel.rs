@@ -1543,6 +1543,7 @@ impl AgentPanel {
 
         let _settings_subscription = cx.observe_global::<SettingsStore>(|this, cx| {
             this.cleanup_retained_threads(cx);
+            cx.notify();
         });
 
         cx.on_release(|this, cx| {

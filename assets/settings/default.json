@@ -1419,6 +1419,11 @@
     //
     // Default: false
     "show_turn_stats": false,
+    // Whether to show the AI account menu in the chat header, including the
+    // Add account option and the selected account name.
+    //
+    // Default: true
+    "show_ai_account_menu": true,
     // Whether to show the merge conflict indicator in the status bar
     // that offers to resolve conflicts using the agent.
     //

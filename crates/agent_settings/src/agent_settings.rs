@@ -249,6 +249,7 @@ pub struct AgentSettings {
     pub message_editor_min_lines: usize,
     pub super_compact_mode: bool,
     pub show_turn_stats: bool,
+    pub show_ai_account_menu: bool,
     pub show_merge_conflict_indicator: bool,
     pub tool_permissions: ToolPermissions,
     pub sandbox_permissions: SandboxPermissions,
@@ -848,6 +849,7 @@ impl Settings for AgentSettings {
             message_editor_min_lines: agent.message_editor_min_lines.unwrap(),
             super_compact_mode: agent.super_compact_mode.unwrap_or(false),
             show_turn_stats: agent.show_turn_stats.unwrap(),
+            show_ai_account_menu: agent.show_ai_account_menu.unwrap_or(true),
             show_merge_conflict_indicator: agent.show_merge_conflict_indicator.unwrap(),
             tool_permissions: compile_tool_permissions(agent.tool_permissions),
             sandbox_permissions: compile_sandbox_permissions(agent.sandbox_permissions),
@@ -1123,6 +1125,31 @@ mod tests {
             let settings = AgentSettings::get_global(cx);
             assert_eq!(settings.super_compact_mode, compact, "{content}");
             assert_eq!(settings.show_turn_stats, stats, "{content}");
+        }
+    }
+
+    #[gpui::test]
+    fn test_show_ai_account_menu_defaults_on_and_follows_user_settings(cx: &mut gpui::App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        project::DisableAiSettings::register(cx);
+        AgentSettings::register(cx);
+        assert!(AgentSettings::get_global(cx).show_ai_account_menu);
+
+        for (content, expected) in [
+            (r#"{"agent": {"show_ai_account_menu": false}}"#, false),
+            (r#"{"agent": {"show_ai_account_menu": true}}"#, true),
+            (r#"{"agent": {"show_ai_account_menu": false}}"#, false),
+            (r#"{"agent": {}}"#, true),
+        ] {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.set_user_settings(content, cx).expect("settings load");
+            });
+            assert_eq!(
+                AgentSettings::get_global(cx).show_ai_account_menu,
+                expected,
+                "{content}"
+            );
         }
     }
 
