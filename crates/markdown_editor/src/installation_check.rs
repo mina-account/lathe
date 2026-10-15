@@ -1,6 +1,6 @@
 use crate::MarkdownEditor;
 use anyhow::{Context as _, Result, bail};
-use gpui::{Context, Global, Task};
+use gpui::{Context, Focusable, Global, Task};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -130,9 +130,33 @@ async fn verify_source_access(
         )
     })?;
     let workspace = workspace.context("Installed item has no workspace")?;
-    window.update(cx, |_, window, cx| {
-        window.dispatch_action(Box::new(crate::item::OpenSource), cx);
-    })?;
+    let mut dispatched = false;
+    for _ in 0..50 {
+        dispatched = window.update(cx, |_, window, cx| {
+            let active = workspace.read(cx).active_item(cx);
+            let focused =
+                item.read_with(cx, |item, cx| item.focus_handle(cx).is_focused(window))?;
+            // Tab activation changes focus before its action path reaches the rendered frame.
+            if active.is_some_and(|active| active.item_id() == item.entity_id())
+                && focused
+                && window.is_action_available(&crate::item::OpenSource, cx)
+            {
+                window.dispatch_action(Box::new(crate::item::OpenSource), cx);
+                Ok::<_, anyhow::Error>(true)
+            } else {
+                Ok(false)
+            }
+        })??;
+        if dispatched {
+            break;
+        }
+        cx.background_executor()
+            .timer(Duration::from_millis(100))
+            .await;
+    }
+    if !dispatched {
+        bail!("Original installed tab did not render its focused Open Source action path");
+    }
     for _ in 0..50 {
         cx.background_executor()
             .timer(Duration::from_millis(100))
@@ -209,11 +233,14 @@ async fn verify_link_navigation(
         check.report = None;
     });
     let original = item.upgrade().context("Original installed item closed")?;
-    window.update(cx, |_, window, cx| {
+    let activated = window.update(cx, |_, window, cx| {
         workspace.update(cx, |workspace, cx| {
             workspace.activate_item(&original, true, true, window, cx)
         })
     })?;
+    if !activated {
+        bail!("Original installed tab could not be reactivated");
+    }
     result
 }
 
