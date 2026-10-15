@@ -1378,7 +1378,7 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
         let settings_env = self.settings_env.clone();
 
         cx.spawn(async move |cx| {
-            let mut env = project_environment
+            let env = project_environment
                 .update(cx, |project_environment, cx| {
                     project_environment.default_environment(cx)
                 })?
@@ -1391,35 +1391,40 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
                 .join(sanitize_path_component(&registry_id));
             fs.create_dir(&install_dir).await?;
 
-            let (package_name, package_spec) = bounded_npm_package_spec(&package);
-            node_runtime
-                .run_npm_subcommand(
-                    Some(&install_dir),
-                    "install",
-                    &[package_spec.as_str(), "--save-exact"],
-                )
-                .await?;
-            let executable = node_runtime::read_package_executable(
-                install_dir.join("node_modules"),
-                package_name,
-            )
+            let executable = npm_registry_install::finish_install({
+                let node_runtime = node_runtime.clone();
+                async move {
+                    npm_registry_install::ensure_installed(&install_dir, &package, |package_spec| {
+                        let node_runtime = &node_runtime;
+                        let install_dir = &install_dir;
+                        async move {
+                            node_runtime
+                                .run_npm_subcommand(
+                                    Some(install_dir),
+                                    "install",
+                                    &[package_spec.as_str(), "--save-exact"],
+                                )
+                                .await?;
+                            Ok(())
+                        }
+                    })
+                    .await
+                }
+            })
             .await?;
 
             let node_binary = node_runtime.binary_path().await?;
-            env.extend(node_runtime::npm_command_env(&node_binary));
-            env.extend(distribution_env);
-            env.extend(extra_env);
-            env.extend(settings_env);
-
-            let mut command_args = vec![executable.to_string_lossy().into_owned()];
-            command_args.extend(args);
-            command_args.extend(extra_args);
-
-            let command = AgentServerCommand {
-                path: node_binary,
-                args: command_args,
-                env: Some(env),
-            };
+            let node_env = node_runtime::npm_command_env(&node_binary)
+                .into_iter()
+                .collect();
+            let command = npm_registry_install::command(
+                node_binary,
+                executable,
+                args,
+                extra_args,
+                env,
+                [node_env, distribution_env, extra_env, settings_env],
+            );
 
             Ok(command)
         })
@@ -1437,10 +1442,9 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
 /// People are using min-release-age more frequently. Which means a fresh registry will likely have
 /// new package versions than the user can install.
 /// We set the version to now be a ceiling and not an exact pin instead. This allows npm to resolve
-/// the latest version it can find that satisfies the constraint. npm seems to check regularly enough
-/// that new versions are available. This does have a few downsides:
-/// - The user might have an older cached version of the package that satisfies the constraint, until
-///   npm checks for updates again.
+/// the latest version it can find that satisfies the constraint. A successful installation is reused
+/// until the registry's pinned package specification changes; mutable tags and ranges resolve on
+/// every launch. This does have a downside:
 /// - The registry args/env may not be valid for the resolved version.
 ///
 /// This is a best-effort attempt to install a version that works without overriding the user's
@@ -1466,6 +1470,537 @@ fn bounded_npm_package_spec(package_spec: &str) -> (&str, String) {
     }
 
     (package_name, format!("{package_name}@0.0.0 - {version}"))
+}
+
+mod npm_registry_install {
+    use super::{AgentServerCommand, bounded_npm_package_spec};
+    use anyhow::{Context as _, Result};
+    use collections::HashMap;
+    use semver::Version;
+    use serde::{Deserialize, Serialize};
+    use std::{
+        future::Future,
+        path::{Path, PathBuf},
+    };
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum PackageBin {
+        Path(String),
+        Named(HashMap<String, String>),
+    }
+
+    #[derive(Deserialize)]
+    struct PackageJson {
+        version: Version,
+        bin: Option<PackageBin>,
+    }
+
+    #[derive(Deserialize, Serialize)]
+    struct InstallReceipt {
+        requested_package: String,
+        installed_version: Version,
+    }
+
+    pub(super) async fn finish_install<Install>(install: Install) -> Result<PathBuf>
+    where
+        Install: Future<Output = Result<PathBuf>> + Send + 'static,
+    {
+        let (result_sender, result_receiver) = smol::channel::bounded(1);
+        // npm can outlive a canceled caller, so retain its installation lock until it finishes.
+        smol::spawn(async move {
+            if let Err(error) = result_sender.send(install.await).await
+                && let Err(error) = error.0
+            {
+                log::error!(
+                    "Installing npm registry agent failed after request cancellation: {error:#}"
+                );
+            }
+        })
+        .detach();
+        result_receiver.recv().await?
+    }
+
+    async fn installed_package(
+        install_dir: &Path,
+        name: &str,
+    ) -> Result<Option<(Version, PathBuf)>> {
+        let directory = install_dir.join("node_modules").join(name);
+        let contents = match smol::fs::read(directory.join("package.json")).await {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let Ok(package) = serde_json::from_slice::<PackageJson>(&contents) else {
+            return Ok(None);
+        };
+        let executable = match package.bin {
+            Some(PackageBin::Path(path)) => Some(path),
+            Some(PackageBin::Named(mut bins)) => {
+                if bins.len() == 1 {
+                    bins.into_values().next()
+                } else {
+                    bins.remove(name.rsplit('/').next().unwrap_or(name))
+                }
+            }
+            None => None,
+        };
+        let Some(executable) = executable else {
+            return Ok(None);
+        };
+        let executable = directory.join(executable);
+        let metadata = match smol::fs::metadata(&executable).await {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        Ok(metadata.is_file().then_some((package.version, executable)))
+    }
+
+    pub(super) async fn ensure_installed<F, Install>(
+        install_dir: &Path,
+        package: &str,
+        install: F,
+    ) -> Result<PathBuf>
+    where
+        F: FnOnce(String) -> Install,
+        Install: Future<Output = Result<()>>,
+    {
+        smol::fs::create_dir_all(install_dir).await?;
+        let lock_path = install_dir.join(".lathe-npm-install.lock");
+        let _install_lock = smol::unblock(move || -> Result<_> {
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(lock_path)?;
+            file.lock()?;
+            Ok(file)
+        })
+        .await?;
+        let (package_name, package_spec) = bounded_npm_package_spec(package);
+        let pinned_version = package
+            .rsplit_once('@')
+            .filter(|(name, _)| !name.is_empty())
+            .and_then(|(_, version)| Version::parse(version).ok());
+        let receipt_path = install_dir.join(".lathe-npm-install.json");
+        let receipt = match smol::fs::read(&receipt_path).await {
+            Ok(contents) => Some(serde_json::from_slice::<InstallReceipt>(&contents).ok()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        if let Some(pinned_version) = &pinned_version
+            && let Some((installed_version, executable)) =
+                installed_package(install_dir, package_name).await?
+        {
+            let reusable = match &receipt {
+                None => installed_version == *pinned_version,
+                Some(Some(receipt)) => {
+                    receipt.requested_package == package
+                        && receipt.installed_version == installed_version
+                        && installed_version <= *pinned_version
+                }
+                Some(None) => false,
+            };
+            if reusable {
+                if receipt.is_none() {
+                    smol::fs::write(
+                        &receipt_path,
+                        serde_json::to_vec(&InstallReceipt {
+                            requested_package: package.to_owned(),
+                            installed_version,
+                        })?,
+                    )
+                    .await?;
+                }
+                return Ok(executable);
+            }
+        }
+        // Keep a failed or interrupted npm run from looking like a legacy install on restart.
+        smol::fs::write(&receipt_path, b"").await?;
+        install(package_spec).await?;
+        let (installed_version, executable) =
+            installed_package(install_dir, package_name)
+                .await?
+                .context("npm did not install a valid agent package and executable")?;
+        if let Some(pinned_version) = pinned_version {
+            anyhow::ensure!(
+                installed_version <= pinned_version,
+                "npm installed agent version {installed_version} above requested {pinned_version}"
+            );
+        }
+        let receipt = InstallReceipt {
+            requested_package: package.to_owned(),
+            installed_version,
+        };
+        smol::fs::write(receipt_path, serde_json::to_vec(&receipt)?).await?;
+        Ok(executable)
+    }
+
+    pub(super) fn command(
+        node_binary: PathBuf,
+        executable: PathBuf,
+        args: Vec<String>,
+        extra_args: Vec<String>,
+        mut env: HashMap<String, String>,
+        environment_overrides: [HashMap<String, String>; 4],
+    ) -> AgentServerCommand {
+        for overrides in environment_overrides {
+            env.extend(overrides);
+        }
+        let mut command_args = vec![executable.to_string_lossy().into_owned()];
+        command_args.extend(args);
+        command_args.extend(extra_args);
+        AgentServerCommand {
+            path: node_binary,
+            args: command_args,
+            env: Some(env),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::{
+            fs,
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+        };
+
+        fn write_package(directory: &Path, name: &str, version: &str) -> Result<PathBuf> {
+            let directory = directory.join("node_modules").join(name);
+            fs::create_dir_all(&directory)?;
+            fs::write(
+                directory.join("package.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "version": version,
+                    "bin": { "agent": "bin/agent.js" }
+                }))?,
+            )?;
+            fs::create_dir_all(directory.join("bin"))?;
+            let executable = directory.join("bin/agent.js");
+            if executable.is_dir() {
+                fs::remove_dir(&executable)?;
+            }
+            fs::write(&executable, "agent")?;
+            Ok(executable)
+        }
+
+        async fn launch(
+            directory: &Path,
+            package: &str,
+            version: &str,
+            calls: &AtomicUsize,
+        ) -> Result<PathBuf> {
+            ensure_installed(directory, package, |spec| async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(spec, bounded_npm_package_spec(package).1);
+                write_package(directory, bounded_npm_package_spec(package).0, version)?;
+                Ok(())
+            })
+            .await
+        }
+
+        #[test]
+        fn existing_pinned_install_skips_npm_across_launchers() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                let directory = directory.path().join("agent with spaces");
+                let executable = write_package(&directory, "@scope/agent", "1.2.3")?;
+                let calls = AtomicUsize::new(0);
+                for _ in 0..2 {
+                    assert_eq!(
+                        launch(&directory, "@scope/agent@1.2.3", "1.2.3", &calls).await?,
+                        executable
+                    );
+                }
+                assert_eq!(calls.load(Ordering::SeqCst), 0);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn cold_install_and_bounded_version_survive_restart() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                let calls = AtomicUsize::new(0);
+                for _ in 0..2 {
+                    launch(directory.path(), "agent@1.2.3", "1.2.0", &calls).await?;
+                }
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                launch(directory.path(), "agent@1.3.0", "1.2.0", &calls).await?;
+                assert_eq!(calls.load(Ordering::SeqCst), 2);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn changed_package_and_unverified_older_install_resolve() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                write_package(directory.path(), "agent", "1.2.0")?;
+                let calls = AtomicUsize::new(0);
+                launch(directory.path(), "agent@1.2.3", "1.2.0", &calls).await?;
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                write_package(directory.path(), "@other/agent", "1.2.3")?;
+                launch(directory.path(), "@other/agent@1.2.3", "1.2.3", &calls).await?;
+                assert_eq!(calls.load(Ordering::SeqCst), 2);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn io_failures_do_not_silently_install() -> Result<()> {
+            smol::block_on(async {
+                for blocked_path in ["node_modules/agent/package.json", ".lathe-npm-install.json"] {
+                    let directory = tempfile::tempdir()?;
+                    fs::create_dir_all(directory.path().join(blocked_path))?;
+                    let calls = AtomicUsize::new(0);
+                    assert!(
+                        launch(directory.path(), "agent@1.2.3", "1.2.3", &calls)
+                            .await
+                            .is_err()
+                    );
+                    assert_eq!(calls.load(Ordering::SeqCst), 0);
+                }
+                Ok(())
+            })
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn receipt_write_failures_are_visible_and_retryable() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                let receipt = directory.path().join(".lathe-npm-install.json");
+                fs::write(&receipt, b"")?;
+                let original_permissions = fs::metadata(&receipt)?.permissions();
+                let outcome = ensure_installed(directory.path(), "agent@1.2.3", |_| async {
+                    write_package(directory.path(), "agent", "1.2.3")?;
+                    let mut permissions = fs::metadata(&receipt)?.permissions();
+                    permissions.set_readonly(true);
+                    fs::set_permissions(&receipt, permissions)?;
+                    Ok(())
+                })
+                .await;
+                fs::set_permissions(&receipt, original_permissions)?;
+                assert!(outcome.is_err());
+                let calls = AtomicUsize::new(0);
+                launch(directory.path(), "agent@1.2.3", "1.2.3", &calls).await?;
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn damaged_installations_are_repaired() -> Result<()> {
+            smol::block_on(async {
+                for damage in [
+                    "metadata missing",
+                    "metadata corrupt",
+                    "bin missing",
+                    "bin directory",
+                    "version corrupt",
+                    "bin corrupt",
+                    "version changed",
+                    "receipt corrupt",
+                ] {
+                    let directory = tempfile::tempdir()?;
+                    let calls = AtomicUsize::new(0);
+                    let executable =
+                        launch(directory.path(), "agent@1.2.3", "1.2.3", &calls).await?;
+                    let metadata = directory.path().join("node_modules/agent/package.json");
+                    match damage {
+                        "metadata missing" => fs::remove_file(metadata)?,
+                        "metadata corrupt" => fs::write(metadata, "invalid json")?,
+                        "bin missing" => fs::remove_file(&executable)?,
+                        "bin directory" => {
+                            fs::remove_file(&executable)?;
+                            fs::create_dir(&executable)?;
+                        }
+                        "version corrupt" => fs::write(
+                            metadata,
+                            r#"{"version":"not a version","bin":"bin/agent.js"}"#,
+                        )?,
+                        "bin corrupt" => fs::write(metadata, r#"{"version":"1.2.3","bin":false}"#)?,
+                        "version changed" => {
+                            write_package(directory.path(), "agent", "1.2.0")?;
+                        }
+                        "receipt corrupt" => fs::write(
+                            directory.path().join(".lathe-npm-install.json"),
+                            "invalid json",
+                        )?,
+                        _ => unreachable!(),
+                    }
+                    launch(directory.path(), "agent@1.2.3", "1.2.3", &calls).await?;
+                    assert_eq!(calls.load(Ordering::SeqCst), 2, "{damage}");
+                }
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn mutable_specs_always_resolve() -> Result<()> {
+            smol::block_on(async {
+                for package in ["agent", "agent@latest", "agent@^1.0.0", "@scope/agent"] {
+                    let directory = tempfile::tempdir()?;
+                    let calls = AtomicUsize::new(0);
+                    for _ in 0..2 {
+                        launch(directory.path(), package, "1.2.3", &calls).await?;
+                    }
+                    assert_eq!(calls.load(Ordering::SeqCst), 2, "{package}");
+                }
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn failed_installation_cannot_publish_receipt() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                let calls = AtomicUsize::new(0);
+                launch(directory.path(), "agent@1.2.0", "1.2.0", &calls).await?;
+                assert!(
+                    ensure_installed(directory.path(), "agent@1.2.3", |_| async {
+                        write_package(directory.path(), "agent", "1.2.3")?;
+                        anyhow::bail!("npm failed after writing files")
+                    })
+                    .await
+                    .is_err()
+                );
+                launch(directory.path(), "agent@1.2.3", "1.2.3", &calls).await?;
+                assert_eq!(calls.load(Ordering::SeqCst), 2);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn missing_executable_after_install_remains_retryable() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                assert!(
+                    ensure_installed(directory.path(), "agent@1.2.3", |_| async {
+                        let executable = write_package(directory.path(), "agent", "1.2.3")?;
+                        fs::remove_file(executable)?;
+                        Ok(())
+                    })
+                    .await
+                    .is_err()
+                );
+                let calls = AtomicUsize::new(0);
+                launch(directory.path(), "agent@1.2.3", "1.2.3", &calls).await?;
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn concurrent_launchers_share_one_complete_install() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                let calls = Arc::new(AtomicUsize::new(0));
+                let mut tasks = Vec::new();
+                for _ in 0..4 {
+                    let directory = directory.path().to_owned();
+                    let calls = calls.clone();
+                    tasks.push(smol::spawn(async move {
+                        ensure_installed(&directory, "agent@1.2.3", |_| async {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            smol::future::yield_now().await;
+                            write_package(&directory, "agent", "1.2.3")?;
+                            Ok(())
+                        })
+                        .await
+                    }));
+                }
+                for task in tasks {
+                    assert!(task.await?.is_file());
+                }
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn canceled_request_keeps_installation_locked_until_complete() -> Result<()> {
+            smol::block_on(async {
+                let directory = tempfile::tempdir()?;
+                let calls = Arc::new(AtomicUsize::new(0));
+                let (started_sender, started_receiver) = smol::channel::bounded(1);
+                let (continue_sender, continue_receiver) = smol::channel::bounded(1);
+                let request = smol::spawn(finish_install({
+                    let directory = directory.path().to_owned();
+                    let calls = calls.clone();
+                    async move {
+                        ensure_installed(&directory, "agent@1.2.3", |_| async {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            started_sender.send(()).await?;
+                            continue_receiver.recv().await?;
+                            write_package(&directory, "agent", "1.2.3")?;
+                            Ok(())
+                        })
+                        .await
+                    }
+                }));
+                started_receiver.recv().await?;
+                assert!(request.cancel().await.is_none());
+                let retry = smol::spawn({
+                    let directory = directory.path().to_owned();
+                    let calls = calls.clone();
+                    async move { launch(&directory, "agent@1.2.3", "1.2.3", &calls).await }
+                });
+                continue_sender.send(()).await?;
+                assert!(retry.await?.is_file());
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                Ok(())
+            })
+        }
+
+        #[test]
+        fn command_keeps_arguments_and_environment() -> Result<()> {
+            let executable = PathBuf::from("agent with spaces/bin/agent.js");
+            let env = HashMap::from_iter([
+                ("PATH".into(), "node path;project path".into()),
+                ("SETTING".into(), "value".into()),
+            ]);
+            let command = command(
+                PathBuf::from("node.exe"),
+                executable.clone(),
+                vec!["--acp".into()],
+                vec!["--extra".into()],
+                env,
+                [
+                    HashMap::from_iter([
+                        ("PATH".into(), "runtime node;project path".into()),
+                        ("SETTING".into(), "runtime".into()),
+                    ]),
+                    HashMap::from_iter([("SETTING".into(), "distribution".into())]),
+                    HashMap::from_iter([("SETTING".into(), "extra".into())]),
+                    HashMap::from_iter([("SETTING".into(), "settings".into())]),
+                ],
+            );
+            assert_eq!(command.path, PathBuf::from("node.exe"));
+            assert_eq!(
+                command.args,
+                vec![
+                    executable.to_string_lossy().to_string(),
+                    "--acp".into(),
+                    "--extra".into()
+                ]
+            );
+            assert_eq!(
+                command.env,
+                Some(HashMap::from_iter([
+                    ("PATH".into(), "runtime node;project path".into()),
+                    ("SETTING".into(), "settings".into()),
+                ]))
+            );
+            Ok(())
+        }
+    }
 }
 
 struct LocalCustomAgent {
