@@ -411,6 +411,11 @@ pub struct AgentSettingsContent {
     ///
     /// Default: false
     pub show_turn_stats: Option<bool>,
+    /// Whether to show the AI account menu in the chat header, including the
+    /// Add account option and the selected account name.
+    ///
+    /// Default: true
+    pub show_ai_account_menu: Option<bool>,
     /// Whether to show the merge conflict indicator in the status bar
     /// that offers to resolve conflicts using the agent.
     ///

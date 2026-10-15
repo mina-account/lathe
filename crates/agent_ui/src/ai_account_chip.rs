@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use agent_settings::AgentSettings;
 use ai_accounts::{
     AgentDescriptor, AiAccountsSettings, BrandAccent, WorkspaceAccountBindings, descriptor_for,
     load_index, mark_account_used,
@@ -34,6 +35,10 @@ impl AgentPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
+        if !AgentSettings::get_global(cx).show_ai_account_menu {
+            return None;
+        }
+
         // Resolve the active agent_id from `selected_agent` first so the chip
         // is visible for *draft* threads (before any message has spawned the
         // ACP subprocess). Falls back to the live thread's connection id when
