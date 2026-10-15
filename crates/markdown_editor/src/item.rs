@@ -140,6 +140,7 @@ pub struct MarkdownEditor {
     pub(crate) active_asset_requests: usize,
     pub(crate) importing_images: bool,
     pending_drop_paths: Option<Vec<std::path::PathBuf>>,
+    pending_fragment: Option<String>,
 }
 
 fn heading_offset(text: &str, fragment: &str) -> Option<usize> {
@@ -490,6 +491,7 @@ impl MarkdownEditor {
             active_asset_requests: 0,
             importing_images: false,
             pending_drop_paths: None,
+            pending_fragment: None,
         }
     }
 
@@ -523,6 +525,22 @@ impl MarkdownEditor {
     pub(crate) fn send(&mut self, message: HostMessage) -> Result<()> {
         if let Some(surface) = &mut self.surface {
             surface.send(&message)?;
+        }
+        Ok(())
+    }
+
+    fn navigate_to_fragment(&mut self, fragment: String) -> Result<()> {
+        self.pending_fragment = Some(fragment);
+        if self.browser_ready {
+            self.send_pending_fragment()?;
+        }
+        Ok(())
+    }
+
+    fn send_pending_fragment(&mut self) -> Result<()> {
+        if let Some(fragment) = self.pending_fragment.clone() {
+            self.send(HostMessage::Navigate { fragment })?;
+            self.pending_fragment = None;
         }
         Ok(())
     }
@@ -730,8 +748,12 @@ impl MarkdownEditor {
                             })?
                             .await?;
                         if let Some(fragment) = fragment {
-                            window.update(cx, |_, window, cx| {
-                                if let Some(editor) = opened.act_as::<Editor>(cx) {
+                            window.update(cx, |_, window, cx| -> Result<()> {
+                                if let Some(visual) = opened.downcast::<MarkdownEditor>() {
+                                    visual.update(cx, |visual, _| {
+                                        visual.navigate_to_fragment(fragment)
+                                    })?;
+                                } else if let Some(editor) = opened.act_as::<Editor>(cx) {
                                     editor.update(cx, |editor, cx| {
                                         if let Some(offset) =
                                             heading_offset(&editor.text(cx), &fragment)
@@ -752,7 +774,8 @@ impl MarkdownEditor {
                                         }
                                     });
                                 }
-                            })?;
+                                Ok(())
+                            })??;
                         }
                         Ok(())
                     }
@@ -791,6 +814,7 @@ impl MarkdownEditor {
                     preferences: self.preferences.clone(),
                 })?;
                 self.send(self.protocol.document_message(self.writable(cx)))?;
+                self.send_pending_fragment()?;
             }
             ClientMessage::Draft {
                 sequence,
@@ -1709,6 +1733,151 @@ mod tests {
             cx.opened_url().as_deref(),
             Some("https://example.com/page#fragment")
         );
+    }
+
+    #[gpui::test(iterations = 5)]
+    async fn relative_link_to_unopened_visual_destination_waits_for_ready(cx: &mut TestAppContext) {
+        use gpui::UpdateGlobal;
+        use util::path;
+        struct RecordingSurface(std::rc::Rc<std::cell::RefCell<Vec<HostMessage>>>);
+        impl BrowserSurface for RecordingSurface {
+            fn send(&mut self, message: &HostMessage) -> Result<()> {
+                self.0.borrow_mut().push(message.clone());
+                Ok(())
+            }
+            fn poll(&mut self) -> Result<Vec<ClientMessage>> {
+                Ok(Vec::new())
+            }
+            fn dispose(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+        cx.update(|cx| {
+            cx.set_global(db::AppDatabase::test_new());
+            workspace::AppState::test(cx);
+            editor::init(cx);
+            markdown_preview::init(cx);
+            super::init(cx);
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |content| {
+                    content
+                        .markdown_editor
+                        .get_or_insert_default()
+                        .default_open_mode = Some(settings::MarkdownDefaultOpenMode::Editor);
+                    content
+                        .markdown_preview
+                        .get_or_insert_default()
+                        .open_markdown_files_in_preview = Some(true);
+                });
+            });
+        });
+        let filesystem = project::FakeFs::new(cx.executor());
+        filesystem.insert_tree(path!("/project"),serde_json::json!({"docs":{"current.md":"# Current","other file.md":"intro\n\n# Target {#日本}\n\nbody"}})).await;
+        let project = Project::test(filesystem, [path!("/project").as_ref()], cx).await;
+        let (multi, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi.read_with(cx, |multi, _| multi.workspace().clone());
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("worktree")
+                .read(cx)
+                .id()
+        });
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath {
+                        worktree_id,
+                        path: util::rel_path::rel_path("docs/current.md").into(),
+                    },
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("default visual source");
+        let visual = workspace
+            .read_with(cx, |workspace, cx| {
+                workspace
+                    .active_item(cx)
+                    .and_then(|item| item.downcast::<MarkdownEditor>())
+            })
+            .expect("actual default visual item");
+        assert_eq!(
+            workspace.read_with(cx, |workspace, cx| workspace.items(cx).count()),
+            1
+        );
+        visual.update(cx, |item, cx| {
+            item.receive(
+                ClientMessage::OpenLink {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    url: "other%20file.md#%E6%97%A5%E6%9C%AC".into(),
+                },
+                cx,
+            )
+            .expect("relative visual link")
+        });
+        cx.run_until_parked();
+        let destination = workspace
+            .read_with(cx, |workspace, cx| {
+                workspace
+                    .active_item(cx)
+                    .and_then(|item| item.downcast::<MarkdownEditor>())
+            })
+            .expect("actual default visual destination");
+        assert_ne!(visual, destination);
+        assert_eq!(
+            workspace.read_with(cx, |workspace, cx| workspace.items(cx).count()),
+            2
+        );
+        let messages = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        destination.update(cx, |item, cx| {
+            assert!(!item.browser_ready);
+            assert_eq!(
+                item.buffer
+                    .read(cx)
+                    .file()
+                    .expect("destination file")
+                    .path()
+                    .as_ref(),
+                util::rel_path::rel_path("docs/other file.md")
+            );
+            item.preferences.scroll = 120;
+            item.attach(Box::new(RecordingSurface(messages.clone())), cx)
+                .expect("surface");
+            assert!(!messages.borrow().iter().any(|message| {
+                serde_json::to_value(message).expect("message")["kind"] == "navigate"
+            }));
+            item.receive(
+                ClientMessage::Ready {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                },
+                cx,
+            )
+            .expect("frontend Ready");
+            assert_eq!(
+                item.buffer.read(cx).snapshot().text(),
+                "intro\n\n# Target {#日本}\n\nbody"
+            );
+            assert_eq!(item.preferences.scroll, 120);
+        });
+        let messages = messages.borrow();
+        let messages = messages
+            .iter()
+            .map(|message| serde_json::to_value(message).expect("message"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            messages.last().expect("navigation follows initialization"),
+            &serde_json::json!({"kind":"navigate","fragment":"日本"})
+        );
+        assert!(messages.iter().any(|message| message["kind"] == "document"));
     }
 
     #[gpui::test]

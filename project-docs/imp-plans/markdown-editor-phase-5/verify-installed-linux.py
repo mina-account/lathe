@@ -55,6 +55,8 @@ for index, name in enumerate(['wayland', 'x11', 'missing-resources', 'missing-li
     run.mkdir()
     (configuration / 'settings.json').write_text(json.dumps({'auto_update':False,'disable_ai':True,'auto_install_extensions':{'html':False},'language_servers':[],'languages':{'Markdown':{'language_servers':[],'formatter':'none','prettier':{'allowed':False}}},'markdown_editor':{'default_open_mode':'editor','mode':'instant_rendering','plantuml_service':None},'markdown_preview':{'open_markdown_files_in_preview':True}}))
     (run / 'fixture.md').write_bytes(fixture)
+    linked_source = '# Linked start\n\n' + 'paragraph\n\n' * 80 + '# Linked target {#日本}\n\n' + 'tail\n\n' * 80
+    (run / 'linked destination.md').write_text(linked_source, encoding='utf-8')
     report = run / 'report.json'
     assert not report.exists(), f'Existing acceptance report: {report}'
     current_environment = environment.copy()
@@ -105,6 +107,7 @@ for index, name in enumerate(['wayland', 'x11', 'missing-resources', 'missing-li
         assert ('resources.pak' if name == 'missing-resources' else 'libcef.so') in result['error'], result
     else:
         assert result['success'] and result['source_preserved'] and result['source_opened'] and result['history_verified'] and len(result['modes']) == 4, result
+        assert result['navigation']['visible'] and result['navigation']['linked_source'] == linked_source, result
         assert any('--type=' in item['command_line'] for item in owned.values()), owned
         expected_libraries = {'libcef.so': installation / 'libexec/libcef.so'}
         expected_libraries.update({name: Path(record['path']) for name, record in bundled_dependencies.items()})

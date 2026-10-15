@@ -24,6 +24,8 @@ try {
     New-Item -ItemType Directory -Path $configuration -Force | Out-Null
     [IO.File]::WriteAllText("$configuration/settings.json",'{"auto_update":false,"disable_ai":true,"auto_install_extensions":{"html":false},"language_servers":[],"languages":{"Markdown":{"language_servers":[],"formatter":"none","prettier":{"allowed":false}}},"markdown_editor":{"default_open_mode":"editor","mode":"instant_rendering","plantuml_service":null},"markdown_preview":{"open_markdown_files_in_preview":true}}',[Text.UTF8Encoding]::new($false))
     Copy-Item crates/markdown_editor/installed-fixture.md "$runRoot/fixture.md" -Force
+    $linkedSource="# Linked start`n`n" + ("paragraph`n`n" * 80) + "# Linked target {#" + [char]0x65e5 + [char]0x672c + "}`n`n" + ("tail`n`n" * 80)
+    [IO.File]::WriteAllText("$runRoot/linked destination.md",$linkedSource,[Text.UTF8Encoding]::new($false))
     $report="$runRoot/report.json"
     if (Test-Path $report) {throw "Acceptance report already exists: $report"}
     $env:LATHE_MARKDOWN_INSTALLATION_CHECK=$report
@@ -58,7 +60,7 @@ try {
     if (-not (Test-Path $report)) {throw "Installed $name exited $($process.ExitCode) without report"}
     $result=Get-Content -Raw -Encoding UTF8 $report | ConvertFrom-Json
     if ($name -eq 'normal') {
-      if (-not $result.success -or $result.modes.Count -ne 4 -or -not $result.source_preserved -or -not $result.source_opened -or -not $result.history_verified) {throw "Installed renderer check failed: $(ConvertTo-Json $result -Depth 20)"}
+      if (-not $result.success -or $result.modes.Count -ne 4 -or -not $result.source_preserved -or -not $result.source_opened -or -not $result.history_verified -or -not $result.navigation.visible -or $result.navigation.linked_source -cne $linkedSource) {throw "Installed renderer/navigation check failed: $(ConvertTo-Json $result -Depth 20)"}
       if (-not ($owned.Values | Where-Object {$_.command_line -match '--type='})) {throw 'Installed CEF helper subprocess was not observed'}
     } else {
       if ($result.success -or -not $result.source_preserved -or -not $result.source_opened -or $result.error -notmatch 'Reinstall') {throw 'Missing runtime did not preserve source and explain reinstall'}

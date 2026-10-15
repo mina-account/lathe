@@ -151,6 +151,72 @@ async fn verify_source_access(
     bail!("Open Source did not activate the original shared Buffer")
 }
 
+async fn verify_link_navigation(
+    item: &gpui::WeakEntity<MarkdownEditor>,
+    cx: &mut gpui::AsyncApp,
+) -> Result<Value> {
+    use gpui::Entity;
+    let (window, workspace) = item.read_with(cx, |item, cx| {
+        (item.window, item.source.read(cx).workspace())
+    })?;
+    let workspace = workspace.context("Installed item has no workspace")?;
+    item.update(cx, |item, _| item.browser_script(r#"(()=>{const link=document.createElement('a');link.href='linked%20destination.md#%E6%97%A5%E6%9C%AC';document.getElementById('viewer').append(link);link.click();link.remove();})()"#))??;
+    let mut destination: Option<Entity<MarkdownEditor>> = None;
+    for _ in 0..100 {
+        cx.background_executor()
+            .timer(Duration::from_millis(100))
+            .await;
+        destination = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item(cx)
+                .and_then(|active| active.downcast::<MarkdownEditor>())
+                .filter(|active| active.entity_id() != item.entity_id())
+        });
+        if destination.is_some() {
+            break;
+        }
+    }
+    let destination =
+        destination.context("Relative link did not open a visible Markdown destination")?;
+    let expected = format!(
+        "# Linked start\n\n{}# Linked target {{#日本}}\n\n{}",
+        "paragraph\n\n".repeat(80),
+        "tail\n\n".repeat(80)
+    );
+    cx.update(|cx| {
+        let check = cx.global_mut::<Check>();
+        check.item = destination.entity_id();
+        check.report = None;
+    });
+    let result = async {
+        for _ in 0..100 {
+            cx.background_executor().timer(Duration::from_millis(100)).await;
+            destination.update(cx, |destination, cx| -> Result<()> {
+                if destination.buffer.read(cx).snapshot().text() != expected { bail!("Linked source changed"); }
+                if let Some(error) = destination.error() { bail!("Linked browser: {error}"); }
+                destination.browser_script(r#"(()=>{const rich=window.latheRich;if(!rich?.ready)return;const root=rich.editor.vditor[rich.editor.getCurrentMode()].element,heading=[...root.querySelectorAll('h1')].find(element=>element.dataset.explicitAnchor==='日本'),bounds=heading?.getBoundingClientRect(),viewport=root.getBoundingClientRect();window.latheMarkdown.emit({kind:'copy',text:'LATHE_INSTALLED_RUNTIME:'+JSON.stringify({linked_source:rich.projection.source,mode:document.getElementById('mode').value,fragment:'日本',visible:!!bounds&&bounds.top>=viewport.top-2&&bounds.top<Math.min(viewport.bottom,innerHeight)-20,heading_top:bounds?.top,viewport_top:viewport.top})});})()"#)
+            })?;
+            if let Some(report) = cx.update(|cx| cx.global_mut::<Check>().report.take())
+                && report["visible"] == true && report["linked_source"] == expected && report["mode"] == "ir" {
+                return Ok(report);
+            }
+        }
+        bail!("Relative link did not navigate the visible destination to its heading")
+    }.await;
+    cx.update(|cx| {
+        let check = cx.global_mut::<Check>();
+        check.item = item.entity_id();
+        check.report = None;
+    });
+    let original = item.upgrade().context("Original installed item closed")?;
+    window.update(cx, |_, window, cx| {
+        workspace.update(cx, |workspace, cx| {
+            workspace.activate_item(&original, true, true, window, cx)
+        })
+    })?;
+    result
+}
+
 fn verify_history(item: &gpui::WeakEntity<MarkdownEditor>, cx: &mut gpui::AsyncApp) -> Result<()> {
     item.update(cx, |item, cx| -> Result<()> {
         if item.source.read(cx).buffer().read(cx).as_singleton() != Some(item.buffer.clone()) {
@@ -194,10 +260,11 @@ pub(crate) fn start(item: &MarkdownEditor, cx: &mut Context<MarkdownEditor>) {
     let task = cx.spawn(async move |item, cx| {
         let result = collect_reports(&item, cx).await;
         let history = if result.is_ok() { verify_history(&item, cx) } else { Ok(()) };
+        let navigation = if result.is_ok() { verify_link_navigation(&item, cx).await.map(Some) } else { Ok(None) };
         let source_access = verify_source_access(&item, cx).await;
         let source_preserved = item.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text() == FIXTURE).unwrap_or(false);
         let output = match result {
-            Ok(reports) => serde_json::json!({"success":history.is_ok() && source_access.is_ok(),"executable":std::env::current_exe().ok(),"process_id":std::process::id(),"cef":"154.0.34","modes":reports,"source_preserved":source_preserved,"history_verified":history.is_ok(),"source_opened":source_access.is_ok(),"history_error":history.err().map(|error| format!("{error:#}")),"source_open_error":source_access.err().map(|error| format!("{error:#}"))}),
+            Ok(reports) => serde_json::json!({"success":history.is_ok() && source_access.is_ok() && navigation.is_ok(),"executable":std::env::current_exe().ok(),"process_id":std::process::id(),"cef":"154.0.34","modes":reports,"navigation":navigation.as_ref().ok(),"navigation_error":navigation.err().map(|error| format!("{error:#}")),"source_preserved":source_preserved,"history_verified":history.is_ok(),"source_opened":source_access.is_ok(),"history_error":history.err().map(|error| format!("{error:#}")),"source_open_error":source_access.err().map(|error| format!("{error:#}"))}),
             Err(error) => serde_json::json!({"success":false,"error":format!("{error:#}"),"source_preserved":source_preserved,"source_opened":source_access.is_ok(),"source_open_error":source_access.err().map(|error| format!("{error:#}"))}),
         };
         let written = serde_json::to_vec_pretty(&output).context("Installed runtime report serialization").and_then(|bytes| std::fs::write(&path,bytes).context("Installed runtime report write"));
