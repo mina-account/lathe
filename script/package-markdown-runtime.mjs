@@ -9,7 +9,7 @@ const source = resolve(sourceArgument), destination = resolve(destinationArgumen
 if (source === destination) throw new Error("Runtime staging must use a separate destination");
 const archive = JSON.parse(await readFile(join(source,"archive.json"),"utf8"));
 if (archive.type !== "minimal" || !/^cef_binary_154\.0\.34\+g14c5a08\+chromium-154\.0\.8037\.98_(windows|linux)/.test(archive.name) || !/^[a-f0-9]{40}$/.test(archive.sha1)) {
-    throw new Error("Markdown requires the pinned CEF 154.0.34 minimal runtime copied by cef-dll-sys 154.5.0");
+    throw new Error("Markdown requires the pinned CEF 154.0.34 minimal runtime staged by cef-dll-sys 154.5.0");
 }
 const windows = archive.name.includes("_windows"), library = windows ? "libcef.dll" : "libcef.so";
 const required = [library,"icudtl.dat","resources.pak","chrome_100_percent.pak","chrome_200_percent.pak","v8_context_snapshot.bin","locales/en-US.pak","CREDITS.html"];
@@ -36,6 +36,7 @@ const repository = fileURLToPath(new URL("../",import.meta.url));
 await copyFile(join(repository,"crates/markdown_editor/CEF-LICENSE.txt"),join(destination,"CEF-LICENSE.txt"));
 const notices = join(destination,"markdown-editor-notices");
 await mkdir(notices,{recursive:true});
+for (const name of ["LICENSE-APACHE","LICENSE-MIT"]) await copyFile(join(repository,"crates/cef_dll_sys",name),join(notices,`CEF-RS-${name}`));
 const vendor = join(repository,"crates/markdown_editor/frontend/vendor");
 for (const name of ["VDITOR-LICENSE","DOMPURIFY-LICENSE","DIFF-MATCH-PATCH-LICENSE"]) await copyFile(join(vendor,name),join(notices,name));
 await copyFile(join(vendor,"dist/js/highlight.js/LICENSE"),join(notices,"HIGHLIGHT-JS-LICENSE"));

@@ -292,7 +292,15 @@ fn open(
     let flush = item
         .as_ref()
         .and_then(|item| item.downcast::<MarkdownEditor>())
-        .map(|item| item.update(cx, |item, cx| item.flush(cx)));
+        .map(|item| {
+            item.update(cx, |item, cx| {
+                if choice == MarkdownDefaultOpenMode::Source {
+                    item.flush_before_opening_source(cx)
+                } else {
+                    item.flush(cx)
+                }
+            })
+        });
     cx.spawn_in(window, async move |workspace, cx| {
         if let Some(flush) = flush {
             flush.await?;
@@ -548,6 +556,161 @@ mod tests {
                 .id(),
             path: rel_path(name).into(),
         }
+    }
+
+    #[gpui::test(iterations = 5)]
+    async fn stopped_visual_session_can_open_shared_source_and_retain_draft(
+        cx: &mut TestAppContext,
+    ) {
+        struct FailedSurface;
+        impl crate::item::BrowserSurface for FailedSurface {
+            fn send(&mut self, _: &crate::protocol::HostMessage) -> Result<()> {
+                Ok(())
+            }
+            fn poll(&mut self) -> Result<Vec<crate::protocol::ClientMessage>> {
+                anyhow::bail!("renderer stopped")
+            }
+            fn dispose(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+        let (workspace, project, cx) = fixture(cx).await;
+        cx.update(|_, cx| configure(cx, Some(MarkdownDefaultOpenMode::Editor), false));
+        let path = cx.read(|cx| project_path(&project, "first.md", cx));
+        let visual = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(path.clone(), None, true, window, cx)
+            })
+            .await
+            .expect("visual item")
+            .downcast::<MarkdownEditor>()
+            .expect("visual item");
+        for draft in [None, Some("# First\nretained visual draft")] {
+            visual.update(cx, |item, cx| {
+                item.attach(Box::new(FailedSurface), cx).expect("surface");
+                if let Some(text) = draft {
+                    item.receive(
+                        crate::protocol::ClientMessage::Draft {
+                            session: item.protocol.session.clone(),
+                            document: item.protocol.document,
+                            sequence: 1,
+                            base_revision: item.protocol.revision,
+                            text: text.into(),
+                        },
+                        cx,
+                    )
+                    .expect("draft");
+                }
+                item.pump_browser(cx);
+            });
+            assert!(visual.update(cx, |item, cx| item.flush(cx)).await.is_err());
+            let target = MarkdownFileTarget {
+                worktree_id: path.worktree_id.to_proto(),
+                path: path.path.to_string(),
+                file_name: "first.md".into(),
+                item_id: Some(visual.entity_id().as_u64()),
+            };
+            workspace
+                .update_in(cx, |workspace, window, cx| {
+                    open(
+                        workspace,
+                        Some(target),
+                        MarkdownDefaultOpenMode::Source,
+                        false,
+                        false,
+                        window,
+                        cx,
+                    )
+                })
+                .await
+                .expect("source remains accessible");
+            let source = workspace.read_with(cx, |workspace, cx| {
+                workspace
+                    .active_item(cx)
+                    .expect("active item")
+                    .downcast::<Editor>()
+                    .expect("source editor")
+            });
+            visual.read_with(cx, |item, cx| {
+                assert_eq!(source, item.source);
+                assert_eq!(
+                    source.read(cx).buffer().read(cx).as_singleton(),
+                    Some(item.buffer.clone())
+                );
+                assert_eq!(item.buffer.read(cx).snapshot().text(), "# First\n");
+                assert_eq!(
+                    item.protocol
+                        .draft
+                        .as_ref()
+                        .map(|draft| draft.text.as_str()),
+                    draft
+                );
+                assert!(
+                    workspace
+                        .read(cx)
+                        .items(cx)
+                        .any(|existing| existing.item_id() == visual.entity_id())
+                );
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn live_visual_session_flushes_before_opening_shared_source(cx: &mut TestAppContext) {
+        let (workspace, project, cx) = fixture(cx).await;
+        cx.update(|_, cx| configure(cx, Some(MarkdownDefaultOpenMode::Editor), false));
+        let path = cx.read(|cx| project_path(&project, "first.md", cx));
+        let visual = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(path, None, true, window, cx)
+            })
+            .await
+            .expect("visual item")
+            .downcast::<MarkdownEditor>()
+            .expect("visual item");
+        visual.update(cx, |item, cx| {
+            item.attach(Box::new(crate::item::FakeBrowserSurface::default()), cx)
+                .expect("live surface");
+        });
+        let opening = workspace.update_in(cx, |workspace, window, cx| {
+            open(
+                workspace,
+                None,
+                MarkdownDefaultOpenMode::Source,
+                false,
+                false,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item(cx)
+                .expect("active item")
+                .downcast::<MarkdownEditor>()
+                .is_some()
+        }));
+        visual.update(cx, |item, cx| {
+            item.receive(
+                crate::protocol::ClientMessage::Flushed {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    request: 1,
+                    sequence: 0,
+                },
+                cx,
+            )
+            .expect("flush acknowledgment");
+        });
+        opening.await.expect("source after acknowledgment");
+        assert!(workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item(cx)
+                .expect("active item")
+                .downcast::<Editor>()
+                .is_some()
+        }));
     }
 
     #[gpui::test]

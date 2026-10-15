@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/cef_dll_sys",
     "crates/acp_thread",
     "crates/acp_tools",
     "crates/action_log",
@@ -1000,6 +1001,7 @@ features = [
 ]
 
 [patch.crates-io]
+cef-dll-sys = { path = "crates/cef_dll_sys" }
 cpal = { git = "https://github.com/RustAudio/cpal", rev = "e1612d5d98152f8dc2a62e1b51ef7cbf4f7f26b7" }
 # Unify `tree_sitter_language::LanguageFn` between crates.io grammar crates and
 # the git tree-sitter above; two instances of the crate would make grammar

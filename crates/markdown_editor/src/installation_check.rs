@@ -118,6 +118,67 @@ async fn collect_reports(
     Ok(reports)
 }
 
+async fn verify_source_access(
+    item: &gpui::WeakEntity<MarkdownEditor>,
+    cx: &mut gpui::AsyncApp,
+) -> Result<()> {
+    let (window, workspace, buffer) = item.read_with(cx, |item, cx| {
+        (
+            item.window,
+            item.source.read(cx).workspace(),
+            item.buffer.clone(),
+        )
+    })?;
+    let workspace = workspace.context("Installed item has no workspace")?;
+    window.update(cx, |_, window, cx| {
+        window.dispatch_action(Box::new(crate::item::OpenSource), cx);
+    })?;
+    for _ in 0..50 {
+        cx.background_executor()
+            .timer(Duration::from_millis(100))
+            .await;
+        if workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_item(cx)
+                .and_then(|item| item.downcast::<editor::Editor>())
+                .is_some_and(|source| {
+                    source.read(cx).buffer().read(cx).as_singleton() == Some(buffer.clone())
+                })
+        }) {
+            return Ok(());
+        }
+    }
+    bail!("Open Source did not activate the original shared Buffer")
+}
+
+fn verify_history(item: &gpui::WeakEntity<MarkdownEditor>, cx: &mut gpui::AsyncApp) -> Result<()> {
+    item.update(cx, |item, cx| -> Result<()> {
+        if item.source.read(cx).buffer().read(cx).as_singleton() != Some(item.buffer.clone()) {
+            bail!("Installed source does not share the visual Buffer");
+        }
+        item.buffer.update(cx, |buffer, cx| -> Result<()> {
+            buffer.finalize_last_transaction();
+            buffer.edit([(0..0, "installed history check\n")], None, cx);
+            buffer.finalize_last_transaction();
+            if buffer.undo(cx).is_none() || buffer.snapshot().text() != FIXTURE {
+                bail!("Installed native undo did not restore source");
+            }
+            if buffer.redo(cx).is_none()
+                || !buffer
+                    .snapshot()
+                    .text()
+                    .starts_with("installed history check\n")
+            {
+                bail!("Installed native redo did not restore the edit");
+            }
+            if buffer.undo(cx).is_none() || buffer.snapshot().text() != FIXTURE {
+                bail!("Installed history check did not preserve source");
+            }
+            Ok(())
+        })
+    })?
+}
+
 pub(crate) fn start(item: &MarkdownEditor, cx: &mut Context<MarkdownEditor>) {
     let Some(path) = std::env::var_os("LATHE_MARKDOWN_INSTALLATION_CHECK") else {
         return;
@@ -132,10 +193,12 @@ pub(crate) fn start(item: &MarkdownEditor, cx: &mut Context<MarkdownEditor>) {
     let identifier = cx.entity_id();
     let task = cx.spawn(async move |item, cx| {
         let result = collect_reports(&item, cx).await;
+        let history = if result.is_ok() { verify_history(&item, cx) } else { Ok(()) };
+        let source_access = verify_source_access(&item, cx).await;
         let source_preserved = item.read_with(cx, |item, cx| item.buffer.read(cx).snapshot().text() == FIXTURE).unwrap_or(false);
         let output = match result {
-            Ok(reports) => serde_json::json!({"success":true,"executable":std::env::current_exe().ok(),"process_id":std::process::id(),"cef":"154.0.34","modes":reports,"source_preserved":true}),
-            Err(error) => serde_json::json!({"success":false,"error":format!("{error:#}"),"source_preserved":source_preserved}),
+            Ok(reports) => serde_json::json!({"success":history.is_ok() && source_access.is_ok(),"executable":std::env::current_exe().ok(),"process_id":std::process::id(),"cef":"154.0.34","modes":reports,"source_preserved":source_preserved,"history_verified":history.is_ok(),"source_opened":source_access.is_ok(),"history_error":history.err().map(|error| format!("{error:#}")),"source_open_error":source_access.err().map(|error| format!("{error:#}"))}),
+            Err(error) => serde_json::json!({"success":false,"error":format!("{error:#}"),"source_preserved":source_preserved,"source_opened":source_access.is_ok(),"source_open_error":source_access.err().map(|error| format!("{error:#}"))}),
         };
         let written = serde_json::to_vec_pretty(&output).context("Installed runtime report serialization").and_then(|bytes| std::fs::write(&path,bytes).context("Installed runtime report write"));
         if let Err(error) = written {log::error!("{error:#}");}

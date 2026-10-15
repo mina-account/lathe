@@ -943,6 +943,18 @@ impl MarkdownEditor {
         cx.notify();
     }
 
+    pub(crate) fn flush_before_opening_source(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        // Opening the shared source keeps this Item and its recovery draft alive.
+        // A stopped renderer cannot acknowledge a flush, but must not block recovery.
+        if !self.accepting_input {
+            return Task::ready(Ok(()));
+        }
+        self.flush(cx)
+    }
+
     pub fn flush(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {
         if self.surface.is_some() && !self.accepting_input {
             return Task::ready(Err(anyhow::anyhow!(

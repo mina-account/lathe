@@ -1,0 +1,27 @@
+[package]
+name = "cef-dll-sys"
+version = "154.5.0+154.0.34"
+edition = "2024"
+publish = false
+license = "Apache-2.0 OR MIT"
+links = "cef_dll_wrapper"
+
+[lib]
+path = "cef_dll_sys.rs"
+doctest = false
+
+[features]
+dox = []
+sandbox = []
+
+[dependencies]
+libloading = "0.8.9"
+
+[build-dependencies]
+anyhow = "1"
+download-cef = "=3.0.0"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+
+[lints]
+workspace = true

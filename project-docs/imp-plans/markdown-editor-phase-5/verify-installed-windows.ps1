@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 Set-Location (Join-Path $PSScriptRoot '../../..')
 $acceptanceRoot=$AcceptanceRoot
 $installation="$acceptanceRoot/application"
+if (Test-Path -LiteralPath $acceptanceRoot) {throw "Acceptance requires a fresh isolated root: $acceptanceRoot"}
 New-Item -ItemType Directory -Path $acceptanceRoot -Force | Out-Null
 & script/install-fork-windows.ps1 -ArchivePath $ArchivePath -InstallDirectory $installation -NoShellIntegration
 $executable="$installation/libexec/lathe-editor.exe"
@@ -17,7 +18,7 @@ try {
   $env:NO_PROXY=$null
   if (Get-Command node -ErrorAction SilentlyContinue) {throw 'Node remains on acceptance PATH'}
   $runs=@()
-  foreach($name in @('normal','missing-runtime')) {
+  foreach($name in @('normal','missing-resources','missing-library')) {
     $runRoot="$acceptanceRoot/$name"
     $configuration="$runRoot/user-data/config"
     New-Item -ItemType Directory -Path $configuration -Force | Out-Null
@@ -26,11 +27,17 @@ try {
     $report="$runRoot/report.json"
     if (Test-Path $report) {throw "Acceptance report already exists: $report"}
     $env:LATHE_MARKDOWN_INSTALLATION_CHECK=$report
-    if ($name -eq 'missing-runtime') {
-      $emptyRuntime="$runRoot/incomplete-runtime"
-      New-Item -ItemType Directory -Path $emptyRuntime -Force | Out-Null
-      $env:LATHE_MARKDOWN_CEF_RUNTIME=$emptyRuntime
+    $withheld=$null
+    if ($name -ne 'normal') {
+      $fileName=if ($name -eq 'missing-library') {'libcef.dll'} else {'resources.pak'}
+      $withheld=[IO.Path]::GetFullPath("$installation/libexec/$fileName")
+      if (-not $withheld.StartsWith([IO.Path]::GetFullPath($acceptanceRoot) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {throw "Withheld library outside acceptance root: $withheld"}
+      $held=[IO.Path]::GetFullPath("$runRoot/$fileName")
+      if (Test-Path -LiteralPath $held) {throw "Already withheld: $held"}
+      Move-Item -LiteralPath $withheld -Destination $held
+      if (Test-Path -LiteralPath $withheld) {throw "Library was not withheld: $withheld"}
     }
+    try {
     $process=Start-Process -FilePath $executable -ArgumentList @('--foreground','--user-data-dir',"$runRoot/user-data","$runRoot/fixture.md") -WorkingDirectory "$installation/libexec" -WindowStyle Hidden -PassThru -RedirectStandardOutput "$runRoot/stdout.log" -RedirectStandardError "$runRoot/stderr.log"
     $retainedHandle=$process.Handle
     $owned=@{}
@@ -44,14 +51,18 @@ try {
     } while(-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline)
     if (-not $process.HasExited) {throw "Installed process $($process.Id) timed out; retained for diagnosis"}
     $process.WaitForExit()
+    } finally {
+      if ($withheld) {Move-Item -LiteralPath $held -Destination $withheld}
+    }
     if ($null -eq $process.ExitCode -or $process.ExitCode -ne 0) {throw "Installed process exit was not zero: $($process.ExitCode), handle $retainedHandle"}
     if (-not (Test-Path $report)) {throw "Installed $name exited $($process.ExitCode) without report"}
     $result=Get-Content -Raw -Encoding UTF8 $report | ConvertFrom-Json
     if ($name -eq 'normal') {
-      if (-not $result.success -or $result.modes.Count -ne 4 -or -not $result.source_preserved) {throw "Installed renderer check failed: $(ConvertTo-Json $result -Depth 20)"}
+      if (-not $result.success -or $result.modes.Count -ne 4 -or -not $result.source_preserved -or -not $result.source_opened -or -not $result.history_verified) {throw "Installed renderer check failed: $(ConvertTo-Json $result -Depth 20)"}
       if (-not ($owned.Values | Where-Object {$_.command_line -match '--type='})) {throw 'Installed CEF helper subprocess was not observed'}
     } else {
-      if ($result.success -or -not $result.source_preserved -or $result.error -notmatch 'Reinstall') {throw 'Missing runtime did not preserve source and explain reinstall'}
+      if ($result.success -or -not $result.source_preserved -or -not $result.source_opened -or $result.error -notmatch 'Reinstall') {throw 'Missing runtime did not preserve source and explain reinstall'}
+      if ($result.error -notmatch [regex]::Escape($fileName)) {throw 'Missing runtime report did not identify the withheld file'}
     }
     $runs+=@{name=$name;result=$result;exit_code=$process.ExitCode;processes=@($owned.Values);fixture_sha256=(Get-FileHash "$runRoot/fixture.md" -Algorithm SHA256).Hash}
   }

@@ -103,7 +103,7 @@ echo "--- Bundling shared libraries ---"
 # family and libasound stay host-provided (bundled ALSA breaks host plugin
 # discovery), but libstdc++ IS bundled on purpose so older distros without
 # the builder's GLIBCXX symbols can still run the editor.
-ldd "$zed_binary" | \
+ldd "$zed_binary" "${app_dir}/libexec/libcef.so" | \
     cut -d' ' -f3 | \
     grep -v '\<\(libc.so\|libgcc_s.so\|libm.so\|libpthread.so\|libdl.so\|libasound.so\|libcef.so\)' | \
     while read -r lib; do

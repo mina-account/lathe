@@ -250,6 +250,10 @@ pub fn run_subprocess_if_invoked() {
     if !std::env::args().any(|argument| argument.starts_with("--type=")) {
         return;
     }
+    if let Err(error) = runtime_directory().and_then(|runtime| load_runtime(&runtime)) {
+        eprintln!("Markdown browser subprocess: {error:#}");
+        std::process::exit(1);
+    }
     let args = cef::args::Args::new();
     let mut app = RuntimeApp::new();
     cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
@@ -285,6 +289,38 @@ fn preflight_runtime(runtime: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+fn runtime_directory() -> Result<std::path::PathBuf> {
+    std::env::var_os("LATHE_MARKDOWN_CEF_RUNTIME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+        })
+        .ok_or_else(|| anyhow!("CEF runtime directory unavailable"))
+}
+
+fn load_runtime(runtime: &std::path::Path) -> Result<()> {
+    preflight_runtime(runtime)?;
+    #[cfg(target_os = "windows")]
+    let library = runtime.join("libcef.dll");
+    #[cfg(target_os = "linux")]
+    let library = runtime.join("libcef.so");
+    // Load only this validated runtime; never fall back to a library from PATH.
+    unsafe { cef::sys::load_library(&library) }.map_err(|error| {
+        anyhow!(
+            "Cannot load the pinned Markdown editor runtime {}: {error}. Reinstall the complete Lathe package, including its native dependencies.",
+            library.display()
+        )
+    })?;
+    if cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0).is_null() {
+        bail!(
+            "Markdown editor runtime has an incompatible CEF API. Reinstall the complete Lathe package."
+        );
+    }
+    Ok(())
+}
+
 fn initialize(cx: &mut gpui::App) -> Result<()> {
     if cx.background_executor().is_test() {
         bail!("CEF initialization is disabled in GPUI tests");
@@ -292,22 +328,14 @@ fn initialize(cx: &mut gpui::App) -> Result<()> {
     if cx.has_global::<Runtime>() {
         return Ok(());
     }
-    let runtime = std::env::var_os("LATHE_MARKDOWN_CEF_RUNTIME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::current_exe()
-                .ok()
-                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
-        })
-        .ok_or_else(|| anyhow!("CEF runtime directory unavailable"))?;
-    preflight_runtime(&runtime)?;
+    let runtime = runtime_directory()?;
+    load_runtime(&runtime)?;
     log::info!(
         "Markdown editor CEF runtime: {} (pinned 154.0.34)",
         runtime.display()
     );
     let args = cef::args::Args::new();
     let mut app = RuntimeApp::new();
-    cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
     let settings = cef::Settings {
         browser_subprocess_path: std::env::current_exe()?.to_string_lossy().as_ref().into(),
         no_sandbox: 1,
