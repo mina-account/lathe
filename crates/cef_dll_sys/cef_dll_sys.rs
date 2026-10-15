@@ -1,10 +1,5 @@
 use std::{path::Path, sync::OnceLock};
 
-#[cfg(feature = "sandbox")]
-compile_error!(
-    "The dynamic CEF adapter supports Lathe's explicit production confinement; native CEF sandbox linking is not implemented"
-);
-
 #[allow(
     non_snake_case,
     non_camel_case_types,
