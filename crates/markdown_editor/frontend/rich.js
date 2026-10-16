@@ -277,6 +277,10 @@ async function importFiles(files       ,field                     ) {
 function active()              { return preferences.mode === "preview" ? viewer : editor?.vditor[editor.getCurrentMode()].element ?? container; }
 function renderedRoot()             { return preferences.mode==="sv" ? editor.vditor.preview.previewElement : active(); }
 function scrollElement()              { return preferences.mode === "preview" ? viewer : active(); }
+function scrollPosition()         {
+    // Browser zoom can produce fractional offsets, but native preferences store a u32.
+    return Math.min(100_000_000,Math.round(Math.max(0,scrollElement().scrollTop)));
+}
 function restoreScroll(position       ) {
     const element=scrollElement();
     element.scrollTop=position;
@@ -771,7 +775,7 @@ function mode(mode      ) {
     commit(); if (bridge.blocked) return;
     bridge.afterFlush.push(() => {
         const selected = selection(), oldText = active().textContent ?? "";
-        preferences.scroll = scrollElement().scrollTop; preferences.mode = mode; persist(); build(selected,oldText);
+        preferences.scroll = scrollPosition(); preferences.mode = mode; persist(); build(selected,oldText);
     }); bridge.submit(); bridge.finishFlush();
 }
 function format(control       ) {
@@ -904,7 +908,7 @@ document.addEventListener("scroll",event => {
         if(restoredScrollPositions.get(target)!==target.scrollTop)readingGeneration++;
         restoredScrollPositions.delete(target);
     }
-    const scroll = Math.min(100_000_000,Math.round(Math.max(0,scrollElement().scrollTop)));
+    const scroll = scrollPosition();
     if (scroll !== preferences.scroll) { preferences.scroll = scroll; persist(); }
     lineNumbers();
 },true);

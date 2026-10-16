@@ -10975,7 +10975,7 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Markdown Editing Mode",
-                description: "Initial visual mode; saved document preferences take precedence.",
+                description: "Editing mode when opening or restoring a Markdown editor; overrides its saved mode.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("markdown_editor.mode"),
