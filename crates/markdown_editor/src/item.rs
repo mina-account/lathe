@@ -415,17 +415,20 @@ impl MarkdownEditor {
                     .map(|value| serde_json::from_str(&value).map_err(Into::into))
                     .transpose()
             });
-        let preferences = match preferences {
-            Ok(preferences) => preferences.unwrap_or_else(|| ViewPreferences {
-                mode: crate::opening::mode(MarkdownEditorSettings::get_global(cx).mode),
-                outline: MarkdownEditorSettings::get_global(cx).default_open_outline,
-                ..ViewPreferences::default()
-            }),
+        let settings = MarkdownEditorSettings::get_global(cx);
+        let default_preferences = ViewPreferences {
+            mode: crate::opening::mode(settings.mode),
+            outline: settings.default_open_outline,
+            ..ViewPreferences::default()
+        };
+        let mut preferences = match preferences {
+            Ok(preferences) => preferences.unwrap_or(default_preferences),
             Err(error) => {
                 log::error!("Markdown document preferences restoration: {error:#}");
-                ViewPreferences::default()
+                default_preferences
             }
         };
+        preferences.mode = crate::opening::mode(settings.mode);
         let subscription = cx.subscribe(&buffer, |this, _, event, cx| {
             if matches!(
                 event,
@@ -1261,7 +1264,7 @@ mod tests {
 
     #[cfg(feature = "browser")]
     #[gpui::test]
-    async fn document_preferences_survive_close_and_open_with_a_new_item(cx: &mut TestAppContext) {
+    async fn configured_mode_overrides_saved_document_mode_on_open(cx: &mut TestAppContext) {
         use util::path;
         cx.update(|cx| {
             cx.set_global(db::AppDatabase::test_new());
@@ -1321,7 +1324,7 @@ mod tests {
                 .expect("visual")
         });
         let preferences = ViewPreferences {
-            mode: Mode::Wysiwyg,
+            mode: Mode::Ir,
             outline: true,
             wrap: false,
             scroll: 321,
@@ -1349,8 +1352,8 @@ mod tests {
             settings::SettingsStore::update_global(cx, |store, cx| {
                 store.update_user_settings(cx, |content| {
                     let markdown = content.markdown_editor.get_or_insert_default();
-                    markdown.default_open_mode = Some(settings::MarkdownDefaultOpenMode::Source);
-                    markdown.mode = Some(settings::MarkdownEditorMode::Split);
+                    markdown.default_open_mode = Some(settings::MarkdownDefaultOpenMode::Editor);
+                    markdown.mode = Some(settings::MarkdownEditorMode::Wysiwyg);
                     markdown.default_open_outline = Some(false);
                 })
             });
@@ -1367,7 +1370,13 @@ mod tests {
         });
         assert_ne!(reopened.entity_id(), visual.entity_id());
         reopened.read_with(cx, |item, _| {
-            assert_eq!(item.preferences, preferences);
+            assert_eq!(
+                item.preferences,
+                ViewPreferences {
+                    mode: Mode::Wysiwyg,
+                    ..preferences
+                }
+            );
             assert_eq!(item.buffer, buffer);
         });
         let other = workspace
@@ -1381,22 +1390,13 @@ mod tests {
             })
             .await
             .expect("other")
-            .downcast::<Editor>()
-            .expect("other editor");
-        workspace.update_in(cx, |workspace, window, cx| {
-            workspace.activate_item(&other, true, true, window, cx)
-        });
-        cx.dispatch_action(Open);
-        cx.run_until_parked();
-        workspace.read_with(cx, |workspace, cx| {
+            .downcast::<MarkdownEditor>()
+            .expect("configured default editor");
+        other.read_with(cx, |item, _| {
             assert_eq!(
-                workspace
-                    .active_item_as::<MarkdownEditor>(cx)
-                    .expect("other visual")
-                    .read(cx)
-                    .preferences,
+                item.preferences,
                 ViewPreferences {
-                    mode: Mode::Sv,
+                    mode: Mode::Wysiwyg,
                     ..ViewPreferences::default()
                 }
             )
@@ -3700,7 +3700,7 @@ mod tests {
             assert_eq!(
                 item.preferences,
                 ViewPreferences {
-                    mode: Mode::Sv,
+                    mode: Mode::Wysiwyg,
                     outline: true,
                     wrap: false,
                     scroll: 1234,
@@ -3957,7 +3957,10 @@ impl SerializableItem for MarkdownEditor {
                 let item = cx.new(|cx| Self::new(source, buffer, window, cx));
                 item.update(cx, |item, cx| {
                     match preferences {
-                        Ok(Some(preferences)) => item.preferences = preferences,
+                        Ok(Some(mut preferences)) => {
+                            preferences.mode = item.preferences.mode;
+                            item.preferences = preferences;
+                        }
                         Ok(None) => {}
                         Err(error) => log::error!("Markdown preferences restoration: {error:#}"),
                     }

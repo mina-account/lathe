@@ -1475,6 +1475,7 @@ pub enum MarkdownEditorMode {
 pub struct MarkdownEditorSettingsContent {
     /// Unset retains the legacy preview preference, then falls back to source.
     pub default_open_mode: Option<MarkdownDefaultOpenMode>,
+    /// Initial editing mode when opening or restoring a Markdown editor, overriding its saved mode.
     pub mode: Option<MarkdownEditorMode>,
     pub image_save_folder: Option<String>,
     pub use_app_theme_colors: Option<bool>,

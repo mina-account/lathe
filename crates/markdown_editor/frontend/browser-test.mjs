@@ -817,6 +817,37 @@ test("duplicate neighboring blocks keep the intentional edit at its original sou
     }
 });
 
+test("mode switches persist integer scroll positions at fractional display scales",async () => {
+    const source="# Heading\n\n"+"paragraph\n\n".repeat(100), {page,context}=await open(source);
+    for(const mode of ["wysiwyg","sv","preview","ir"]) {
+        const result=await page.evaluate(mode=>{
+            const rich=window.latheRich,editor=rich.editor;
+            const root=document.querySelector('#viewer').hidden?editor.vditor[editor.getCurrentMode()].element:document.querySelector('#viewer');
+            root.style.zoom="1.75";
+            root.scrollTop=866.8571166992188;
+            const position=root.scrollTop;
+            window.testMessages=[];
+            rich.mode(mode);
+            const messages=structuredClone(window.testMessages.filter(message=>message.kind==="preferences"));
+            return {position,messages};
+        },mode);
+        assert.equal(Number.isInteger(result.position),false,"Browser supplies a real fractional scroll offset");
+        assert.equal(result.messages.length,1);
+        assert.equal(result.messages[0].preferences.mode,mode);
+        assert.equal(result.messages[0].preferences.scroll,Math.round(result.position),`${mode}: native preferences require an integer`);
+        await page.waitForFunction(()=>window.latheRich.ready);
+        assert.equal(await page.locator('#mode').inputValue(),mode);
+        await page.waitForFunction(position=>{
+            const editor=window.latheRich.editor;
+            const restored=(document.querySelector('#viewer').hidden?editor.vditor[editor.getCurrentMode()].element:document.querySelector('#viewer')).scrollTop;
+            return Math.abs(restored-position)<1;
+        },Math.round(result.position));
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>["edit","draft","undo","redo"].includes(message.kind))),false);
+    }
+    await context.close();
+});
+
 test("selection and scroll survive native source updates, mode switches and composition",async () => {
     const source="# Heading\n\n"+"paragraph\n\n".repeat(50)+"hello selected text\n\nTail", {page,context}=await open(source);
     await selectText(page,"selected");
