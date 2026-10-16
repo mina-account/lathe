@@ -1,5 +1,11 @@
 pub mod protocol;
 
+#[cfg(any(
+    test,
+    all(feature = "browser", any(target_os = "windows", target_os = "linux"))
+))]
+mod browser_frame;
+
 #[cfg(feature = "application")]
 mod item;
 #[cfg(feature = "application")]

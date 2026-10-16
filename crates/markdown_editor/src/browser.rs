@@ -1,3 +1,5 @@
+pub use crate::browser_frame::Pixels;
+use crate::browser_frame::{BrowserFrames, frame_bytes, raster_scale};
 use crate::item::BrowserSurface;
 use crate::item::MarkdownEditor;
 use crate::protocol::{self as adapter, ClientMessage as Message, HostMessage};
@@ -129,111 +131,6 @@ mod tests {
         assert!(CONTENT_SECURITY_POLICY.contains("script-src 'self';"));
         assert!(!CONTENT_SECURITY_POLICY.contains("unsafe-eval"));
     }
-
-    #[test]
-    fn frame_validation_precedes_copy_and_preserves_alpha() -> Result<()> {
-        assert!(frame_bytes(0, 1).is_err());
-        assert!(frame_bytes(i32::MAX, i32::MAX).is_err());
-        assert!(straight_bgra(1, 1, &[0, 0, 0]).is_err());
-        assert_eq!(
-            straight_bgra(1, 1, &[16, 32, 64, 128])?,
-            vec![32, 64, 128, 128]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn large_high_dpi_viewports_keep_raster_frames_bounded() -> Result<()> {
-        for (width, height, requested) in [
-            (3840, 2160, 2.),
-            (2560, 1440, 2.),
-            (7680, 4320, 1.),
-            (i32::MAX, 1, f32::MAX),
-            (i32::MAX, i32::MAX, f32::MAX),
-        ] {
-            let scale = raster_scale(width, height, requested)?;
-            assert!(scale > 0. && scale <= requested);
-            assert!(
-                frame_bytes(
-                    (width as f64 * f64::from(scale)).ceil() as i32,
-                    (height as f64 * f64::from(scale)).ceil() as i32
-                )
-                .is_ok()
-            );
-        }
-        assert_eq!(raster_scale(1200, 800, 1.)?, 1.);
-        assert_eq!(raster_scale(1280, 720, 1.5)?, 1.5);
-        for scale in [0., -1., f32::NAN, f32::INFINITY] {
-            assert!(raster_scale(1200, 800, scale).is_err());
-        }
-        assert!(raster_scale(0, 800, 1.).is_err());
-        Ok(())
-    }
-}
-
-fn raster_scale(width: i32, height: i32, requested: f32) -> Result<f32> {
-    if width <= 0 || height <= 0 || !requested.is_finite() || requested <= 0. {
-        bail!("Invalid browser viewport or scale");
-    }
-    let fits = |scale: f32, rounding_margin: i32| {
-        let dimension = |length: i32| {
-            let double = (f64::from(length) * f64::from(scale)).ceil();
-            let single = (length as f32 * scale).ceil();
-            (double.max(f64::from(single)).max(1.) as i32).saturating_add(rounding_margin)
-        };
-        frame_bytes(dimension(width), dimension(height)).is_ok()
-    };
-    if fits(requested, 0) {
-        return Ok(requested);
-    }
-    // Positive finite f32 bit patterns are ordered; keep logical geometry while
-    // selecting the largest raster scale that leaves room for CEF rounding.
-    let mut lower = 0;
-    let mut upper = requested.to_bits();
-    while lower < upper {
-        let middle = lower + (upper - lower).div_ceil(2);
-        if fits(f32::from_bits(middle), 1) {
-            lower = middle;
-        } else {
-            upper = middle - 1;
-        }
-    }
-    let scale = f32::from_bits(lower);
-    if scale <= 0. {
-        bail!("Browser viewport cannot fit the bounded raster budget");
-    }
-    Ok(scale)
-}
-
-fn frame_bytes(width: i32, height: i32) -> Result<usize> {
-    if width <= 0 || height <= 0 {
-        bail!("Invalid browser frame dimensions");
-    }
-    let length = (width as usize)
-        .checked_mul(height as usize)
-        .and_then(|pixels| pixels.checked_mul(4))
-        .ok_or_else(|| anyhow!("Browser frame size overflow"))?;
-    if length > 16 * 1024 * 1024 {
-        bail!("Browser frame exceeds 16 MiB limit");
-    }
-    Ok(length)
-}
-
-fn straight_bgra(width: i32, height: i32, bytes: &[u8]) -> Result<Vec<u8>> {
-    if bytes.len() != frame_bytes(width, height)? {
-        bail!("Invalid browser frame length");
-    }
-    let mut bytes = bytes.to_vec();
-    for pixel in bytes.as_chunks_mut::<4>().0 {
-        let alpha = u32::from(pixel[3]);
-        for channel in pixel.iter_mut().take(3) {
-            *channel = (u32::from(*channel) * 255 + alpha / 2)
-                .checked_div(alpha)
-                .unwrap_or(0)
-                .min(255) as u8;
-        }
-    }
-    Ok(bytes)
 }
 
 struct Runtime {
@@ -489,12 +386,6 @@ pub fn terminate_renderer_for_test() -> Result<()> {
     Ok(())
 }
 
-pub struct Pixels {
-    pub width: u32,
-    pub height: u32,
-    pub bgra: Vec<u8>,
-}
-
 #[derive(Default)]
 pub struct State {
     pub session: String,
@@ -502,6 +393,7 @@ pub struct State {
     pub height: i32,
     pub scale: f32,
     pub latest: Option<Pixels>,
+    browser_frames: BrowserFrames,
     pub document: u64,
     pub messages: VecDeque<Message>,
     pub error: Option<String>,
@@ -561,20 +453,44 @@ wrap_render_handler! {
             }
             0
         }
+        fn on_popup_show(&self, _browser: Option<&mut Browser>, show: i32) {
+            let result = (|| -> Result<()> {
+                let mut state = self.shared.lock().map_err(|error| anyhow!("state poisoned: {error}"))?;
+                state.browser_frames.show_popup(show != 0);
+                state.latest = state.browser_frames.compose();
+                Ok(())
+            })();
+            if let Err(error) = result { failure(&self.shared, error); }
+        }
+        fn on_popup_size(&self, _browser: Option<&mut Browser>, rect: Option<&Rect>) {
+            let result = (|| -> Result<()> {
+                let rect = rect.ok_or_else(|| anyhow!("Missing browser popup bounds"))?;
+                let mut state = self.shared.lock().map_err(|error| anyhow!("state poisoned: {error}"))?;
+                let scale = state.scale;
+                state.browser_frames.size_popup(rect.x, rect.y, rect.width, rect.height, scale)?;
+                state.latest = state.browser_frames.compose();
+                Ok(())
+            })();
+            if let Err(error) = result { failure(&self.shared, error); }
+        }
         fn on_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty: Option<&[Rect]>, buffer: *const u8, width: i32, height: i32) {
-            if type_ != PaintElementType::VIEW { return; }
+            if type_ != PaintElementType::VIEW && type_ != PaintElementType::POPUP { return; }
             let result = (|| -> Result<()> {
                 if buffer.is_null() { bail!("null paint buffer"); }
                 let length = frame_bytes(width, height)?;
                 let started = Instant::now();
                 // CEF owns exactly width * height * 4 bytes until this callback returns.
                 let borrowed = unsafe { std::slice::from_raw_parts(buffer, length) };
-                let pixels = straight_bgra(width, height, borrowed)?;
                 let mut state = self.shared.lock().map_err(|error| anyhow!("state poisoned: {error}"))?;
+                if type_ == PaintElementType::VIEW {
+                    state.browser_frames.paint_view(width, height, borrowed)?;
+                } else {
+                    state.browser_frames.paint_popup(width, height, borrowed)?;
+                }
+                state.latest = state.browser_frames.compose();
                 state.copy_microseconds += started.elapsed().as_micros();
                 state.frames += 1;
                 state.copied_bytes += length as u64;
-                state.latest = Some(Pixels { width: width as u32, height: height as u32, bgra: pixels });
                 Ok(())
             })();
             if let Err(error) = result { failure(&self.shared, error); }
@@ -747,6 +663,7 @@ impl Surface {
             height: 400,
             scale: 1.,
             latest: None,
+            browser_frames: BrowserFrames::default(),
             document,
             messages: VecDeque::new(),
             error: None,
@@ -860,6 +777,8 @@ impl BrowserSurface for Surface {
             state.width = width;
             state.height = height;
             state.scale = scale;
+            state.browser_frames.clear_popup();
+            state.latest = state.browser_frames.compose();
             drop(state);
             self.host()?.notify_screen_info_changed();
             self.host()?.was_resized();
