@@ -1,6 +1,6 @@
 # Tested GPUI offscreen host
 
-The [offscreen mini-plan](../markdown-browser-offscreen-host.md) is implemented as an isolated **Windows, Linux X11, and Linux Wayland feasibility prototype**. The parent Phase 1's revised automated viability gate is complete. The user excluded macOS, accessibility, and visual pixel-readback acceptance; full native/manual UI/input/IME/selection/shortcuts/workspace-window validation is deferred to the user's final Phase 6 run, and application installation/packaging to Phase 5. This code is not initialized by Lathe and does not load Markdown documents.
+The [offscreen mini-plan](../implemented/markdown-browser-offscreen-host.md) is implemented as an isolated **Windows, Linux X11, and Linux Wayland feasibility prototype**. The parent Phase 1's revised automated viability gate is complete. The user excluded macOS, accessibility, and visual pixel-readback acceptance; full native/manual UI/input/IME/selection/shortcuts/workspace-window validation is deferred to the user's final Phase 6 run, and application installation/packaging to Phase 5. This code is not initialized by Lathe and does not load Markdown documents.
 
 ## Decision and real evidence
 
