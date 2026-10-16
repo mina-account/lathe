@@ -1,6 +1,6 @@
 # Lathe
 
-A code editor. It's a fork of [Zed](https://zed.dev) with my own changes stacked on top: a mobile dev panel for React Native and Expo, more git tooling than upstream ships, pull request review inside the editor, and a theme I actually want to look at all day.
+A code editor. It's a fork of [Zed](https://zed.dev) with my own changes stacked on top: a mobile dev panel for React Native and Expo, more git tooling than upstream ships, pull request review inside the editor, a Markdown WYSIWYG editor, a customizable AI Chat screen, and a theme I actually want to look at all day.
 
 ### [Download Lathe](https://github.com/mina-account/lathe/releases)
 
@@ -28,14 +28,94 @@ Roughly ordered by how far each one is from stock Zed. One caveat on the git ent
 2. [Merge conflicts and interactive rebase](docs/features.md#merge-conflicts-and-interactive-rebase) - a conflict resolution tab, full-file split view, drag-and-drop rebase
 3. [Pull request reviews](docs/features.md#pull-request-reviews) - GitHub, GitLab, Bitbucket, in the editor
 4. [Code navigation](docs/features.md#code-navigation) - definitions and references open in a peek instead of a new tab
-5. [AI agent integration](docs/features.md#ai-agent-integration) - sign into several accounts, control approval levels, per-workspace thread history
+5. [AI agent integration](docs/features.md#ai-agent-integration) - sign into several accounts, control approval levels, per-workspace thread history; [AI Chat screen changes](#ai-chat-screen) add Super Compact Mode and response navigation
 6. [Theme and syntax highlighting](docs/features.md#theme-and-syntax-highlighting) - the default theme, plus a live customizer for all 200+ colors
 7. [Git additions](docs/features.md#git-additions) - explorer tab, branch tree, graph context menus, undo, Git Flow
 8. [Jupyter notebooks](docs/features.md#jupyter-notebooks) - saving keeps your outputs, cells share one document, and the kernel picker finds your project's venv
 9. [Terminal, windows, and workspaces](docs/features.md#terminal-windows-and-workspaces) - extra windows for editors and terminals, an awaiting-input indicator, workspace groups, per-window zoom
 10. [AWS profiles](docs/features.md#aws-profiles) - a per-window profile selector
+11. [Markdown WYSIWYG editor](#markdown-wysiwyg-editor) - visual editing, instant rendering, split view, images, math, diagrams, and themes
 
-Screenshots and the long version live in **[docs/features.md](docs/features.md)**.
+Screenshots and more feature details live in **[docs/features.md](docs/features.md)**. Configuration for the Markdown editor and AI Chat screen is below.
+
+### Markdown WYSIWYG editor
+
+Edit `.md` and `.markdown` files in a visual editor with a formatting toolbar, outline, and three editing modes: WYSIWYG, instant rendering, and source/preview split view. The visual editor shares the native text buffer, so you can switch to source and keep working on the same document. A read-only viewer, Markdown/HTML copy, image insertion through the picker, clipboard or drag-and-drop, and document links are also available.
+
+Math uses bundled KaTeX. Bundled renderers support Mermaid, Graphviz, ECharts, ABC music notation, flowcharts, Markmap, SMILES, and mind maps. PlantUML needs an explicitly configured service. Content and code themes, app theme colors, and custom CSS control the appearance.
+
+For an individual file, choose **Open With: Markdown Editor** from its project-panel or tab context menu, or run `markdown editor: open` from the command palette. Use `markdown editor: open source` to return to the text editor. The embedded browser runtime is supported on Windows and Linux; this fork currently distributes Windows x64 Beta builds.
+
+### AI Chat screen
+
+- **Super Compact Mode** keeps prompts and settled responses visible while grouping thinking, intermediate messages, and tools into one collapsible **Agent Activity** panel per turn. Open the panel to inspect live output. Approval requests stay visible. Search covers revealed content; expand a panel to search its contents. Response detection is best effort for agents without final-answer markers.
+- **Response controls** copy an answer and navigate to its user prompt, the previous answer, or the top of the conversation. These controls work in normal and compact conversations.
+- **Display options** let you show turn timing, hide the account menu (including its Add account option), and set separate fonts for responses and user messages.
+- **Restored prompts** reconstruct supported serialized file references as mention chips using the captured attachment text, preserving the request even when the original file has changed or disappeared. Malformed wrappers and code examples stay as text.
+
+Super Compact Mode applies to native Agent and external ACP conversations, including already-open conversations, without restarting or changing the stored transcript. Restored prompt formatting and response navigation require no extra setting.
+
+## Configure Markdown and AI Chat
+
+Run `zed: open settings file` from the command palette to edit your user `settings.json`. On Windows, the file is `%APPDATA%\Lathe\settings.json`. Merge the following properties into your existing top-level JSON object; if you already have an `agent` or `markdown_editor` object, add the properties inside it.
+
+This example opens Markdown in WYSIWYG mode, enables compact chat and turn timing, and hides the AI account menu:
+
+```json
+{
+  "markdown_editor": {
+    "default_open_mode": "editor",
+    "mode": "wysiwyg",
+    "image_save_folder": "assets",
+    "use_app_theme_colors": true,
+    "show_line_numbers": true,
+    "default_open_outline": true
+  },
+  "agent": {
+    "super_compact_mode": true,
+    "show_turn_stats": true,
+    "show_ai_account_menu": false
+  },
+  "agent_ui_font_size": 16,
+  "agent_buffer_font_size": 14
+}
+```
+
+### Markdown settings
+
+All keys in this table belong inside `markdown_editor`.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `default_open_mode` | `null` | `"editor"` opens the visual editor, `"source"` the text editor, and `"preview"` the native Markdown preview. When unset or `null`, uses `markdown_preview.open_markdown_files_in_preview`, then falls back to source. |
+| `mode` | `"instant_rendering"` | Initial visual editing mode: `"wysiwyg"`, `"instant_rendering"`, or `"split"`. This is separate from which editor opens the file. |
+| `image_save_folder` | `"assets"` | Image import folder relative to the Markdown document. Use `"${projectRoot}/assets"` for the owning project root. Image paths must remain within that project. |
+| `use_app_theme_colors` | `true` | Match the visual document colors to Lathe's theme. |
+| `show_line_numbers` | `true` | Show source line numbers in instant rendering mode. |
+| `default_open_outline` | `false` | Initially show the document outline. |
+| `content_theme` | `null` | Select a bundled content theme; use the editor's theme picker to see available choices. |
+| `code_theme` | `null` | Select a bundled syntax theme for code blocks. |
+| `custom_css` | `""` | CSS text applied inside the embedded document. |
+| `plantuml_service` | `null` | Trusted HTTP(S) PlantUML server root supporting `/svg/~1<encoded>`, such as `"https://plantuml.example.com"`. PlantUML source is sent to this service; rendering is unavailable while unset. |
+
+The editor remembers each document's mode, outline, wrapping, scroll position, and themes. Saved preferences can override initial settings when reopening a document; run `markdown editor: reset preferences` to reset them. Native Markdown preview settings remain under the separate `markdown_preview` object.
+
+### AI Chat settings
+
+| Key inside `agent` | Default | Purpose |
+| --- | --- | --- |
+| `super_compact_mode` | `false` | Collapse intermediate output into Agent Activity panels; set `false` for normal conversation display. |
+| `show_turn_stats` | `false` | Show elapsed time while generating and the final turn duration, independently of compact mode. |
+| `show_ai_account_menu` | `true` | Show the chat header's account menu, selected account name, and Add account option. Set `false` to hide it. |
+
+Chat typography keys belong at the **top level**, alongside `agent`:
+
+| Top-level key | Default | Purpose |
+| --- | --- | --- |
+| `agent_ui_font_family` | `null` | Response font family; falls back to `ui_font_family`. |
+| `agent_ui_font_size` | `null` | Response font size; falls back to `ui_font_size`. |
+| `agent_buffer_font_family` | `null` | User message font family; falls back to `buffer_font_family`. |
+| `agent_buffer_font_size` | `12` | User message font size. |
 
 ## Install
 
