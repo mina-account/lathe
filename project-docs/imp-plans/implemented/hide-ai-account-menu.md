@@ -2,7 +2,7 @@
 
 Base branch: `main` on `origin` (`mina-account/lathe`).
 
-Status: Implemented and verified on Windows; ready for independent PR review.
+Status: Implemented, independently reviewed, and merged in [PR #15](https://github.com/mina-account/lathe/pull/15). Windows verification is recorded below; native visual acceptance remains manual.
 
 ## Behavior
 

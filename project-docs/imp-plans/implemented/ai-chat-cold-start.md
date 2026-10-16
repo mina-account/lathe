@@ -1,6 +1,6 @@
 # Mini implementation plan: Reduce AI chat cold-start work
 
-Status: Implemented and verified on Windows; ready for independent PR review.
+Status: Implemented, independently reviewed, and merged in [PR #14](https://github.com/mina-account/lathe/pull/14). Windows verification is recorded below.
 Base branch: `main`.
 Validation platform: Windows.
 

@@ -1,5 +1,7 @@
 # Fix Markdown editor dropdown popups
 
+Status: Implemented, independently reviewed, and merged in [PR #16](https://github.com/mina-account/lathe/pull/16). Installed Windows interaction remains for the user's manual acceptance.
+
 Base: `main` in `mina-account/lathe`.
 
 ## Problem and scope
@@ -16,7 +18,7 @@ The installed Markdown editor shows Instant rendering, but clicking its native m
 
 - Run focused Rust unit tests first against an intentionally incomplete implementation to demonstrate expected failures, then run the completed focused suite and existing no-default-feature protocol tests. Use `cargo test --locked -p markdown_editor --no-default-features --lib` (a separate temporary target directory may be used). Confirm callback signatures against the pinned CEF sources, run scoped `rustfmt --check`, and `git diff --check`.
 - Do not run an application build, installer build, installed smoke build, or full application/clippy build. Unit-test compilation is allowed. Avoid CI application builds for this PR using GitHub's commit skip marker, without changing workflow files. Explicitly record that installed Windows mouse interaction is reserved for the user's manual build after merge.
-- Commit this plan as `project-docs/imp-plans/markdown-dropdown-popups.md` with the implementation. Use the imp-wt-loop-1 implementation subagent, PR, independent read-only review/fix loop, and reviewed-head squash merge. Preserve the primary checkout's unrelated local 1.10.4 version bump; do not include it in this fix or discard it.
+- Commit this plan with the implementation. It is now archived at `project-docs/imp-plans/implemented/markdown-dropdown-popups.md`. Use the imp-wt-loop-1 implementation subagent, PR, independent read-only review/fix loop, and reviewed-head squash merge. Preserve the primary checkout's unrelated local 1.10.4 version bump; do not include it in this fix or discard it.
 - Manual acceptance after merge: click the mode dropdown and choose WYSIWYG; click a table cell and use Insert 1 below/above; choose content/code themes; dismiss dropdowns and check that no menu pixels remain. Repeat at normal/high DPI and after resizing. Confirm source text and saved mode are preserved.
 
 ## Implementation evidence

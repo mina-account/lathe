@@ -1,6 +1,6 @@
 # Implementation plan: Super compact AI chat and previous-answer navigation
 
-Status: Proposed implementation plan; no application code implemented.
+Status: Implemented and merged through [PR #5](https://github.com/mina-account/lathe/pull/5), [PR #7](https://github.com/mina-account/lathe/pull/7), [PR #8](https://github.com/mina-account/lathe/pull/8), [PR #9](https://github.com/mina-account/lathe/pull/9), and [PR #10](https://github.com/mina-account/lathe/pull/10). The original checklist below records the planned acceptance scope; this archive status does not claim that every manual performance or platform check was completed.
 Created: 2026-10-12.
 Revised: 2026-10-12, incorporating system architect and product owner feedback.
 Repository baseline: `b58ba5990a`; existing local changes are outside this plan.
@@ -18,15 +18,15 @@ Interpret “one collapsible panel” as one panel for each prompt/response turn
 
 | Existing code | Observed behavior / integration point |
 | --- | --- |
-| [`crates/settings_content/src/agent.rs`](../../crates/settings_content/src/agent.rs) | `AgentSettingsContent.show_turn_stats` is an optional boolean with documented defaults; use the same settings pattern. |
-| [`assets/settings/default.json`](../../assets/settings/default.json) | Supplies `agent.show_turn_stats: false` and other Agent display defaults. |
-| [`crates/agent_settings/src/agent_settings.rs`](../../crates/agent_settings/src/agent_settings.rs) | `AgentSettings` contains resolved display settings; `Settings::from_settings` loads the content fields. |
-| [`crates/acp_thread/src/acp_thread.rs`](../../crates/acp_thread/src/acp_thread.rs) | `AgentThreadEntry` separates user messages, assistant messages, tool calls, elicitations, and context compaction. `AssistantMessageChunk` distinguishes `Message` and `Thought`, but has no universal final-answer discriminator. |
-| [`crates/acp_thread/src/submission.rs`](../../crates/acp_thread/src/submission.rs) | Submission records track receipt acceptance and prompt echoes independently from foreground activity. Keyed message updates in `acp_thread.rs::keyed_message_location` modify existing chunks without moving their transcript position. |
-| [`crates/agent_ui/src/conversation_view/thread_view.rs`](../../crates/agent_ui/src/conversation_view/thread_view.rs) | `render_entry` renders thinking and tools separately. `entry_is_finalized_turn_end` identifies terminal assistant entries. `render_thread_controls` provides response controls, but gates Scroll to Top on `is_thread_bottom`. |
-| [`crates/agent_ui/src/entry_view_state.rs`](../../crates/agent_ui/src/entry_view_state.rs) | Holds thinking/tool expansion and entry resources. `remove` reindexes expansion state after transcript removal. |
-| [`crates/agent_ui/src/conversation_view.rs`](../../crates/agent_ui/src/conversation_view.rs) | Creates the list and synchronizes `NewEntry`, `EntryUpdated`, and `EntriesRemoved`; currently assumes list indexes equal transcript indexes. Contains conversation integration tests. |
-| [`crates/agent_ui/src/conversation_view/thread_search_bar.rs`](../../crates/agent_ui/src/conversation_view/thread_search_bar.rs) | Collects searchable rendered content and activates results by transcript entry index. Thinking and tool contents already respect some expansion state. |
+| [`crates/settings_content/src/agent.rs`](../../../crates/settings_content/src/agent.rs) | `AgentSettingsContent.show_turn_stats` is an optional boolean with documented defaults; use the same settings pattern. |
+| [`assets/settings/default.json`](../../../assets/settings/default.json) | Supplies `agent.show_turn_stats: false` and other Agent display defaults. |
+| [`crates/agent_settings/src/agent_settings.rs`](../../../crates/agent_settings/src/agent_settings.rs) | `AgentSettings` contains resolved display settings; `Settings::from_settings` loads the content fields. |
+| [`crates/acp_thread/src/acp_thread.rs`](../../../crates/acp_thread/src/acp_thread.rs) | `AgentThreadEntry` separates user messages, assistant messages, tool calls, elicitations, and context compaction. `AssistantMessageChunk` distinguishes `Message` and `Thought`, but has no universal final-answer discriminator. |
+| [`crates/acp_thread/src/submission.rs`](../../../crates/acp_thread/src/submission.rs) | Submission records track receipt acceptance and prompt echoes independently from foreground activity. Keyed message updates in `acp_thread.rs::keyed_message_location` modify existing chunks without moving their transcript position. |
+| [`crates/agent_ui/src/conversation_view/thread_view.rs`](../../../crates/agent_ui/src/conversation_view/thread_view.rs) | `render_entry` renders thinking and tools separately. `entry_is_finalized_turn_end` identifies terminal assistant entries. `render_thread_controls` provides response controls, but gates Scroll to Top on `is_thread_bottom`. |
+| [`crates/agent_ui/src/entry_view_state.rs`](../../../crates/agent_ui/src/entry_view_state.rs) | Holds thinking/tool expansion and entry resources. `remove` reindexes expansion state after transcript removal. |
+| [`crates/agent_ui/src/conversation_view.rs`](../../../crates/agent_ui/src/conversation_view.rs) | Creates the list and synchronizes `NewEntry`, `EntryUpdated`, and `EntriesRemoved`; currently assumes list indexes equal transcript indexes. Contains conversation integration tests. |
+| [`crates/agent_ui/src/conversation_view/thread_search_bar.rs`](../../../crates/agent_ui/src/conversation_view/thread_search_bar.rs) | Collects searchable rendered content and activates results by transcript entry index. Thinking and tool contents already respect some expansion state. |
 
 The existing `scroll_output_to_previous_message` action targets user-authored content relative to the viewport. It cannot implement “previous agent answer relative to this answer.” Keep that action's semantics.
 
