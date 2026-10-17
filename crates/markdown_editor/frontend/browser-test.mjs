@@ -624,6 +624,44 @@ test("mode, viewer, outline, Find, wrapping and reset never serialize an authori
     await context.close();
 });
 
+test("top controls support keyboard activation and Find focus without document edits",async()=>{
+    const source="# Heading\n\nWord word WORD\n\n## Second";
+    for(const mode of ['ir','wysiwyg','sv','preview']) {
+        const {page,context}=await open(source,mode);
+        assert(await page.locator('#status').isHidden(),`${mode}: no idle status row`);
+        for(const [selector,result] of [['#outline-toggle',()=>!document.getElementById('outline').hidden],['#wrap',()=>document.body.classList.contains('nowrap')]]) {
+            await page.focus(selector);await page.keyboard.press('Enter');
+            assert.equal(await page.evaluate(result),true,`${mode}/${selector}/Enter`);
+            await page.keyboard.press('Space');
+            assert.equal(await page.evaluate(result),false,`${mode}/${selector}/Space`);
+        }
+        for(const selector of ['#copy-markdown','#copy-html',...(mode==='preview'?[]:['#insert-image'])]) {
+            const kind=selector==='#insert-image'?'pick_images':'copy';
+            const before=await page.evaluate(kind=>window.testMessages.filter(message=>message.kind===kind).length,kind);
+            await page.focus(selector);await page.keyboard.press('Enter');
+            try {await page.waitForFunction(({kind,before})=>window.testMessages.filter(message=>message.kind===kind).length===before+1,{kind,before},{timeout:2000});}
+            catch(error) {throw new Error(`${mode}/${selector}: ${JSON.stringify(await page.evaluate(()=>({status:document.getElementById('status').textContent,messages:window.testMessages})))}`,{cause:error});}
+        }
+        await page.focus('#find-open');await page.keyboard.press('Enter');await page.keyboard.type('word');
+        assert.equal(await page.inputValue('#query'),'word',mode);
+        assert.equal(await page.locator('#count').innerText(),'3 matches',mode);
+        await page.keyboard.press('Enter');assert.equal(await page.locator('#count').innerText(),'1 of 3',mode);
+        await page.keyboard.press('Shift+Enter');assert.equal(await page.locator('#count').innerText(),'3 of 3',mode);
+        await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement.id),'previous',mode);
+        await page.keyboard.press('Enter');assert.equal(await page.locator('#count').innerText(),'2 of 3',mode);
+        await page.keyboard.press('Tab');await page.keyboard.press('Enter');assert.equal(await page.locator('#count').innerText(),'3 of 3',mode);
+        await page.keyboard.press('Tab');await page.keyboard.press('Space');assert.equal(await page.locator('#count').innerText(),'1 matches',mode);
+        await page.keyboard.press('Tab');await page.keyboard.press('Enter');assert(await page.locator('#find').isHidden(),mode);
+        await page.keyboard.press('ControlOrMeta+f');assert.equal(await page.evaluate(()=>document.activeElement.id),'query',mode);
+        await page.keyboard.press('Escape');assert(await page.locator('#find').isHidden(),mode);
+        await page.focus('#reset');await page.keyboard.press('Enter');await page.waitForFunction(()=>window.latheRich.ready&&document.getElementById('mode').value==='ir');
+        assert(await page.locator('#status').isHidden(),`${mode}: reset leaves no idle status row`);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source,mode);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['edit','draft','undo','redo'].includes(message.kind))),false,mode);
+        await context.close();
+    }
+});
+
 test("reference formatting controls edit selected blocks through real Vditor toolbar events",async () => {
     for (const mode of ["ir","wysiwyg","sv"]) for (const [control,expected] of [["bold","**Target**"],["italic","*Target*"],["strike","~~Target~~"],["inline-code","`Target`"],["list","* Target"],["ordered-list","1. Target"],["check","[ ]"],["quote","> Target"],["code","```"],["line","---"],["link","]("],["table","|"]]) {
         const source="Before untouched\n\nTarget\n\nAfter untouched";
@@ -637,6 +675,49 @@ test("reference formatting controls edit selected blocks through real Vditor too
         assert(draft.endsWith("\n\nAfter untouched"),`${mode}/${control} suffix: ${JSON.stringify(draft)}`);
         await context.close();
     }
+});
+
+test("WYSIWYG link popup fields accept repeated typing while preserving surrounding source",async()=>{
+    const source="[Existing](https://existing.invalid)\r\n\r\nBefore intact\r\n\r\nTarget\r\n\r\nAfter intact";
+    const {page,context}=await open(source,'wysiwyg');
+    await selectText(page,'Target');await page.locator('[data-type=link]').first().click();
+    await page.waitForFunction(()=>window.latheMarkdown.pending);await acknowledge(page);
+    for(const [placeholder,text] of [['Link','https://example.invalid/path'],['Tooltip text','A title'],['text(no empty)','Changed label'],['Link','https://second.invalid/updated']]) {
+        await page.getByPlaceholder(placeholder,{exact:true}).click();
+        await page.keyboard.press('ControlOrMeta+A');await page.keyboard.type(text,{delay:25});
+        await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false,placeholder);
+        assert.equal(await page.getByPlaceholder(placeholder,{exact:true}).inputValue(),text,placeholder);
+        const draft=await page.evaluate(()=>window.latheMarkdown.draft);
+        assert(draft.startsWith('[Existing](https://existing.invalid)\r\n\r\nBefore intact\r\n\r\n'),placeholder);
+        assert(draft.endsWith('\r\n\r\nAfter intact'),placeholder);
+        await acknowledge(page);
+    }
+    await page.getByPlaceholder('Link',{exact:true}).click();
+    await page.keyboard.press('Home');await page.keyboard.press('Delete');await page.keyboard.type('h');
+    await page.keyboard.press('End');await page.keyboard.press('Backspace');await page.keyboard.type('d');
+    await page.evaluate(()=>window.latheRich.commit());
+    assert.equal(await page.getByPlaceholder('Link',{exact:true}).inputValue(),'https://second.invalid/updated');
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+    await context.grantPermissions(['clipboard-read','clipboard-write']);
+    await page.evaluate(()=>navigator.clipboard.writeText('https://pasted.invalid/target'));
+    await page.getByPlaceholder('Link',{exact:true}).click();await page.keyboard.press('ControlOrMeta+A');await page.keyboard.press('ControlOrMeta+v');
+    await page.waitForFunction(()=>window.latheMarkdown.draft.includes('pasted.invalid'));
+    await page.evaluate(()=>window.latheRich.commit());
+    assert.equal(await page.getByPlaceholder('Link',{exact:true}).inputValue(),'https://pasted.invalid/target');
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.blocked),false);
+    assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('Target','[Changed label](https://pasted.invalid/target "A title")'));
+    const imports=await page.evaluate(()=>window.testMessages.filter(message=>message.kind==='import_images').length);
+    for(const type of ['paste','drop']) {
+        const prevented=await page.getByPlaceholder('Link',{exact:true}).evaluate((field,type)=>{
+            const data=new DataTransfer();data.items.add(new File([new Uint8Array([1])],'popup.png',{type:'image/png'}));
+            const event=type==='paste'?new ClipboardEvent(type,{clipboardData:data,bubbles:true,cancelable:true}):new DragEvent(type,{dataTransfer:data,bubbles:true,cancelable:true});
+            field.dispatchEvent(event);return event.defaultPrevented;
+        },type);
+        assert.equal(prevented,false,type);
+    }
+    assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==='import_images').length),imports);
+    await context.close();
 });
 
 test("rich HTML/SVG and clipboard HTML stay inert and preserve untouched source",async () => {
@@ -995,6 +1076,27 @@ test("explicit IDs identify actual inline-formatted heading blocks",async()=>{
     }
 });
 
+test("Find accepts keyboard and IME input without changing the document",async()=>{
+    const source="Target word Target 中文😀";
+    for(const mode of ['ir','wysiwyg','sv','preview']) {
+        const {page,context}=await open(source,mode);
+        await page.click('#find-open');
+        await page.keyboard.type('Target');
+        assert.equal(await page.inputValue('#query'),'Target',mode);
+        assert.equal(await page.locator('#count').innerText(),'2 matches',mode);
+        await page.keyboard.press('ControlOrMeta+A');
+        const session=await context.newCDPSession(page);
+        await session.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
+        await session.send('Input.insertText',{text:'中文😀'});
+        assert.equal(await page.inputValue('#query'),'中文😀',mode);
+        assert.equal(await page.locator('#count').innerText(),'1 matches',mode);
+        assert.equal(await page.evaluate(()=>document.activeElement.id),'query',mode);
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source,mode);
+        assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['draft','edit','undo','redo'].includes(message.kind))),false,mode);
+        await context.close();
+    }
+});
+
 test("Unicode case-insensitive Find highlights exact original text ranges",async()=>{
     const source='\u0130 Word \u0130 **WORD** \u{1f600} word \u{10400} End \u039f\u03a3';
     for(const mode of ['ir','wysiwyg','sv','preview']) {
@@ -1302,7 +1404,7 @@ test("successful image resource reload clears only recovered image failures",asy
         await imageResourceReply(page,"assets/b.png",null,png);
         await page.waitForFunction(()=>[...document.querySelectorAll('img')].filter(image=>image.src.startsWith('blob:')&&image.naturalWidth===2).length>=2);
         assert.equal((await imageResourceState(page,"assets/b.png")).error,false);
-        assert.equal((await imageResourceState(page,"assets/b.png")).status,"Markdown Editor");
+        assert.equal((await imageResourceState(page,"assets/b.png")).status,"");
         assert.deepEqual(await page.evaluate(()=>({source:window.latheMarkdown.draft,mutations:window.testMessages.filter(message=>['edit','draft','undo','redo'].includes(message.kind))})),{source,mutations:[]});
         assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="resource").every(message=>typeof message.url==="string"&&message.url.length>0)),true,"all image requests keep their actual destination");
         assert.deepEqual(external,[]);await context.close();
@@ -1319,7 +1421,7 @@ test("image resource retry ignores stale failures and preserves native import no
         await page.waitForFunction(()=>[...document.querySelectorAll('img')].some(image=>image.src.startsWith('blob:')&&image.naturalWidth===2));
         await page.evaluate(stale=>{for(const request of stale)window.latheMarkdown.receive({kind:"resource",request,mime:"",bytes:"",error:"Obsolete missing file"});},stale);
         assert.equal((await imageResourceState(page,"assets/a.png")).error,false,mode+": stale failure must not mark new image");
-        assert.equal((await imageResourceState(page,"assets/a.png")).status,"Markdown Editor");
+        assert.equal((await imageResourceState(page,"assets/a.png")).status,"");
         await page.evaluate(()=>window.latheMarkdown.receive({kind:"resources_reset"}));
         await imageResourceReply(page,"assets/a.png","Current missing file");
         await page.waitForSelector('img.resource-error');
@@ -1332,7 +1434,7 @@ test("image resource retry ignores stale failures and preserves native import no
         await imageResourceReply(page,"assets/a.png","Another current image failure");
         await page.waitForSelector('img.resource-error');
         assert.equal((await imageResourceState(page,"assets/a.png")).status,"Image import failed: permission denied");
-        await page.evaluate(()=>window.latheMarkdown.receive({kind:"notice",text:"Markdown Editor"}));
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:"notice",text:""}));
         assert.match((await imageResourceState(page,"assets/a.png")).status,/Another current image failure/);
         assert.deepEqual(await page.evaluate(()=>({source:window.latheMarkdown.draft,mutations:window.testMessages.filter(message=>['edit','draft','undo','redo'].includes(message.kind))})),{source,mutations:[]});
         assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==="resource").every(message=>typeof message.url==="string"&&message.url.length>0)),true,"all image requests keep their actual destination");

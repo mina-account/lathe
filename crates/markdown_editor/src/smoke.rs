@@ -195,7 +195,7 @@ fn main() { let answer = 42; }
                         loop {
                             cx.background_executor().timer(Duration::from_millis(30)).await;
                             if started.elapsed() > Duration::from_secs(25) { bail!("Real Markdown Item smoke timed out at stage {stage}"); }
-                            let finished = window.update(cx, |item, _, cx| -> Result<bool> {
+                            let finished = window.update(cx, |item, window, cx| -> Result<bool> {
                                 if stage != 8 { if let Some(error) = item.error() { bail!("Markdown Item: {error}"); } }
                                 let text = item.buffer.read(cx).snapshot().text();
                                 if matches!(stage,20|25|26|27|29) && phase_started.elapsed()>Duration::from_millis(200) {
@@ -287,7 +287,44 @@ fn main() { let answer = 42; }
                                     }
                                     29 if phase_started.elapsed() > Duration::from_millis(200) => {
                                         assert_runtime(item,"preview",&text)?;
-                                        item.browser_script("document.getElementById('find-close').click(); window.latheRich.mode('ir')")?; phase_started = Instant::now(); stage = 31;
+                                        gpui::EntityInputHandler::replace_text_in_range(item,None,"mirrored",window,cx);
+                                        phase_started = Instant::now(); stage = 34;
+                                    }
+                                    34 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        item.browser_script("window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({query:document.getElementById('query').value,count:document.getElementById('count').textContent,source:window.latheMarkdown.draft,focused:document.activeElement.id})})")?;
+                                        phase_started = Instant::now(); stage = 35;
+                                    }
+                                    35 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        let find:serde_json::Value=serde_json::from_str(item.copied_text.as_deref().ok_or_else(||anyhow!("Native Find result missing"))?)?;
+                                        if find["query"]!="mirrored" || find["count"]!="1 matches" || find["source"]!=text || find["focused"]!="query" { bail!("Native Find typing failed: {find}"); }
+                                        println!("{}",serde_json::json!({"event":"native_find_typing","passed":true}));
+                                        gpui::Focusable::focus_handle(item,cx).focus(window,cx);
+                                        item.browser_script("document.getElementById('find-close').click();window.latheSmokeOutlineBefore=document.getElementById('outline').hidden;document.getElementById('outline-toggle').focus()")?;
+                                        phase_started = Instant::now(); stage = 36;
+                                    }
+                                    36 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        let handle=gpui::Window::window_handle(window);
+                                        let enter=gpui::Keystroke::parse("enter")?;
+                                        cx.defer(move |cx| {
+                                            if let Err(error)=handle.update(cx,|_,window,cx| {
+                                                window.dispatch_event(gpui::PlatformInput::KeyDown(gpui::KeyDownEvent { keystroke:enter.clone(),is_held:false,prefer_character_input:false }),cx);
+                                                window.dispatch_event(gpui::PlatformInput::KeyUp(gpui::KeyUpEvent { keystroke:enter }),cx);
+                                            }) {
+                                                log::error!("Native Markdown control key dispatch: {error:#}");
+                                            }
+                                        });
+                                        phase_started = Instant::now(); stage = 37;
+                                    }
+                                    37 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        item.browser_script("window.latheMarkdown.emit({kind:'copy',text:JSON.stringify({outlineChanged:document.getElementById('outline').hidden!==window.latheSmokeOutlineBefore,focused:document.activeElement.id})})")?;
+                                        phase_started = Instant::now(); stage = 38;
+                                    }
+                                    38 if phase_started.elapsed() > Duration::from_millis(200) => {
+                                        let control:serde_json::Value=serde_json::from_str(item.copied_text.as_deref().ok_or_else(||anyhow!("Native control result missing"))?)?;
+                                        if control["outlineChanged"]!=true || control["focused"]!="outline-toggle" { bail!("Native control Enter activation failed: {control}"); }
+                                        println!("{}",serde_json::json!({"event":"native_control_enter","passed":true}));
+                                        item.browser_script("if(!document.getElementById('outline').hidden)document.getElementById('outline-toggle').click();window.latheRich.mode('ir')")?;
+                                        phase_started = Instant::now(); stage = 31;
                                     }
                                     31 if item.preferences.mode == markdown_editor::protocol::Mode::Ir && phase_started.elapsed() > Duration::from_millis(200) => {
                                         stage = 6;

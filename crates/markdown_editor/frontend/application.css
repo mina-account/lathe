@@ -3,6 +3,9 @@ body { display:flex; flex-direction:column; }
 [hidden] { display:none !important; }
 #controls, #find { display:flex; gap:6px; align-items:center; padding:6px; flex-wrap:wrap; border-bottom:1px solid #ddd; }
 button, select, input { font:inherit; }
+.icon-button { position:relative; display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; flex-shrink:0; font-size:20px; cursor:pointer; }
+.icon-badge { position:absolute; right:1px; bottom:0; padding:0 1px; background:ButtonFace; color:ButtonText; font:700 9px/11px system-ui,sans-serif; }
+#status:empty { display:none; }
 #status { margin:0; padding:3px 8px; font-size:12px; min-height:16px; }
 main { display:flex; flex:1; min-height:0; }
 #document { flex:1; min-width:0; }
