@@ -85,6 +85,32 @@ mod tests {
     }
 
     #[test]
+    fn enter_sends_the_character_event_needed_to_activate_controls() -> Result<()> {
+        let keystroke = gpui::Keystroke {
+            key: "enter".into(),
+            ..Default::default()
+        };
+        let event = translated_key(&keystroke, KeyEventType::RAWKEYDOWN)?
+            .ok_or_else(|| anyhow!("Missing Enter key event"))?;
+        let character = enter_character_event(&event)
+            .ok_or_else(|| anyhow!("Missing Enter character event"))?;
+        assert_eq!(character.type_, KeyEventType::CHAR);
+        assert_eq!(character.windows_key_code, 13);
+        assert_eq!(character.character, 13);
+        assert_eq!(character.unmodified_character, 13);
+        assert!(enter_character_event(&character).is_none());
+        assert!(
+            enter_character_event(&KeyEvent {
+                type_: KeyEventType::RAWKEYDOWN,
+                windows_key_code: 32,
+                ..Default::default()
+            })
+            .is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
     fn renderer_failure_is_reported_after_queued_recovery_messages_are_drained() {
         let draft = Message::Draft {
             session: "session".into(),
@@ -652,6 +678,7 @@ wrap_app! {
 pub struct Surface {
     pub browser: Browser,
     pub shared: Shared,
+    composing: bool,
 }
 
 impl Surface {
@@ -703,7 +730,11 @@ impl Surface {
         cx.global_mut::<Runtime>()
             .surfaces
             .push((browser.clone(), shared.clone(), item));
-        Ok(Self { browser, shared })
+        Ok(Self {
+            browser,
+            shared,
+            composing: false,
+        })
     }
     pub fn host(&self) -> Result<BrowserHost> {
         self.browser
@@ -788,6 +819,7 @@ impl BrowserSurface for Surface {
     fn focus(&mut self, focused: bool) -> Result<()> {
         if !focused {
             self.host()?.ime_cancel_composition();
+            self.composing = false;
         }
         self.host()?.set_focus(i32::from(focused));
         self.host()?.was_hidden(i32::from(!focused));
@@ -806,8 +838,22 @@ impl BrowserSurface for Surface {
                 })
             })
             .transpose()?;
-        self.host()?
-            .ime_commit_text(Some(&text.into()), range.as_ref(), 0);
+        let host = self.host()?;
+        if self.composing || range.is_some() {
+            host.ime_commit_text(Some(&text.into()), range.as_ref(), 0);
+        } else {
+            // CEF ignores IME commits without a composition in ordinary text inputs.
+            for character in text.encode_utf16() {
+                host.send_key_event(Some(&KeyEvent {
+                    type_: KeyEventType::CHAR,
+                    windows_key_code: i32::from(character),
+                    character,
+                    unmodified_character: character,
+                    ..Default::default()
+                }));
+            }
+        }
+        self.composing = false;
         Ok(())
     }
     fn mark(
@@ -837,10 +883,12 @@ impl BrowserSurface for Surface {
             range.as_ref(),
             Some(&selection),
         );
+        self.composing = true;
         Ok(())
     }
     fn unmark(&mut self) -> Result<()> {
         self.host()?.ime_finish_composing_text(1);
+        self.composing = false;
         Ok(())
     }
     fn caret(&self) -> Option<gpui::Bounds<gpui::Pixels>> {
@@ -859,7 +907,11 @@ impl BrowserSurface for Surface {
         match input {
             gpui::PlatformInput::KeyDown(event) => {
                 if let Some(event) = translated_key(&event.keystroke, KeyEventType::RAWKEYDOWN)? {
-                    self.host()?.send_key_event(Some(&event));
+                    let host = self.host()?;
+                    host.send_key_event(Some(&event));
+                    if let Some(character) = enter_character_event(&event) {
+                        host.send_key_event(Some(&character));
+                    }
                 }
             }
             gpui::PlatformInput::KeyUp(event) => {
@@ -936,6 +988,16 @@ impl BrowserSurface for Surface {
         }
         Ok(())
     }
+}
+
+fn enter_character_event(event: &KeyEvent) -> Option<KeyEvent> {
+    // GPUI filters control characters out of text input, but Chromium activates buttons on Enter's CHAR event.
+    (event.type_ == KeyEventType::RAWKEYDOWN && event.windows_key_code == 13).then(|| KeyEvent {
+        type_: KeyEventType::CHAR,
+        character: 13,
+        unmodified_character: 13,
+        ..event.clone()
+    })
 }
 
 fn check_native_insertion_budget(text: &str) -> Result<()> {

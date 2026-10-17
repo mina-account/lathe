@@ -537,7 +537,7 @@ impl MarkdownEditor {
                     this.asset_notice(error.to_string(), cx);
                 } else if this.error().is_none() {
                     if let Err(error) = this.send(HostMessage::Notice {
-                        text: "Markdown Editor".into(),
+                        text: String::new(),
                     }) {
                         this.asset_notice(error.to_string(), cx);
                     }

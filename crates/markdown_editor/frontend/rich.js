@@ -18,6 +18,7 @@ let latest = "", sourceEditor                             = null;
 let imageCaret                                                    =null;
 let lastSerialized = "";
 const sourceControls = new Map                                               ();
+const popoverScopes = new WeakMap                 ();
 
 let intent                = null;
 const projection = new SourceProjection();
@@ -163,9 +164,9 @@ function requestResource(kind                      ,value       )              {
 }
 function updateImageNotice() {
     for(const [element] of imageFailures)if(!element.isConnected || !renderedRoot().contains(element))imageFailures.delete(element);
-    if(status.textContent!==imageNotice && status.textContent!=="Markdown Editor")return;
+    if(status.textContent!==imageNotice && status.textContent!=="")return;
     imageNotice=[...imageFailures.values()].at(-1) ?? null;
-    status.textContent=imageNotice ?? "Markdown Editor";
+    status.textContent=imageNotice ?? "";
 }
 async function loadImages(root            ) {
     const generation=resourceGeneration;
@@ -450,6 +451,10 @@ function serializeBlock(block        )        { return serializeBlockHtml(block.
 function editableBlocks()           {
     return [...active().children].filter(block=>!["link-ref-defs-block","footnotes-block"].includes(block.getAttribute("data-type") ?? ""));
 }
+function inputScope(target                 )                {
+    if (!(target instanceof Element)) return;
+    return popoverScopes.get(target) ?? (target instanceof HTMLInputElement && active().contains(target) ? target : undefined);
+}
 function initializeEmptyBlock() {
     if (editor.getCurrentMode() === "sv" || editableBlocks().length || preferences.mode === "preview") return;
     const paragraph = document.createElement("p"); paragraph.dataset.block = "0";
@@ -529,7 +534,12 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
         lang:"en_US", icon:false, i18n:(window       ).VditorI18n, cdn:location.origin + "/vendor",
         _lutePath:location.origin + "/vendor/lute.js", width:"100%",height:"100%",minHeight:200,
         cache:{enable:false}, toolbarConfig:{pin:true},
-        customWysiwygToolbar:() => {},
+        customWysiwygToolbar:(_type       ,popover            ) => {
+            const selected=window.getSelection();
+            const scope=editableBlocks().find(block=>block.contains(selected?.anchorNode ?? null));
+            // Popup fields take focus away from the document selection they edit.
+            if(scope)for(const field of popover.querySelectorAll("input,textarea"))popoverScopes.set(field,scope);
+        },
         toolbar:["emoji","headings","bold","italic","strike","link","|","list","ordered-list","check","outdent","indent","|","quote","line","code","inline-code","table","insert-before","insert-after","|",
             {name:"native-undo",tip:"Undo",icon:"Undo",click:() => bridge.history("undo")},
             {name:"native-redo",tip:"Redo",icon:"Redo",click:() => bridge.history("redo")}],
@@ -555,7 +565,7 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
             restoreSelection(selected,oldText); restoreScroll(preferences.scroll);
             applyAppearance(); void loadImages(renderedRoot());
             navigatePendingFragment();
-            status.textContent = bridge.blocked ? "Visual draft retained; use Recover Draft." : "Markdown Editor";
+            status.textContent = bridge.blocked ? "Visual draft retained; use Recover Draft." : "";
             updateFind();
         },
     });
@@ -823,8 +833,7 @@ document.addEventListener("click",event => {
 document.addEventListener("compositionstart",event => { if (container.contains(event.target        ) || get("source-blocks").contains(event.target        )) bridge.composing = true; },true);
 document.addEventListener("mousedown",event => {
     if (!container.contains(event.target        )) return;
-    const target = event.target           ;
-    captureIntent(target instanceof HTMLInputElement && active().contains(target) ? target : undefined);
+    captureIntent(inputScope(event.target));
 },true);
 container.addEventListener("click",() => queueMicrotask(commit));
 container.addEventListener("click",event => {
@@ -851,9 +860,10 @@ document.addEventListener("beforeinput",event => {
     if (input.inputType === "historyUndo" || input.inputType === "historyRedo") {
         event.preventDefault(); event.stopImmediatePropagation(); bridge.history(input.inputType === "historyUndo" ? "undo" : "redo");
     } else if (!bridge.writable || bridge.blocked || preferences.mode === "preview" || input.data && !withinBudget(latest + input.data)) event.preventDefault();
-    else captureIntent(undefined,input.inputType === "deleteContentBackward" ? "backward" : input.inputType === "deleteContentForward" ? "forward" : undefined);
+    else captureIntent(inputScope(event.target),input.inputType === "deleteContentBackward" ? "backward" : input.inputType === "deleteContentForward" ? "forward" : undefined);
 },true);
 document.addEventListener("paste",event => {
+    if(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement && !sourceControls.has(event.target))return;
     const field=event.target instanceof HTMLTextAreaElement && sourceControls.has(event.target) ? event.target : undefined;
     if((container.contains(event.target        ) || field) && event.clipboardData?.files.length) { event.preventDefault();event.stopImmediatePropagation();void importFiles([...event.clipboardData.files],field);return; }
     if (event.target instanceof HTMLTextAreaElement && get("source-blocks").contains(event.target)) {
@@ -875,6 +885,7 @@ document.addEventListener("paste",event => {
     editor.insertValue(markdown); commit();
 },true);
 document.addEventListener("drop",event => {
+    if(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement && !sourceControls.has(event.target))return;
     const field=event.target instanceof HTMLTextAreaElement && sourceControls.has(event.target) ? event.target : undefined;
     if (container.contains(event.target        ) || field) { event.preventDefault(); event.stopImmediatePropagation();if(event.dataTransfer?.files.length)void importFiles([...event.dataTransfer.files],field); }
 },true);
@@ -960,7 +971,7 @@ get("next").addEventListener("click",() => moveFind(1)); get("previous").addEven
 get("find-open").addEventListener("click",openFind); get("find-close").addEventListener("click",closeFind);
 document.addEventListener("keydown",event => {
     const key = event.key.toLowerCase(), command = event.ctrlKey || event.metaKey;
-    if (container.contains(event.target        )) captureIntent(undefined,key === "backspace" ? "backward" : key === "delete" ? "forward" : undefined);
+    if (container.contains(event.target        )) captureIntent(inputScope(event.target),key === "backspace" ? "backward" : key === "delete" ? "forward" : undefined);
     if (command && key === "f") { event.preventDefault(); event.stopImmediatePropagation(); openFind(); }
     else if (command && (key === "z" || key === "y")) { event.preventDefault(); event.stopImmediatePropagation(); bridge.history(event.shiftKey || key === "y" ? "redo" : "undo"); }
     else if (!findBar.hidden && key === "escape") { event.preventDefault(); event.stopImmediatePropagation(); closeFind(); }
