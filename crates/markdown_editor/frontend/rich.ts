@@ -6,8 +6,8 @@ declare const Vditor: any;
 declare const Lute: any;
 declare const DOMPurify: any;
 type Mode = "ir" | "wysiwyg" | "sv" | "preview";
-type Preferences = {mode:Mode;outline:boolean;wrap:boolean;scroll:number;content_theme:string|null;code_theme:string|null};
-const defaults = (): Preferences => ({mode:"ir",outline:false,wrap:true,scroll:0,content_theme:null,code_theme:null});
+type Preferences = {mode:Mode;outline:boolean;wrap:boolean;inline_toolbar:boolean;scroll:number;content_theme:string|null;code_theme:string|null};
+const defaults = (): Preferences => ({mode:"ir",outline:false,wrap:true,inline_toolbar:false,scroll:0,content_theme:null,code_theme:null});
 const applicationControls = new Map([...document.querySelectorAll<HTMLElement>("[id]")].map(element=>[element.id,element]));
 const get = (id: string) => applicationControls.get(id)!;
 const status = get("status");
@@ -136,6 +136,7 @@ bridge.receive = message => {
 
 function applyAppearance() {
     const restore=scrollRestoration();
+    applyInlineToolbar();
     contentStyle.onload=codeStyle.onload=restore;
     const content=preferences.content_theme ?? appearance.content_theme ?? (appearance.dark?"dark":"light");
     const code=preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github");
@@ -153,6 +154,10 @@ function applyAppearance() {
     lineNumbers();
     if(ready && !sourceEditor && !bridge.composing)renderSourceBlocks();
     restore();
+}
+function applyInlineToolbar() {
+    (get("inline-toolbar") as HTMLInputElement).checked=preferences.inline_toolbar;
+    if(editor?.vditor.wysiwyg.popover)editor.vditor.wysiwyg.popover.hidden=!preferences.inline_toolbar;
 }
 function requestResource(kind:"resource"|"plantuml",value:string):Promise<any> {
     if (resources.size>=16) return Promise.reject(new Error("Too many pending image resources."));
@@ -535,14 +540,15 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
         _lutePath:location.origin + "/vendor/lute.js", width:"100%",height:"100%",minHeight:200,
         cache:{enable:false}, toolbarConfig:{pin:true},
         customWysiwygToolbar:(_type:string,popover:HTMLElement) => {
+            popover.hidden=!preferences.inline_toolbar;
             const selected=window.getSelection();
             const scope=editableBlocks().find(block=>block.contains(selected?.anchorNode ?? null));
             // Popup fields take focus away from the document selection they edit.
             if(scope)for(const field of popover.querySelectorAll("input,textarea"))popoverScopes.set(field,scope);
         },
         toolbar:["emoji","headings","bold","italic","strike","link","|","list","ordered-list","check","outdent","indent","|","quote","line","code","inline-code","table","insert-before","insert-after","|",
-            {name:"native-undo",tip:"Undo",icon:"Undo",click:() => bridge.history("undo")},
-            {name:"native-redo",tip:"Redo",icon:"Redo",click:() => bridge.history("redo")}],
+            {name:"native-undo",tip:"Undo",tipPosition:"nw",icon:'<svg><use xlink:href="#vditor-icon-undo"></use></svg>',click:() => bridge.history("undo")},
+            {name:"native-redo",tip:"Redo",tipPosition:"nw",icon:'<svg><use xlink:href="#vditor-icon-redo"></use></svg>',click:() => bridge.history("redo")}],
         preview:{delay:0,mode:"both",actions:[],hljs:{enable:false,lineNumber:false,style:preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github")},
             math:{engine:"KaTeX",inlineDigit:true},
             markdown:{sanitize:true,codeBlockPreview:false,mathBlockPreview:false,footnotes:true,toc:false},
@@ -659,8 +665,9 @@ function renderSourceFence(details:HTMLElement,span:{start:number;end:number}) {
     let output=details.querySelector<HTMLElement>(".renderer-output");
     if (output?.dataset.source===source && (match[1]!=="plantuml" || output.dataset.service===(appearance.plantuml_service ?? ""))) return;
     if (!output) { output=document.createElement("div"); output.className="renderer-output vditor-reset"; details.append(output); }
-    output.dataset.source=source; details.open=true; get("source-blocks").setAttribute("open","");
+    output.dataset.source=source; details.open=true;
     output.dataset.service=appearance.plantuml_service ?? "";
+    if (!document.body.classList.contains("has-renderers")) get("source-blocks").setAttribute("open","");
     document.body.classList.add("has-renderers");
     void renderFence(output,match[1],match[2],plantuml).then(()=>refreshRenderedFind(output!));
 }
@@ -966,11 +973,32 @@ function moveFind(direction:number) {
 }
 function openFind() { findBar.hidden = false; query.focus(); query.select(); updateFind(); }
 function closeFind() { findBar.hidden = true; (CSS as any).highlights?.delete("find"); (CSS as any).highlights?.delete("current-find"); if (preferences.mode !== "preview") editor.focus(); else viewer.focus(); }
+// Native title tooltips are not painted into the offscreen browser surface.
+const controlTooltip=get("control-tooltip");
+function hideControlTooltip() { controlTooltip.hidden=true; }
+for(const control of document.querySelectorAll<HTMLElement>("#controls [aria-label], #find button[aria-label]")) {
+    control.removeAttribute("title");
+    const showTooltip=()=>{
+        if(control.matches(":disabled"))return;
+        controlTooltip.textContent=control.getAttribute("aria-label");
+        controlTooltip.hidden=false;
+        const bounds=control.getBoundingClientRect(),tooltipBounds=controlTooltip.getBoundingClientRect();
+        controlTooltip.style.left=`${Math.max(8,Math.min(bounds.left,innerWidth-tooltipBounds.width-8))}px`;
+        controlTooltip.style.top=`${bounds.bottom+6}px`;
+    };
+    control.addEventListener("pointerenter",showTooltip);
+    control.addEventListener("pointerleave",hideControlTooltip);
+    control.addEventListener("focus",()=>{if(control.matches(":focus-visible"))showTooltip();});
+    control.addEventListener("blur",hideControlTooltip);
+    control.addEventListener("pointerdown",hideControlTooltip);
+}
+window.addEventListener("resize",hideControlTooltip);
 query.addEventListener("input",updateFind); matchCase.addEventListener("change",updateFind);
 get("next").addEventListener("click",() => moveFind(1)); get("previous").addEventListener("click",() => moveFind(-1));
 get("find-open").addEventListener("click",openFind); get("find-close").addEventListener("click",closeFind);
 document.addEventListener("keydown",event => {
     const key = event.key.toLowerCase(), command = event.ctrlKey || event.metaKey;
+    if(key==="escape")hideControlTooltip();
     if (container.contains(event.target as Node)) captureIntent(inputScope(event.target),key === "backspace" ? "backward" : key === "delete" ? "forward" : undefined);
     if (command && key === "f") { event.preventDefault(); event.stopImmediatePropagation(); openFind(); }
     else if (command && (key === "z" || key === "y")) { event.preventDefault(); event.stopImmediatePropagation(); bridge.history(event.shiftKey || key === "y" ? "redo" : "undo"); }
@@ -985,6 +1013,7 @@ document.addEventListener("keydown",event => {
 (get("mode") as HTMLSelectElement).addEventListener("change",event => mode((event.target as HTMLSelectElement).value as Mode));
 get("outline-toggle").addEventListener("click",() => { preferences.outline = !preferences.outline; outline.hidden = !preferences.outline; persist(); renderOutline(); });
 get("wrap").addEventListener("click",() => { preferences.wrap = !preferences.wrap; document.body.classList.toggle("nowrap",!preferences.wrap); persist(); });
+get("inline-toolbar").addEventListener("change",event => { preferences.inline_toolbar=(event.target as HTMLInputElement).checked; applyInlineToolbar(); persist(); });
 get("reset").addEventListener("click",() => {
     if (bridge.composing) return;
     commit(); if (bridge.blocked) return;

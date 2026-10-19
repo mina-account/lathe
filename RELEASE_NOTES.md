@@ -2,6 +2,17 @@
 
 Most recent releases first. Beta releases (`-beta` suffix) ship as GitHub pre-releases and typically batch new features ahead of a stable cut.
 
+## v1.10.11-beta - 2026-10-19
+
+- Added the Markdown visual editor with WYSIWYG, instant rendering, split view, images, math, diagrams, and bundled themes since the previous public Beta.
+- Fixed the Edit Markdown source blocks panel to give space back when collapsed and remain collapsed after renderer updates.
+- Removed the redundant Markdown Editor title row and restored visible Undo and Redo toolbar icons.
+- Added the inline toolbar toggle and visible tooltips for Markdown controls, alongside fixes for mode switching, input, and dropdown popups.
+- Added AI chat display settings and improved restored prompt formatting and startup work since the previous public Beta.
+- [GPUI] Fixed Windows shutdown when the embedded browser consumes the quit message.
+
+Windows x64 Beta only. The installer and portable ZIP include the pinned browser runtime. This local build is unsigned; Windows may show a SmartScreen warning. Installation and update acceptance remain manual checks.
+
 ## v1.10.2-beta - 2026-10-13
 
 - Fixed Lathe update discovery to use mina-account/lathe and compatible setup assets.

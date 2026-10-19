@@ -88,6 +88,7 @@ struct WindowsPlatformInner {
 
 pub(crate) struct WindowsPlatformState {
     callbacks: PlatformCallbacks,
+    quit_requested: Cell<bool>,
     menus: RefCell<Vec<OwnedMenu>>,
     jump_list: RefCell<JumpList>,
     // NOTE: standard cursor handles don't need to close.
@@ -122,6 +123,7 @@ impl WindowsPlatformState {
 
         Self {
             callbacks,
+            quit_requested: Cell::new(false),
             jump_list: RefCell::new(jump_list),
             current_cursor: Cell::new(current_cursor),
             cursor_visible: Arc::new(AtomicBool::new(true)),
@@ -129,6 +131,12 @@ impl WindowsPlatformState {
             directx_devices: RefCell::new(directx_devices),
             menus: RefCell::new(Vec::new()),
         }
+    }
+
+    fn request_quit(&self) {
+        // Embedded message pumps such as CEF can consume WM_QUIT before our main loop sees it.
+        self.quit_requested.set(true);
+        unsafe { PostQuitMessage(0) };
     }
 }
 
@@ -288,7 +296,11 @@ impl WindowsPlatform {
     }
 
     pub(crate) fn window_from_hwnd(&self, hwnd: HWND) -> Option<Rc<WindowsWindowInner>> {
-        self.inner.window_from_hwnd(hwnd)
+        self.raw_window_handles
+            .read()
+            .iter()
+            .find(|entry| entry.as_raw() == hwnd)
+            .and_then(|hwnd| window_from_hwnd(hwnd.as_raw()))
     }
 
     #[inline]
@@ -495,6 +507,22 @@ impl WindowsPlatform {
     }
 }
 
+fn translate_accelerator(msg: &MSG) -> Option<()> {
+    if msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN {
+        return None;
+    }
+
+    let result = unsafe {
+        SendMessageW(
+            msg.hwnd,
+            WM_GPUI_KEYDOWN,
+            Some(msg.wParam),
+            Some(msg.lParam),
+        )
+    };
+    (result.0 == 0).then_some(())
+}
+
 fn encode_restart_arguments(arguments: &[OsString]) -> OsString {
     // `Start-Process` accepts a single native command line, so quote each argument according to
     // the Windows argv parsing rules before passing the complete string through the environment.
@@ -582,8 +610,10 @@ impl Platform for WindowsPlatform {
 
         let mut msg = MSG::default();
         unsafe {
-            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                if !self.inner.translate_accelerator(&msg) {
+            while !self.inner.state.quit_requested.get()
+                && GetMessageW(&mut msg, None, 0, 0).as_bool()
+            {
+                if translate_accelerator(&msg).is_none() {
                     _ = TranslateMessage(&msg);
                     DispatchMessageW(&msg);
                 }
@@ -599,8 +629,9 @@ impl Platform for WindowsPlatform {
     }
 
     fn quit(&self) {
+        let inner = self.inner.clone();
         self.foreground_executor()
-            .spawn(async { unsafe { PostQuitMessage(0) } })
+            .spawn(async move { inner.state.request_quit() })
             .detach();
     }
 
@@ -669,6 +700,7 @@ impl Platform for WindowsPlatform {
             log::error!("failed to restart: PowerShell is unavailable");
             return;
         };
+        let inner = self.inner.clone();
         self.foreground_executor
             .spawn(async move {
                 let mut command = new_std_command(powershell);
@@ -686,7 +718,7 @@ impl Platform for WindowsPlatform {
                 let restart_process = command.spawn();
 
                 match restart_process {
-                    Ok(_) => unsafe { PostQuitMessage(0) },
+                    Ok(_) => inner.state.request_quit(),
                     Err(e) => log::error!("failed to spawn restart script: {:?}", e),
                 }
             })
@@ -965,7 +997,7 @@ impl Platform for WindowsPlatform {
         if self.inner.state.current_cursor.get().map(|c| c.0) != hcursor.map(|c| c.0) {
             self.post_message(
                 WM_GPUI_CURSOR_STYLE_CHANGED,
-                WPARAM(self.inner.validation_number),
+                WPARAM(0),
                 LPARAM(hcursor.map_or(0, |c| c.0 as isize)),
             );
             self.inner.state.current_cursor.set(hcursor);
@@ -1146,24 +1178,6 @@ impl WindowsPlatformInner {
         }))
     }
 
-    fn window_from_hwnd(&self, hwnd: HWND) -> Option<Rc<WindowsWindowInner>> {
-        self.raw_window_handles
-            .upgrade()?
-            .read()
-            .iter()
-            .find(|window| window.as_raw() == hwnd)
-            .and_then(|window| window_from_hwnd(window.as_raw()))
-    }
-
-    fn translate_accelerator(&self, msg: &MSG) -> bool {
-        if msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN {
-            return false;
-        }
-
-        self.window_from_hwnd(msg.hwnd)
-            .is_some_and(|window| window.handle_keydown_msg(msg.wParam, msg.lParam) == Some(0))
-    }
-
     /// Calls `project` to project to the corresponding callback field, removes it from callbacks, calls `f` with the callback and then puts the callback back.
     fn with_callback<T>(
         &self,
@@ -1260,7 +1274,7 @@ impl WindowsPlatformInner {
         // Shutdown couldn't run synchronously, since the AppCell is already borrowed.
         // Windows may terminate the application as soon as we return from this handler, but if we post a WM_QUIT message now,
         // we may get to gracefully shut down the app before we're terminated by the OS.
-        unsafe { PostQuitMessage(0) };
+        self.state.request_quit();
         Some(0)
     }
 
@@ -1293,7 +1307,7 @@ impl WindowsPlatformInner {
                     // if we don't we might not for example process window quit events
                     let mut msg = MSG::default();
                     let process_message = |msg: &_| {
-                        if !self.translate_accelerator(msg) {
+                        if translate_accelerator(msg).is_none() {
                             _ = unsafe { TranslateMessage(msg) };
                             unsafe { DispatchMessageW(msg) };
                         }
@@ -1866,17 +1880,69 @@ unsafe fn username_and_password(credential: &CREDENTIALW) -> Result<(String, Vec
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::{OsStr, OsString};
+    use std::{
+        cell::Cell,
+        ffi::{OsStr, OsString},
+        rc::Rc,
+    };
 
     use crate::{read_from_clipboard, write_to_clipboard};
-    use gpui::ClipboardItem;
+    use gpui::{ClipboardItem, Platform};
     use windows::Win32::Security::Credentials::{
         CRED_PERSIST_SESSION, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW,
         CredWriteW,
     };
     use windows::core::{PCWSTR, PWSTR};
 
-    use super::{encode_restart_arguments, username_and_password};
+    use super::{WindowsPlatform, encode_restart_arguments, username_and_password};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MSG, PM_REMOVE, PeekMessageW, PostQuitMessage, WM_QUIT,
+    };
+
+    #[test]
+    fn test_quit_survives_nested_message_pump() -> anyhow::Result<()> {
+        let platform = Rc::new(WindowsPlatform::new(true)?);
+        let quit_message_consumed = Rc::new(Cell::new(false));
+        let shutdown_called = Rc::new(Cell::new(false));
+        platform.on_quit(Box::new({
+            let shutdown_called = shutdown_called.clone();
+            move || {
+                shutdown_called.set(true);
+                true
+            }
+        }));
+        platform.run(Box::new({
+            let platform = platform.clone();
+            let quit_message_consumed = quit_message_consumed.clone();
+            move || {
+                platform.quit();
+                platform
+                    .foreground_executor()
+                    .spawn(async move {
+                        let mut message = MSG::default();
+                        quit_message_consumed.set(unsafe {
+                            PeekMessageW(&mut message, None, WM_QUIT, WM_QUIT, PM_REMOVE).as_bool()
+                                && message.message == WM_QUIT
+                        });
+                        // Keep a broken event loop from hanging the test after the original quit is consumed.
+                        unsafe { PostQuitMessage(42) };
+                    })
+                    .detach();
+            }
+        }));
+        assert!(quit_message_consumed.get());
+        assert!(shutdown_called.get());
+        let mut message = MSG::default();
+        unsafe {
+            assert!(
+                PeekMessageW(&mut message, None, WM_QUIT, WM_QUIT, PM_REMOVE).as_bool(),
+                "the main loop should exit without consuming the fallback quit message"
+            );
+        }
+        assert_eq!(message.message, WM_QUIT);
+        assert_eq!(message.wParam.0, 42);
+        Ok(())
+    }
 
     #[test]
     fn test_read_credential_with_username() {

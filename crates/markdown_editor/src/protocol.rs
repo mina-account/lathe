@@ -55,6 +55,8 @@ pub struct ViewPreferences {
     pub mode: Mode,
     pub outline: bool,
     pub wrap: bool,
+    #[serde(default)]
+    pub inline_toolbar: bool,
     pub scroll: u32,
     #[serde(default)]
     pub content_theme: Option<String>,
@@ -68,6 +70,7 @@ impl Default for ViewPreferences {
             mode: Mode::Ir,
             outline: false,
             wrap: true,
+            inline_toolbar: false,
             scroll: 0,
             content_theme: None,
             code_theme: None,

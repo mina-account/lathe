@@ -1327,6 +1327,7 @@ mod tests {
             mode: Mode::Ir,
             outline: true,
             wrap: false,
+            inline_toolbar: true,
             scroll: 321,
             content_theme: Some("dark".into()),
             code_theme: Some("monokai".into()),
@@ -3601,6 +3602,7 @@ mod tests {
                 mode: Mode::Sv,
                 outline: true,
                 wrap: false,
+                inline_toolbar: true,
                 scroll: 1234,
                 content_theme: Some("dark".into()),
                 code_theme: Some("monokai".into()),
@@ -3703,6 +3705,7 @@ mod tests {
                     mode: Mode::Wysiwyg,
                     outline: true,
                     wrap: false,
+                    inline_toolbar: true,
                     scroll: 1234,
                     content_theme: Some("dark".into()),
                     code_theme: Some("monokai".into()),
@@ -4170,7 +4173,6 @@ impl Render for MarkdownEditor {
             .on_scroll_wheel(cx.listener(|this, event: &gpui::ScrollWheelEvent, _, cx| {
                 this.input(&gpui::PlatformInput::ScrollWheel(event.clone()), cx)
             }))
-            .child(Label::new("Markdown Editor"))
             .when_some(self.error.clone(), |element, error| {
                 element.child(Label::new(error).color(Color::Error))
             })
