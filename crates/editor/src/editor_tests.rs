@@ -3,7 +3,7 @@ use crate::{
     JoinLines,
     code_context_menus::CodeContextMenu,
     edit_prediction_tests::FakeEditPredictionDelegate,
-    element::{StickyHeader, header_jump_data},
+    element::header::StickyHeader,
     linked_editing_ranges::LinkedEditingRanges,
     mouse_context_menu::MenuPosition,
     runnables::RunnableTasks,
@@ -21842,6 +21842,90 @@ async fn test_formatter_failure_does_not_abort_subsequent_formatters(cx: &mut Te
 }
 
 #[gpui::test]
+async fn test_autosave_sorts_imports_without_removing_them(cx: &mut TestAppContext) {
+    init_test(cx, |settings| {
+        settings.defaults.formatter = Some(FormatterList::Single(Formatter::None));
+        settings.defaults.code_actions_on_format = Some(HashMap::from_iter([
+            ("source.organizeImports".to_string(), true),
+            ("source.removeUnusedImports".to_string(), true),
+        ]));
+    });
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_file(path!("/file.rs"), "fn main() {}\n".into())
+        .await;
+
+    let project = Project::test(fs, [path!("/").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            capabilities: lsp::ServerCapabilities {
+                code_action_provider: Some(lsp::CodeActionProviderCapability::Simple(true)),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    );
+
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/file.rs"), cx)
+        })
+        .await
+        .unwrap();
+
+    let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
+    let (editor, cx) = cx.add_window_view(|window, cx| {
+        build_editor_with_project(project.clone(), buffer, window, cx)
+    });
+
+    let fake_server = fake_servers.next().await.unwrap();
+    let requested_kinds = Arc::new(Mutex::new(Vec::new()));
+    fake_server.set_request_handler::<lsp::request::CodeActionRequest, _, _>({
+        let requested_kinds = requested_kinds.clone();
+        move |params, _| {
+            requested_kinds.lock().extend(
+                params
+                    .context
+                    .only
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|kind| kind.as_str().to_string()),
+            );
+            async move { Ok(None) }
+        }
+    });
+
+    for (trigger, expected_kinds) in [
+        (FormatTrigger::AutoSave, vec!["source.sortImports"]),
+        (
+            FormatTrigger::Save,
+            vec!["source.organizeImports", "source.removeUnusedImports"],
+        ),
+    ] {
+        requested_kinds.lock().clear();
+        editor
+            .update_in(cx, |editor, window, cx| {
+                editor.perform_format(
+                    project.clone(),
+                    trigger,
+                    FormatTarget::Buffers(editor.buffer().read(cx).all_buffers()),
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        let mut kinds = requested_kinds.lock().clone();
+        kinds.sort();
+        assert_eq!(kinds, expected_kinds, "code action kinds for {trigger:?}");
+    }
+}
+
+#[gpui::test]
 async fn test_explicit_formatter_failure_is_recorded(cx: &mut TestAppContext) {
     init_test(cx, |settings| {
         settings.defaults.formatter = Some(FormatterList::Vec(vec![Formatter::LanguageServer(
@@ -26862,112 +26946,6 @@ fn test_editing_disjoint_excerpts(cx: &mut TestAppContext) {
             editor.selections.ranges(&editor.display_snapshot(cx)),
             [Point::new(0, 1)..Point::new(0, 1)]
         );
-    });
-}
-
-#[gpui::test]
-fn test_header_jump_data_uses_selection_excerpt(cx: &mut TestAppContext) {
-    init_test(cx, |_| {});
-
-    // 25-line buffer so excerpts at rows 1, 10, and 20 (each a 1-line range,
-    // expanded by 2 context lines) can't merge into a single excerpt.
-    let buffer_text = (0..25)
-        .map(|row| format!("line {row}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let buffer = cx.new(|cx| Buffer::local(buffer_text, cx));
-    let buffer_id = buffer.read_with(cx, |buffer, _| buffer.remote_id());
-
-    let multibuffer = cx.new(|cx| {
-        let mut multibuffer = MultiBuffer::new(ReadWrite);
-        multibuffer.set_excerpts_for_path(
-            PathKey::sorted(0),
-            buffer.clone(),
-            [
-                Point::new(1, 0)..Point::new(1, 0),
-                Point::new(10, 0)..Point::new(10, 0),
-                Point::new(20, 0)..Point::new(20, 0),
-            ],
-            2,
-            cx,
-        );
-        multibuffer
-    });
-
-    let (editor, cx) = cx.add_window_view(|window, cx| build_editor(multibuffer, window, cx));
-
-    editor.update_in(cx, |editor, window, cx| {
-        let snapshot = editor.snapshot(window, cx);
-        let display_snapshot = editor.display_snapshot(cx);
-
-        // Ensure the three ranges landed in three separate excerpts.
-        let excerpts: Vec<_> = snapshot
-            .buffer_snapshot()
-            .excerpts_for_buffer(buffer_id)
-            .collect();
-        assert_eq!(excerpts.len(), 3);
-
-        // Place the cursor at the start of the third excerpt, expressed in
-        // terms of the underlying buffer.
-        let selection_buffer_row = 20;
-        let buffer_entity = editor.buffer().read(cx).buffer(buffer_id).unwrap();
-        let selection_anchor = editor.buffer().update(cx, |multibuffer, cx| {
-            multibuffer
-                .buffer_point_to_anchor(&buffer_entity, Point::new(selection_buffer_row, 0), cx)
-                .expect("buffer row 20 maps to a multibuffer anchor")
-        });
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_anchor_ranges([selection_anchor..selection_anchor])
-        });
-
-        let mut latest_selection_anchors: HashMap<BufferId, Anchor> = HashMap::default();
-        for selection in editor.selections.all_anchors(&display_snapshot).iter() {
-            let head = selection.head();
-            if let Some((text_anchor, _)) = snapshot.buffer_snapshot().anchor_to_buffer_anchor(head)
-            {
-                latest_selection_anchors.insert(text_anchor.buffer_id, head);
-            }
-        }
-
-        // The sticky buffer header represents the FIRST excerpt of its buffer,
-        // even when the cursor is in a later excerpt. That mismatch is the
-        // precondition for the regression.
-        let first_excerpt = snapshot
-            .buffer_snapshot()
-            .excerpt_boundaries_in_range(MultiBufferOffset(0)..snapshot.buffer_snapshot().len())
-            .next()
-            .expect("multibuffer has at least one excerpt")
-            .next;
-
-        let jump_data = header_jump_data(
-            &snapshot,
-            DisplayRow(0),
-            FILE_HEADER_HEIGHT + MULTI_BUFFER_EXCERPT_HEADER_HEIGHT,
-            &first_excerpt,
-            &latest_selection_anchors,
-        );
-
-        match jump_data {
-            JumpData::MultiBufferPoint {
-                position,
-                line_offset_from_top,
-                ..
-            } => {
-                assert_eq!(
-                    position.row, selection_buffer_row,
-                    "jump should target the cursor's buffer row, not the first excerpt's row"
-                );
-                assert!(
-                    line_offset_from_top < selection_buffer_row,
-                    "line_offset_from_top ({line_offset_from_top}) should be measured from the \
-                     selection's excerpt, not the first excerpt; expected less than \
-                     selection_buffer_row ({selection_buffer_row})"
-                );
-            }
-            JumpData::MultiBufferRow { .. } => {
-                panic!("expected MultiBufferPoint jump data when a selection is present")
-            }
-        }
     });
 }
 

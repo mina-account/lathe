@@ -4040,7 +4040,7 @@ fn search_and_files_page() -> SettingsPage {
         ]
     }
 
-    fn file_finder_section() -> [SettingsPageItem; 5] {
+    fn file_finder_section() -> [SettingsPageItem; 6] {
         [
             SettingsPageItem::SectionHeader("File Finder"),
             // todo: null by default

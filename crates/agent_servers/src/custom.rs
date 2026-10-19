@@ -1,10 +1,11 @@
 use crate::{AgentServer, AgentServerDelegate, load_proxy_env};
-use acp_thread::AgentConnection;
+use acp_thread::{AgentConnection, AgentModelId};
 use agent_client_protocol::schema::v2 as acp_v2;
+use ai_accounts::{AiAccountsSettings, WorkspaceAccountBindings, api_key_keychain_url, load_index};
 use anyhow::{Context as _, Result};
 use collections::HashSet;
 use fs::Fs;
-use gpui::{App, AppContext as _, Entity, Task};
+use gpui::{App, AppContext as _, Entity, EntityId, Task};
 use language_model::{ApiKey, EnvVar, GOOGLE_AI_API_URL};
 use project::{
     Project,
@@ -18,6 +19,8 @@ pub const GEMINI_ID: &str = "gemini";
 pub const CLAUDE_AGENT_ID: &str = "claude-acp";
 pub const CODEX_ID: &str = "codex-acp";
 pub const CURSOR_ID: &str = "cursor";
+
+const DEFAULT_MODEL_CONFIG_OPTION_ID: &str = "lathe.default_model";
 
 /// A generic agent server implementation for custom user-defined agents
 pub struct CustomAgentServer {
@@ -147,6 +150,54 @@ impl AgentServer for CustomAgentServer {
         });
     }
 
+    fn default_model(&self, cx: &App) -> Option<AgentModelId> {
+        cx.read_global(|settings: &SettingsStore, _| {
+            settings
+                .get::<AllAgentServersSettings>(None)
+                .get(self.agent_id().0.as_ref())
+                .and_then(|settings| settings.default_config_option(DEFAULT_MODEL_CONFIG_OPTION_ID))
+                .and_then(AgentConfigOptionValue::as_value_id)
+                .map(AgentModelId::from)
+        })
+    }
+
+    fn set_default_model(&self, model_id: Option<AgentModelId>, fs: Arc<dyn Fs>, cx: &mut App) {
+        self.set_default_config_option(
+            DEFAULT_MODEL_CONFIG_OPTION_ID,
+            model_id.map(|model_id| AgentConfigOptionValue::from(model_id.to_string())),
+            fs,
+            cx,
+        );
+    }
+
+    fn default_approval(&self, cx: &App) -> Option<String> {
+        cx.read_global(|settings: &SettingsStore, _| {
+            settings
+                .get::<AllAgentServersSettings>(None)
+                .get(self.agent_id().0.as_ref())
+                .and_then(|s| s.approval())
+                .map(|level| level.to_string())
+        })
+    }
+
+    fn set_default_approval(&self, level: Option<String>, fs: Arc<dyn Fs>, cx: &mut App) {
+        let agent_id = self.agent_id();
+        update_settings_file(fs, cx, move |settings, _cx| {
+            let settings = settings
+                .agent_servers
+                .get_or_insert_default()
+                .entry(agent_id.0.to_string())
+                .or_insert_with(default_settings_for_agent);
+
+            match settings {
+                settings::CustomAgentServerSettings::Custom { approval, .. }
+                | settings::CustomAgentServerSettings::Registry { approval, .. } => {
+                    *approval = level;
+                }
+            }
+        });
+    }
+
     fn default_config_option(&self, config_id: &str, cx: &App) -> Option<AgentConfigOptionValue> {
         let settings = cx.read_global(|settings: &SettingsStore, _| {
             settings
@@ -203,6 +254,7 @@ impl AgentServer for CustomAgentServer {
     ) -> Task<Result<Rc<dyn AgentConnection>>> {
         let agent_id = self.agent_id();
         let default_mode = self.default_mode(cx);
+        let default_approval = self.default_approval(cx);
         let is_registry_agent = is_registry_agent(agent_id.clone(), cx);
         let default_config_options = cx.read_global(|settings: &SettingsStore, _| {
             settings
@@ -250,11 +302,35 @@ impl AgentServer for CustomAgentServer {
                 _ => {}
             }
         }
+        let extra_args = if is_registry_agent {
+            default_approval
+                .as_deref()
+                .map(|level| approval_args(agent_id.as_ref(), level))
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let store = delegate.store.downgrade();
+        let project_id = project.entity_id();
         cx.spawn(async move |cx| {
             if is_registry_agent && agent_id.as_ref() == GEMINI_ID {
-                if let Some(api_key) = cx.update(api_key_for_gemini_cli).await.ok() {
-                    extra_env.insert("GEMINI_API_KEY".into(), api_key);
+                match cx.update(|cx| api_key_for_gemini_cli(project_id, cx)).await {
+                    Ok(api_key) => {
+                        // Confirm injection positively (length only, never the
+                        // key) so the log distinguishes "key was injected" from
+                        // the warning paths above.
+                        log::info!(
+                            "gemini: injected GEMINI_API_KEY ({} chars) into the subprocess env",
+                            api_key.len()
+                        );
+                        extra_env.insert("GEMINI_API_KEY".into(), api_key);
+                    }
+                    // Surface why the key is missing instead of silently dropping
+                    // it: without GEMINI_API_KEY the Gemini CLI falls back to
+                    // OAuth ("Login with Google") and reports auth-required / 401.
+                    Err(error) => log::warn!(
+                        "gemini: no API key injected, the CLI will fail to authenticate: {error:#}"
+                    ),
                 }
             }
             let command = store
@@ -268,7 +344,7 @@ impl AgentServer for CustomAgentServer {
                     if let Some(loading_status_tx) = delegate.loading_status {
                         agent.set_loading_status_tx(loading_status_tx);
                     }
-                    anyhow::Ok(agent.get_command(vec![], extra_env, &mut cx.to_async()))
+                    anyhow::Ok(agent.get_command(extra_args, extra_env, &mut cx.to_async()))
                 })??
                 .await?;
             let connection = crate::acp::connect(
@@ -290,20 +366,54 @@ impl AgentServer for CustomAgentServer {
     }
 }
 
-fn api_key_for_gemini_cli(cx: &mut App) -> Task<Result<String>> {
+fn api_key_for_gemini_cli(project: EntityId, cx: &mut App) -> Task<Result<String>> {
+    // Prefer the key the user saved for the workspace-bound Gemini account, so
+    // each AI account carries its own AI Studio key. Fall back to an ambient
+    // env var, then a legacy global keychain entry, so setups that predate
+    // per-account keys keep working.
+    let workspace_binding = WorkspaceAccountBindings::binding_for(project, GEMINI_ID, cx);
+    let account_url = cx
+        .try_global::<SettingsStore>()
+        .map(|store| store.get::<AiAccountsSettings>(None).clone())
+        .and_then(|settings| {
+            settings
+                .resolve_account(GEMINI_ID, workspace_binding.as_deref(), &load_index())
+                .map(|account| api_key_keychain_url(&account.agent_id, &account.id))
+        });
+
     let env_var = EnvVar::new("GEMINI_API_KEY".into()).or(EnvVar::new("GOOGLE_AI_API_KEY".into()));
-    if let Some(key) = env_var.value {
-        return Task::ready(Ok(key));
-    }
     let credentials_provider = zed_credentials_provider::global(cx);
-    let api_url = GOOGLE_AI_API_URL.to_string();
+    let global_url = GOOGLE_AI_API_URL.to_string();
+
     cx.spawn(async move |cx| {
-        Ok(
-            ApiKey::load_from_system_keychain(&api_url, credentials_provider.as_ref(), cx)
-                .await?
-                .key()
-                .to_string(),
-        )
+        if let Some(url) = account_url {
+            match ApiKey::load_from_system_keychain(&url, credentials_provider.as_ref(), cx).await {
+                Ok(api_key) => return Ok(api_key.key().to_string()),
+                // Log instead of swallowing: a keychain miss here (e.g. a Dev
+                // build reading the file-backed credentials store while the key
+                // was written to the system keychain) is the difference between
+                // a working agent and a silent OAuth fallback.
+                Err(error) => log::warn!(
+                    "gemini: failed to load the per-account API key from the keychain ({url}): {error}"
+                ),
+            }
+        } else {
+            log::warn!(
+                "gemini: no AI account resolved for this workspace, so no per-account API key could be loaded"
+            );
+        }
+        if let Some(key) = env_var.value {
+            return Ok(key);
+        }
+        ApiKey::load_from_system_keychain(&global_url, credentials_provider.as_ref(), cx)
+            .await
+            .map(|api_key| api_key.key().to_string())
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "no Gemini API key available (per-account keychain and GEMINI_API_KEY env both \
+                     unavailable; legacy global keychain at {global_url} failed: {error})"
+                )
+            })
     })
 }
 
@@ -329,10 +439,45 @@ fn is_registry_agent(agent_id: impl Into<AgentId>, cx: &App) -> bool {
 fn default_settings_for_agent() -> settings::CustomAgentServerSettings {
     settings::CustomAgentServerSettings::Registry {
         default_mode: None,
+        approval: None,
         env: Default::default(),
         default_config_options: Default::default(),
         favorite_config_option_values: Default::default(),
     }
+}
+
+/// Translate a stored approval level into the CLI flags to launch the agent with.
+///
+/// The valid levels differ per agent and are the ones offered by the approval
+/// selector in the agent panel. An unknown agent or level yields no flags, so the
+/// agent falls back to its own default behaviour.
+fn approval_args(agent_id: &str, level: &str) -> Vec<String> {
+    match agent_id {
+        CODEX_ID => match level {
+            "read_only" => codex_config_args("on-request", "read-only"),
+            "auto" => codex_config_args("on-failure", "workspace-write"),
+            "full_access" => codex_config_args("never", "danger-full-access"),
+            _ => Vec::new(),
+        },
+        GEMINI_ID => match level {
+            "default" | "auto_edit" | "yolo" => {
+                vec!["--approval-mode".to_string(), level.to_string()]
+            }
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+/// Codex reads approval and sandbox policy from `config.toml`; `-c key=value`
+/// overrides those at launch. Values are quoted so codex parses them as TOML strings.
+fn codex_config_args(approval_policy: &str, sandbox_mode: &str) -> Vec<String> {
+    vec![
+        "-c".to_string(),
+        format!("approval_policy=\"{approval_policy}\""),
+        "-c".to_string(),
+        format!("sandbox_mode=\"{sandbox_mode}\""),
+    ]
 }
 
 #[cfg(test)]
@@ -351,6 +496,36 @@ mod tests {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
         });
+    }
+
+    #[test]
+    fn approval_args_maps_levels_to_flags() {
+        assert_eq!(
+            approval_args(CODEX_ID, "full_access"),
+            vec![
+                "-c",
+                "approval_policy=\"never\"",
+                "-c",
+                "sandbox_mode=\"danger-full-access\"",
+            ]
+        );
+        assert_eq!(
+            approval_args(CODEX_ID, "read_only"),
+            vec![
+                "-c",
+                "approval_policy=\"on-request\"",
+                "-c",
+                "sandbox_mode=\"read-only\"",
+            ]
+        );
+        assert_eq!(
+            approval_args(GEMINI_ID, "yolo"),
+            vec!["--approval-mode", "yolo"]
+        );
+
+        // Unknown agent or level yields no flags (agent uses its own default).
+        assert!(approval_args(CODEX_ID, "bogus").is_empty());
+        assert!(approval_args("other-agent", "full_access").is_empty());
     }
 
     fn init_registry_with_agents(cx: &mut TestAppContext, agent_ids: &[&str]) {
@@ -425,6 +600,7 @@ mod tests {
                 settings::CustomAgentServerSettings::Registry {
                     env: HashMap::default(),
                     default_mode: None,
+                    approval: None,
                     default_config_options: HashMap::default(),
                     favorite_config_option_values: HashMap::default(),
                 },

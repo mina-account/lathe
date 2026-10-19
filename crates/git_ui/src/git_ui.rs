@@ -2,9 +2,11 @@ use anyhow::anyhow;
 use commit_modal::CommitModal;
 use editor::{Editor, actions::DiffClipboardWithSelectionData};
 
+use project::ProjectPath;
 use workspace::{Toast, notifications::NotificationId};
 
 mod blame_ui;
+mod branch_status_indicator;
 pub mod clone;
 
 use git::{
@@ -31,28 +33,40 @@ use zed_actions;
 
 use crate::{
     commit_view::CommitView,
-    git_panel::{GitPanel, GitStatusEntry, RemoteOperationKind},
+    git_panel::{GitStatusEntry, RemoteOperationKind},
     solo_diff_view::SoloDiffView,
     text_diff_view::TextDiffView,
 };
 
 pub mod branch_diff;
 pub mod branch_picker;
-mod commit_context_menu;
+pub mod commit_context_menu;
 mod commit_modal;
 pub mod commit_tooltip;
 pub mod commit_view;
+pub mod conflict_resolution;
 mod conflict_view;
 mod diff_multibuffer;
-pub mod git_graph;
+pub mod file_history_view;
+pub mod git_activity_panel;
+pub mod git_flow;
 pub mod git_panel;
+pub use git_panel::{Event as GitPanelEvent, GitPanel};
+pub mod branch_from_commit_modal;
+pub mod interactive_rebase_modal;
+pub mod merge_editor_view;
+pub mod rebase_confirm_modal;
+// PR view + panel live in the dedicated `pr_ui` crate now; zed.rs takes care
+// of registration. We intentionally do NOT re-export from here to avoid a
+// reverse dependency on `pr_ui`.
 mod git_panel_settings;
 pub mod git_picker;
-mod git_runtime_diagnostics;
 pub mod multi_diff_view;
+pub mod new_panel_settings;
 pub mod picker_prompt;
 pub mod project_diff;
 pub(crate) mod remote_output;
+// `repository_dashboard_panel` was folded into the git panel's repos strip.
 pub mod repository_selector;
 pub mod solo_diff_view;
 pub mod staged_diff;
@@ -61,12 +75,12 @@ pub mod text_diff_view;
 pub mod unstaged_diff;
 
 pub use blame_ui::GitBlameStatus;
+pub use branch_status_indicator::BranchStatusIndicator;
 pub use conflict_view::MergeConflictIndicator;
 
 pub fn init(cx: &mut App) {
     editor::set_blame_renderer(blame_ui::GitBlameRenderer, cx);
     commit_view::init(cx);
-    git_graph::init(cx);
 
     git_ui_core::set_branch_picker_builder(
         |workspace, repository, window, cx| {
@@ -85,18 +99,20 @@ pub fn init(cx: &mut App) {
 
     git_ui_core::set_file_history_opener(
         |workspace, project_path, window, cx| {
-            let Some((repo_id, log_source)) =
-                git_graph::resolve_file_history_target_from_project_path(
-                    workspace,
-                    project_path,
-                    cx,
-                )
+            let git_store = workspace.project().read(cx).git_store().clone();
+            let Some((repo, repo_path)) = git_store
+                .read(cx)
+                .repository_and_path_for_project_path(project_path, cx)
             else {
                 return;
             };
-            let git_store = workspace.project().read(cx).git_store().clone();
-            git_graph::open_or_reuse_graph(
-                workspace, repo_id, git_store, log_source, None, window, cx,
+            file_history_view::FileHistoryView::open(
+                repo_path,
+                git_store.downgrade(),
+                repo.downgrade(),
+                workspace.weak_handle(),
+                window,
+                cx,
             );
         },
         cx,
@@ -114,8 +130,39 @@ pub fn init(cx: &mut App) {
         branch_diff::BranchDiff::register(workspace, cx);
         CommitModal::register(workspace);
         git_panel::register(workspace);
+        git_activity_panel::register(workspace);
+        git_flow::register(workspace);
+        // Repository dashboard now lives inline in the git panel's repos strip.
         repository_selector::register(workspace);
         git_picker::register(workspace);
+        // PR panel + picker are registered from zed.rs (in the `pr_ui` crate).
+
+        workspace.register_action(|workspace, _: &git::ResolveConflicts, window, cx| {
+            let Some(repository) =
+                workspace
+                    .project()
+                    .read(cx)
+                    .active_repository(cx)
+                    .or_else(|| {
+                        workspace
+                            .project()
+                            .read(cx)
+                            .git_store()
+                            .read(cx)
+                            .repositories()
+                            .values()
+                            .next()
+                            .cloned()
+                    })
+            else {
+                return;
+            };
+            conflict_resolution::open_conflict_resolution(cx.entity(), repository, window, cx);
+        });
+
+        workspace.register_action(|workspace, _: &git::OpenMergeEditor, window, cx| {
+            merge_editor_view::open_merge_editor_for_active_item(workspace, window, cx);
+        });
 
         workspace.register_action(
             |workspace, action: &zed_actions::CreateWorktree, window, cx| {
@@ -208,6 +255,49 @@ pub fn init(cx: &mut App) {
                 panel.update(cx, |panel, cx| {
                     panel.fetch(false, window, cx);
                 });
+            });
+            workspace.register_action(|workspace, _: &git::FetchAllRepositories, window, cx| {
+                let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                    return;
+                };
+                panel.update(cx, |panel, cx| {
+                    panel.fetch_all_repositories(window, cx);
+                });
+            });
+            workspace.register_action(|workspace, _: &git::PullAllRepositories, window, cx| {
+                let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                    return;
+                };
+                panel.update(cx, |panel, cx| {
+                    panel.pull_all_repositories(window, cx);
+                });
+            });
+            workspace.register_action(|workspace, _: &git::SubmoduleUpdate, _window, cx| {
+                if let Some(repo) = workspace.project().read(cx).active_repository(cx) {
+                    let receiver = repo.update(cx, |repo, _| repo.submodule_update());
+                    cx.spawn(async move |_, _| {
+                        let _ = receiver.await;
+                    })
+                    .detach();
+                }
+            });
+            workspace.register_action(|workspace, _: &git::LfsFetch, _window, cx| {
+                if let Some(repo) = workspace.project().read(cx).active_repository(cx) {
+                    let receiver = repo.update(cx, |repo, _| repo.lfs_fetch());
+                    cx.spawn(async move |_, _| {
+                        let _ = receiver.await;
+                    })
+                    .detach();
+                }
+            });
+            workspace.register_action(|workspace, _: &git::LfsPull, _window, cx| {
+                if let Some(repo) = workspace.project().read(cx).active_repository(cx) {
+                    let receiver = repo.update(cx, |repo, _| repo.lfs_pull());
+                    cx.spawn(async move |_, _| {
+                        let _ = receiver.await;
+                    })
+                    .detach();
+                }
             });
             workspace.register_action(|workspace, _: &git::Push, window, cx| {
                 let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
@@ -368,6 +458,41 @@ pub fn init(cx: &mut App) {
                 };
             },
         );
+        workspace.register_action(|workspace, _: &git::FileHistory, window, cx| {
+            let Some(active_item) = workspace.active_item(cx) else {
+                return;
+            };
+            let Some(editor) = active_item.downcast::<Editor>() else {
+                return;
+            };
+            let Some(buffer) = editor.read(cx).buffer().read(cx).as_singleton() else {
+                return;
+            };
+            let Some(file) = buffer.read(cx).file() else {
+                return;
+            };
+            let worktree_id = file.worktree_id(cx);
+            let project_path = ProjectPath {
+                worktree_id,
+                path: file.path().clone(),
+            };
+            let project = workspace.project();
+            let git_store = project.read(cx).git_store();
+            let Some((repo, repo_path)) = git_store
+                .read(cx)
+                .repository_and_path_for_project_path(&project_path, cx)
+            else {
+                return;
+            };
+            file_history_view::FileHistoryView::open(
+                repo_path,
+                git_store.downgrade(),
+                repo.downgrade(),
+                workspace.weak_handle(),
+                window,
+                cx,
+            );
+        });
     })
     .detach();
 }
@@ -941,7 +1066,7 @@ fn show_ref_picker(
     });
 }
 
-fn render_remote_button(
+pub(crate) fn render_remote_button(
     id: impl Into<SharedString>,
     branch: &Branch,
     keybinding_target: Option<FocusHandle>,

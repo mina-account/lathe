@@ -8872,10 +8872,9 @@ async fn test_unrelated_settings_change_does_not_resolve_pending_authorization(
     assert!(!result.is_error);
 }
 
-/// Approving one pending tool call with "Always for <tool A>" must not
-/// dismiss a sibling pending authorization for a *different* tool: the
-/// persisted rule is scoped to tool A, so tool B's prompt stays visible
-/// and waits for the user.
+/// Approving one tool call with "Always for <tool A>" must not grant a
+/// different tool: the persisted rule is scoped to tool A, so tool B still
+/// prompts for a user decision.
 #[gpui::test]
 async fn test_always_allow_does_not_resolve_unrelated_tool_authorization(cx: &mut TestAppContext) {
     let ThreadTest {
@@ -8894,46 +8893,29 @@ async fn test_always_allow_does_not_resolve_unrelated_tool_authorization(cx: &mu
         .unwrap();
     cx.run_until_parked();
 
-    // Two parallel tool calls, each for a distinct tool with its own
-    // permission scope.
-    for (id, name) in [
-        ("tool_id_1", ToolRequiringPermission::NAME),
-        ("tool_id_2", ToolRequiringPermission2::NAME),
-    ] {
-        fake.send_last_event(
-            &model,
-            LanguageModelCompletionEvent::ToolUse(LanguageModelToolUse {
-                id: id.into(),
-                name: name.into(),
-                raw_input: "{}".into(),
-                input: language_model::LanguageModelToolUseInput::Json(json!({})),
-                is_input_complete: true,
-                thought_signature: None,
-            }),
-        );
-    }
+    fake.send_last_event(
+        &model,
+        LanguageModelCompletionEvent::ToolUse(LanguageModelToolUse {
+            id: "tool_id_1".into(),
+            name: ToolRequiringPermission::NAME.into(),
+            raw_input: "{}".into(),
+            input: language_model::LanguageModelToolUseInput::Json(json!({})),
+            is_input_complete: true,
+            thought_signature: None,
+        }),
+    );
     fake.end_last(&model);
 
-    let auth_a = next_tool_call_authorization(&mut events).await;
-    let auth_b = next_tool_call_authorization(&mut events).await;
-
-    // Match prompts back to their originating tools via the authorization
-    // context so the test doesn't depend on scheduling order.
-    let (auth_for_tool_1, auth_for_tool_2) = {
-        let a_name = auth_a
+    let auth_for_tool_1 = next_tool_call_authorization(&mut events).await;
+    assert_eq!(
+        auth_for_tool_1
             .context
             .as_ref()
             .expect("settings-driven authorization must carry a context")
-            .tool_name
-            .clone();
-        if a_name == ToolRequiringPermission::NAME {
-            (auth_a, auth_b)
-        } else {
-            (auth_b, auth_a)
-        }
-    };
+            .tool_name,
+        ToolRequiringPermission::NAME
+    );
 
-    // Approve tool 1 with "always allow". Only tool 1's rule is persisted.
     auth_for_tool_1
         .response
         .send(acp_thread::SelectedPermissionOutcome::new(
@@ -8943,36 +8925,83 @@ async fn test_always_allow_does_not_resolve_unrelated_tool_authorization(cx: &mu
         .unwrap();
     cx.run_until_parked();
 
-    // Tool 2's receiver must still be alive: its permission is unrelated
-    // to the rule that was just added, so its prompt stays pending.
+    let completion = fake.pending_completions().pop().unwrap();
+    let message = completion.messages.last().unwrap();
+    let result = message
+        .content
+        .iter()
+        .find_map(|content| match content {
+            language_model::MessageContent::ToolResult(result) => Some(result),
+            _ => None,
+        })
+        .expect("expected tool 1 result");
+    assert!(!result.is_error, "tool 1 should have been allowed");
+
+    fake.send_last_event(
+        &model,
+        LanguageModelCompletionEvent::Stop(StopReason::EndTurn),
+    );
+    fake.end_last(&model);
+    cx.run_until_parked();
+
+    let mut events = thread
+        .update(cx, |thread, cx| {
+            thread.send(ClientUserMessageId::new(), ["def"], cx)
+        })
+        .unwrap();
+    cx.run_until_parked();
+    let completion = fake.pending_completions().pop().unwrap();
+    assert!(
+        tool_names_for_completion(&completion).contains(&ToolRequiringPermission2::NAME.into()),
+        "fresh turn should expose tool 2"
+    );
+
+    fake.send_event(
+        &model,
+        &completion,
+        LanguageModelCompletionEvent::ToolUse(LanguageModelToolUse {
+            id: "tool_id_2".into(),
+            name: ToolRequiringPermission2::NAME.into(),
+            raw_input: "{}".into(),
+            input: language_model::LanguageModelToolUseInput::Json(json!({})),
+            is_input_complete: true,
+            thought_signature: None,
+        }),
+    );
+    fake.end_stream(&model, &completion);
+
+    let auth_for_tool_2 = next_tool_call_authorization(&mut events).await;
+    assert_eq!(
+        auth_for_tool_2
+            .context
+            .as_ref()
+            .expect("settings-driven authorization must carry a context")
+            .tool_name,
+        ToolRequiringPermission2::NAME
+    );
+
     auth_for_tool_2
         .response
         .send(acp_thread::SelectedPermissionOutcome::new(
             acp_v2::PermissionOptionId::new("allow"),
             acp_v2::PermissionOptionKind::AllowOnce,
         ))
-        .expect("tool 2's response receiver should still be alive");
+        .expect("tool 2 should still require a user decision");
     cx.run_until_parked();
 
     let completion = fake.pending_completions().pop().unwrap();
     let message = completion.messages.last().unwrap();
-    let results: Vec<_> = message
+    let result = message
         .content
         .iter()
-        .filter_map(|c| match c {
-            language_model::MessageContent::ToolResult(r) => Some(r),
+        .find_map(|content| match content {
+            language_model::MessageContent::ToolResult(result) => Some(result),
             _ => None,
         })
-        .collect();
-    assert_eq!(
-        results.len(),
-        2,
-        "both tool calls should have produced results"
-    );
+        .expect("expected tool 2 result");
     assert!(
-        results.iter().all(|r| !r.is_error),
-        "both results should be successful, got: {:?}",
-        results
+        !result.is_error,
+        "tool 2 should succeed after explicit allow once"
     );
 }
 

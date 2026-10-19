@@ -1,7 +1,7 @@
 use crate::{
     Anchor, DisplayPoint, Editor, EditorSettings, EditorSnapshot, FindAllReferences,
-    GotoDefinitionKind, HighlightKey, Navigated, PointForPosition, SelectPhase,
-    editor_settings::GoToDefinitionFallback, scroll::ScrollAmount,
+    GoToDefinition, GoToTypeDefinition, GotoDefinitionKind, HighlightKey, Navigated,
+    PointForPosition, SelectPhase, editor_settings::GoToDefinitionFallback, scroll::ScrollAmount,
 };
 use gpui::{
     Action, App, AsyncWindowContext, Context, Entity, Focusable, HighlightStyle, Modifiers, Pixels,
@@ -230,6 +230,9 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Editor>,
     ) {
+        if self.peek_hovered_link(point, modifiers, window, cx) {
+            return;
+        }
         let kind = if modifiers.shift {
             GotoDefinitionKind::Type
         } else {
@@ -389,6 +392,70 @@ impl Editor {
         } else {
             false
         }
+    }
+
+    /// When LSP results are shown in a peek, a cmd-click shows its target inline
+    /// instead of navigating to it, so the click does not take the user out of
+    /// the file they are reading. Handing off to the navigation action rather
+    /// than reusing the already-resolved hover links costs a second LSP request,
+    /// but keeps the peek's plumbing in one place: the action handler.
+    ///
+    /// Alt-cmd-click is left alone. Splitting the pane is a navigation by
+    /// definition, so there is nothing for a peek to do there.
+    ///
+    /// Returns whether the click was handled.
+    fn peek_hovered_link(
+        &mut self,
+        point: PointForPosition,
+        modifiers: Modifiers,
+        window: &mut Window,
+        cx: &mut Context<Editor>,
+    ) -> bool {
+        if EditorSettings::get_global(cx).lsp_results_location != OpenResultsIn::Peek
+            || Self::is_alt_pressed(&modifiers, cx)
+            || point.as_valid().is_none()
+        {
+            return false;
+        }
+
+        // A peek shows LSP results, so it has nothing to show for a URL or a plain file
+        // path. Taking those over sent them into a go-to-definition peek instead of
+        // opening them, which meant cmd-clicking a link did nothing at all.
+        let non_lsp_link = self
+            .hovered_link_state
+            .as_ref()
+            .and_then(|state| state.links.first())
+            .is_some_and(|link| matches!(link, HoverLink::Url(_) | HoverLink::File(_)));
+        if non_lsp_link {
+            return false;
+        }
+
+        self.hide_hovered_link(cx);
+        // The navigation actions read the cursor, so move it under the click
+        // first, as the uncached cmd-click path does.
+        self.select(
+            SelectPhase::Begin {
+                position: point.next_valid,
+                add: false,
+                click_count: 1,
+            },
+            window,
+            cx,
+        );
+        self.select(SelectPhase::End, window, cx);
+
+        // Deferred: this runs inside an update of the editor, and the peek reads
+        // the editor back when the action reaches it.
+        let focus_handle = self.focus_handle(cx);
+        let type_definition = modifiers.shift;
+        window.defer(cx, move |window, cx| {
+            if type_definition {
+                focus_handle.dispatch_action(&GoToTypeDefinition::default(), window, cx);
+            } else {
+                focus_handle.dispatch_action(&GoToDefinition::default(), window, cx);
+            }
+        });
+        true
     }
 
     fn reveal_clicked_links(

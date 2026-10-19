@@ -27,6 +27,7 @@ thread_local! {
 /// Returns the same connection so callers can hold onto it and control
 /// the stub's behavior (e.g. `connection.set_next_prompt_updates(...)`).
 pub fn set_stub_agent_connection(connection: StubAgentConnection) -> StubAgentConnection {
+    let connection = connection.with_supports_load_session(true);
     STUB_AGENT_CONNECTION.with(|cell| {
         *cell.borrow_mut() = Some(connection.clone());
     });
@@ -38,7 +39,19 @@ pub fn set_stub_agent_connection(connection: StubAgentConnection) -> StubAgentCo
 pub fn stub_agent_connection() -> StubAgentConnection {
     STUB_AGENT_CONNECTION.with(|cell| {
         let mut borrow = cell.borrow_mut();
-        borrow.get_or_insert_with(StubAgentConnection::new).clone()
+        borrow
+            .get_or_insert_with(|| {
+                let connection = StubAgentConnection::new().with_supports_load_session(true);
+                connection.set_next_prompt_action(|thread, cx| {
+                    thread.upsert_assistant_message(
+                        acp::AgentMessage::new("default-response")
+                            .content(vec!["Default response".into()]),
+                        cx,
+                    )
+                });
+                connection
+            })
+            .clone()
     })
 }
 
@@ -66,14 +79,16 @@ where
 
 impl StubAgentServer<StubAgentConnection> {
     pub fn default_response() -> Self {
-        let conn = StubAgentConnection::new();
-        conn.set_next_prompt_action(|thread, cx| {
-            thread.upsert_assistant_message(
-                acp::AgentMessage::new("default-response").content(vec!["Default response".into()]),
-                cx,
-            )
-        });
-        Self::new(conn)
+        Self::new(stub_agent_connection())
+    }
+
+    /// Server for `Agent::Stub`: the connection registered via
+    /// `set_stub_agent_connection`, or a default-response stub if none was.
+    pub fn registered_or_default() -> Self {
+        STUB_AGENT_CONNECTION
+            .with(|cell| cell.borrow().clone())
+            .map(Self::new)
+            .unwrap_or_else(Self::default_response)
     }
 }
 
@@ -230,6 +245,7 @@ pub fn open_thread_with_connection(
     connection: StubAgentConnection,
     cx: &mut VisualTestContext,
 ) {
+    let connection = set_stub_agent_connection(connection);
     panel.update_in(cx, |panel, window, cx| {
         panel.open_external_thread_with_server(
             Rc::new(StubAgentServer::new(connection)),
@@ -247,6 +263,7 @@ pub fn open_draft_with_connection(
     connection: StubAgentConnection,
     cx: &mut VisualTestContext,
 ) {
+    let connection = set_stub_agent_connection(connection);
     panel.update_in(cx, |panel, window, cx| {
         panel.open_draft_with_server(Rc::new(StubAgentServer::new(connection)), window, cx);
     });

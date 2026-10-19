@@ -196,7 +196,7 @@ pub fn hover_at_inlay(
             .await;
         let language_registry = project.read_with(cx, |project, _| project.languages().clone());
         let parsed_content =
-            parse_blocks(&[inlay_hover.tooltip], Some(&language_registry), None, cx);
+            parse_blocks(&[inlay_hover.tooltip], Some(&language_registry), None, cx).await;
 
         editor
             .update(cx, |editor, cx| {
@@ -457,7 +457,8 @@ fn show_hover(
                     text: format!("Unicode character U+{:02X}", invisible as u32),
                     kind: HoverBlockKind::PlainText,
                 }];
-                let parsed_content = parse_blocks(&blocks, language_registry.as_ref(), None, cx);
+                let parsed_content =
+                    parse_blocks(&blocks, language_registry.as_ref(), None, cx).await;
                 let scroll_handle = ScrollHandle::new();
                 let subscriptions = this
                     .update(cx, |_, cx| {
@@ -557,7 +558,7 @@ fn show_hover(
                     });
 
                 let parsed_content =
-                    parse_blocks(&blocks, language_registry.as_ref(), language, cx);
+                    parse_blocks(&blocks, language_registry.as_ref(), language, cx).await;
                 if parsed_content.is_none() {
                     continue;
                 }
@@ -593,7 +594,7 @@ fn show_hover(
                         kind: HoverBlockKind::Markdown,
                     }];
                     let parsed_content =
-                        parse_blocks(&blocks, language_registry.as_ref(), None, cx);
+                        parse_blocks(&blocks, language_registry.as_ref(), None, cx).await;
                     let scroll_handle = ScrollHandle::new();
                     let subscription = this
                         .update(cx, |_, cx| {
@@ -647,7 +648,7 @@ fn show_hover(
                     .flat_map(|hover| hover.contents)
                     .collect::<Vec<_>>();
                 if let Some(markdown) =
-                    parse_blocks(&blocks, language_registry.as_ref(), language, cx)
+                    parse_blocks(&blocks, language_registry.as_ref(), language, cx).await
                 {
                     this.update_in(cx, |editor, window, cx| {
                         if let Some(popover) =
@@ -787,7 +788,7 @@ fn same_diagnostic_hover(editor: &Editor, snapshot: &EditorSnapshot, anchor: Anc
         .unwrap_or(false)
 }
 
-fn parse_blocks(
+async fn parse_blocks(
     blocks: &[HoverBlock],
     language_registry: Option<&Arc<LanguageRegistry>>,
     language: Option<Arc<Language>>,

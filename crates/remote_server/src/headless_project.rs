@@ -76,7 +76,7 @@ pub struct HeadlessProject {
     // Local variant is used within LSP store, but that's a separate entity.
     pub _toolchain_store: Entity<ToolchainStore>,
     pub kernels: HashMap<String, Child>,
-    search_buffer_batches: async_channel::Sender<SearchBufferBatch>,
+    search_buffer_batches: smol::channel::Sender<SearchBufferBatch>,
     _search_buffer_sender: Task<()>,
 }
 
@@ -358,7 +358,7 @@ impl HeadlessProject {
         AgentServerStore::init_headless(&session);
         ContextServerStore::init_headless(&session);
 
-        let (search_buffer_batches, batches) = async_channel::bounded::<SearchBufferBatch>(1);
+        let (search_buffer_batches, batches) = smol::channel::bounded::<SearchBufferBatch>(1);
         let search_buffer_sender = cx.spawn({
             let buffer_store = buffer_store.clone();
             let client = session.clone();

@@ -17,6 +17,8 @@ mod bracket_colorization;
 mod clangd_ext;
 pub mod code_context_menus;
 mod code_lens;
+mod color_picker;
+mod color_swatches;
 mod debugger_hover;
 pub mod display_map;
 mod document_colors;
@@ -87,8 +89,8 @@ pub(crate) use completions::split_words;
 use diagnostics::{ActiveDiagnostic, GlobalDiagnosticRenderer, InlineDiagnostic};
 pub use diagnostics::{DiagnosticRenderer, set_diagnostic_renderer};
 pub use display_map::{
-    ChunkRenderer, ChunkRendererContext, DisplayPoint, FoldPlaceholder, HighlightKey,
-    NavigationOverlayKey, SemanticTokenHighlight,
+    ChunkRenderer, ChunkRendererContext, CreaseId, CreaseSnapshot, DisplayPoint, FoldPlaceholder,
+    HighlightKey, NavigationOverlayKey, SemanticTokenHighlight,
 };
 pub use edit_prediction::make_suggestion_styles;
 pub(crate) use edit_prediction::{
@@ -103,9 +105,9 @@ pub use edit_prediction_types::Direction;
 pub use edit_prediction_types::EditPredictionRequestTrigger;
 pub use editor_settings::{
     CompletionDetailAlignment, CompletionMenuItemKind, CurrentLineHighlight, DiffViewStyle,
-    DocumentColorsRenderMode, EditorSettings, EditorSettingsScrollbarProxy, OpenResultsIn,
-    ScrollBeyondLastLine, ScrollbarAxes, SearchSettings, ShowMinimap,
-    ui_scrollbar_settings_from_raw,
+    DocumentColorsRenderMode, EditorSettings, EditorSettingsScrollbarProxy,
+    GoToDefinitionScrollStrategy, OpenResultsIn, ScrollBeyondLastLine, ScrollbarAxes,
+    SearchSettings, ShowMinimap, ui_scrollbar_settings_from_raw,
 };
 pub use element::{
     CursorLayout, EditorElement, HighlightedRange, HighlightedRangeLine, PointForPosition,
@@ -1035,6 +1037,7 @@ pub struct Editor {
     show_bookmarks: Option<bool>,
     show_breakpoints: Option<bool>,
     show_diff_review_button: bool,
+    show_pr_comment_gutter_button: bool,
     show_wrap_guides: Option<bool>,
     show_indent_guides: Option<bool>,
     buffers_with_disabled_indent_guides: HashSet<BufferId>,
@@ -1105,6 +1108,7 @@ pub struct Editor {
     in_leading_whitespace: bool,
     next_inlay_id: usize,
     next_color_inlay_id: usize,
+    color_swatches: color_swatches::ColorSwatches,
     _subscriptions: Vec<Subscription>,
     pixel_position_of_newest_cursor: Option<gpui::Point<Pixels>>,
     gutter_dimensions: GutterDimensions,
@@ -2421,6 +2425,7 @@ impl Editor {
             show_bookmarks: None,
             show_breakpoints: None,
             show_diff_review_button: false,
+            show_pr_comment_gutter_button: false,
             show_wrap_guides: None,
             show_indent_guides,
             buffers_with_disabled_indent_guides: HashSet::default(),
@@ -2560,6 +2565,7 @@ impl Editor {
             refresh_folding_ranges_task: Task::ready(()),
             inlay_hints: None,
             next_color_inlay_id: 0,
+            color_swatches: Default::default(),
             post_scroll_update: Task::ready(()),
             linked_edit_ranges: Default::default(),
             in_project_search: false,
@@ -2746,6 +2752,7 @@ impl Editor {
                 editor.register_buffer(buffer.read(cx).remote_id(), cx);
             }
             editor.report_editor_event(ReportEditorEvent::EditorOpened, None, cx);
+            editor.refresh_color_swatches(cx);
         }
 
         editor
@@ -10112,6 +10119,7 @@ impl Editor {
 
                 // Clean up orphaned review comments after edits
                 self.cleanup_orphaned_review_comments(cx);
+                self.refresh_color_swatches(cx);
 
                 if let Some(buffer) = edited_buffer {
                     if buffer.read(cx).file().is_none() {
@@ -10169,6 +10177,7 @@ impl Editor {
                 self.bracket_fetched_tree_sitter_chunks
                     .retain(|range, _| range.start.buffer_id != buffer_id);
                 self.colorize_brackets(false, cx);
+                self.refresh_color_swatches(cx);
                 self.refresh_selected_text_highlights(&self.display_snapshot(cx), true, window, cx);
                 self.semantic_token_state.invalidate_buffer(&buffer_id);
                 cx.emit(EditorEvent::BufferRangesUpdated {
@@ -10203,6 +10212,7 @@ impl Editor {
                 self.inlay_hint_visibility_changed(cx);
 
                 jsx_tag_auto_close::refresh_enabled_in_any_buffer(self, multibuffer, cx);
+                self.refresh_color_swatches(cx);
                 cx.emit(EditorEvent::BuffersRemoved {
                     removed_buffer_ids: removed_buffer_ids.clone(),
                 });
@@ -10244,6 +10254,7 @@ impl Editor {
                     self.refresh_document_highlights(cx);
                 }
                 jsx_tag_auto_close::refresh_enabled_in_any_buffer(self, multibuffer, cx);
+                self.refresh_color_swatches(cx);
                 cx.emit(EditorEvent::Reparsed(*buffer_id));
                 self.update_edit_prediction_settings(cx);
                 cx.notify();
@@ -10451,6 +10462,7 @@ impl Editor {
                     self.splice_inlays(&inlay_splice.to_remove, inlay_splice.to_insert, cx);
                 }
                 self.refresh_document_colors(None, window, cx);
+                self.refresh_color_swatches(cx);
             }
 
             let code_lens_inline =
@@ -12605,6 +12617,19 @@ pub enum EditorEvent {
         /// The new total count of review comments.
         total_count: usize,
     },
+    /// Emitted when the user clicks the PR review "add comment" gutter button on a
+    /// diff row. `anchor` is the multibuffer anchor at the start of that row.
+    AddPrCommentRequested {
+        anchor: Anchor,
+        /// True when the clicked row is a deleted line, which exists only in the
+        /// diff's base text. Such a row anchors a comment to the *old* side of
+        /// the diff, and `base_row` carries its row in that base text; the
+        /// anchor alone cannot express it, because deleted lines occupy no row
+        /// in the buffer the anchor points into.
+        is_deleted: bool,
+        /// Row within the diff base text for a deleted row, `None` otherwise.
+        base_row: Option<u32>,
+    },
     InputIgnored {
         text: Arc<str>,
     },
@@ -12683,8 +12708,18 @@ impl Focusable for Editor {
 }
 
 impl Render for Editor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        EditorElement::new(&cx.entity(), self.create_style(cx))
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut style = self.create_style(cx);
+        // Apply the per-window buffer font size (zoom) only to full editors.
+        // The minimap keeps the smaller font size set via its text_style_refinement
+        // (MINIMAP_FONT_SIZE); overriding it here would render the minimap at full
+        // zoom instead of as a miniaturized overview.
+        if matches!(self.mode, EditorMode::Full { .. }) {
+            style.text.font_size = ThemeSettings::get_global(cx)
+                .buffer_font_size_in_window(window, cx)
+                .into();
+        }
+        EditorElement::new(&cx.entity(), style)
     }
 }
 

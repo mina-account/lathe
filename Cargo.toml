@@ -11,6 +11,7 @@ members = [
     "crates/agent_settings",
     "crates/agent_skills",
     "crates/agent_ui",
+    "crates/ai_accounts",
     "crates/ai_onboarding",
     "crates/anthropic",
     "crates/askpass",
@@ -19,6 +20,7 @@ members = [
     "crates/auto_update",
     "crates/auto_update_helper",
     "crates/auto_update_ui",
+    "crates/aws_dev",
     "crates/aws_http_client",
     "crates/bedrock",
     "crates/bench_metrics",
@@ -88,9 +90,11 @@ members = [
     "crates/fuzzy",
     "crates/fuzzy_nucleo",
     "crates/git",
+    "crates/git_graph",
     "crates/git_hosting_providers",
     "crates/git_ui",
     "crates/git_ui_core",
+    "crates/pr_ui",
     "crates/go_to_line",
     "crates/google_ai",
     "crates/gpui",
@@ -132,6 +136,8 @@ members = [
     "crates/language_selector",
     "crates/language_tools",
     "crates/languages",
+    "crates/lathe",
+    "crates/lathe_hooks",
     "crates/line_ending_selector",
     "crates/livekit_api",
     "crates/livekit_client",
@@ -148,6 +154,7 @@ members = [
     "crates/migrator",
     "crates/miniprofiler_ui",
     "crates/mistral",
+    "crates/mobile_dev",
     "crates/multi_buffer",
     "crates/net",
     "crates/node_runtime",
@@ -292,6 +299,7 @@ agent_servers = { path = "crates/agent_servers" }
 agent_settings = { path = "crates/agent_settings" }
 agent_skills = { path = "crates/agent_skills" }
 agent_ui = { path = "crates/agent_ui" }
+ai_accounts = { path = "crates/ai_accounts" }
 ai_onboarding = { path = "crates/ai_onboarding" }
 anthropic = { path = "crates/anthropic" }
 askpass = { path = "crates/askpass" }
@@ -300,6 +308,7 @@ audio = { path = "crates/audio" }
 bench_metrics = { path = "crates/bench_metrics" }
 auto_update = { path = "crates/auto_update" }
 auto_update_ui = { path = "crates/auto_update_ui" }
+aws_dev = { path = "crates/aws_dev" }
 aws_http_client = { path = "crates/aws_http_client" }
 bedrock = { path = "crates/bedrock" }
 breadcrumbs = { path = "crates/breadcrumbs" }
@@ -362,9 +371,11 @@ fs = { path = "crates/fs" }
 fuzzy = { path = "crates/fuzzy" }
 fuzzy_nucleo = { path = "crates/fuzzy_nucleo" }
 git = { path = "crates/git" }
+git_graph = { path = "crates/git_graph" }
 git_hosting_providers = { path = "crates/git_hosting_providers" }
 git_ui = { path = "crates/git_ui" }
 git_ui_core = { path = "crates/git_ui_core" }
+pr_ui = { path = "crates/pr_ui" }
 go_to_line = { path = "crates/go_to_line" }
 google_ai = { path = "crates/google_ai" }
 gpui = { path = "crates/gpui", default-features = false }
@@ -406,6 +417,8 @@ language_onboarding = { path = "crates/language_onboarding" }
 language_selector = { path = "crates/language_selector" }
 language_tools = { path = "crates/language_tools" }
 languages = { path = "crates/languages" }
+lathe = { path = "crates/lathe" }
+lathe_hooks = { path = "crates/lathe_hooks" }
 line_ending_selector = { path = "crates/line_ending_selector" }
 livekit_api = { path = "crates/livekit_api" }
 livekit_client = { path = "crates/livekit_client" }
@@ -422,6 +435,7 @@ mermaid_render = { path = "crates/mermaid_render" }
 migrator = { path = "crates/migrator" }
 miniprofiler_ui = { path = "crates/miniprofiler_ui" }
 mistral = { path = "crates/mistral" }
+mobile_dev = { path = "crates/mobile_dev" }
 multi_buffer = { path = "crates/multi_buffer" }
 net = { path = "crates/net" }
 node_runtime = { path = "crates/node_runtime" }
@@ -639,6 +653,7 @@ futures = "0.3.34"
 futures-concurrency = "7.7.1"
 futures-lite = "2"
 gh-workflow = { git = "https://github.com/zed-industries/gh-workflow", rev = "37f3c0575d379c218a9c455ee67585184e40d43f" }
+
 globset = "0.4"
 handlebars = "4.3"
 hdrhistogram = { version = "7", default-features = false }
@@ -788,6 +803,7 @@ objc2-quartz-core = { version = "=0.3.2", default-features = false, features = [
 objc2-screen-capture-kit = { version = "=0.3.2", default-features = false, features = [
     "block2",
     "dispatch2",
+    "objc2-core-foundation",
     "objc2-core-graphics",
     "objc2-core-media",
     "SCShareableContent",
@@ -938,6 +954,7 @@ tree-sitter-go-mod = { git = "https://github.com/camdencheek/tree-sitter-go-mod"
 tree-sitter-gowork = { git = "https://github.com/zed-industries/tree-sitter-go-work", rev = "acb0617bf7f4fda02c6217676cc64acb89536dc7" }
 tree-sitter-heex = { git = "https://github.com/zed-industries/tree-sitter-heex", rev = "1dd45142fbb05562e35b2040c6129c9bca346592" }
 tree-sitter-html = "0.23"
+tree-sitter-ini = "1.4"
 tree-sitter-jsdoc = "0.23"
 tree-sitter-json = "0.24"
 tree-sitter-md = { git = "https://github.com/zed-industries/tree-sitter-markdown", rev = "b596e737286780d7bfa9fcddceaeeb754574b352" } # fork of 9a23c1a with serialize() buffer-overflow fix; https://github.com/tree-sitter-grammars/tree-sitter-markdown/issues/243

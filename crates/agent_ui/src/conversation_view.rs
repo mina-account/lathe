@@ -90,6 +90,7 @@ use crate::completion_provider::{AgentContextSelection, AvailableSkill};
 use crate::entry_view_state::{EntryViewEvent, ViewEvent};
 use crate::message_editor::{InputAttempt, MessageEditor, MessageEditorEvent};
 use crate::profile_selector::{ProfileProvider, ProfileSelector};
+use crate::{ApprovalSelector, agent_supports_approval};
 
 use crate::thread_metadata_store::{ThreadId, ThreadMetadataStore};
 use crate::ui::{AgentNotification, AgentNotificationEvent};
@@ -1123,6 +1124,7 @@ impl ConversationView {
                 connection_store,
                 connection_key,
                 resume_session_id,
+                thread_id,
                 work_dirs,
                 title,
                 project,
@@ -1278,6 +1280,7 @@ impl ConversationView {
             self.connection_store.clone(),
             self.connection_key.clone(),
             resume_session_id,
+            self.thread_id,
             work_dirs,
             title,
             self.project.clone(),
@@ -1303,6 +1306,7 @@ impl ConversationView {
         connection_store: Entity<AgentConnectionStore>,
         connection_key: Agent,
         resume_session_id: Option<acp_v2::SessionId>,
+        thread_id: ThreadId,
         work_dirs: Option<PathList>,
         title: Option<SharedString>,
         project: Entity<Project>,
@@ -1385,6 +1389,8 @@ impl ConversationView {
             );
 
             let mut resumed_without_history = false;
+            let attempted_resume = resume_session_id.is_some();
+            let fallback_work_dirs = session_work_dirs.clone();
             let Some(recovering) = this
                 .read_with(cx, |this, _| this.recovery.is_some())
                 .log_err()
@@ -1443,7 +1449,39 @@ impl ConversationView {
                         .log_err();
                         return;
                     }
-                    Err(error)
+                    if attempted_resume && !recovering {
+                            log::warn!(
+                                "agent server could not load stored session_id ({error:#}); clearing stale metadata and starting a fresh session"
+                            );
+                            cx.update(|_, cx| {
+                                if let Some(store) = ThreadMetadataStore::try_global(cx) {
+                                    store.update(cx, |store, cx| {
+                                        if let Some(entry) = store.entry(thread_id) {
+                                            let mut updated = entry.clone();
+                                            updated.session_id = None;
+                                            store.save(updated, cx);
+                                        }
+                                    });
+                                }
+                            })
+                            .log_err();
+                            resumed_without_history = false;
+                            match cx
+                                .update(|_, cx| {
+                                    connection.clone().new_session(
+                                        project.clone(),
+                                        fallback_work_dirs,
+                                        cx,
+                                    )
+                                })
+                                .log_err()
+                            {
+                                Some(task) => task.await,
+                                None => Err(error),
+                            }
+                        } else {
+                            Err(error)
+                        }
                 }
                 Ok(thread) => Ok(thread),
             };
@@ -1614,6 +1652,8 @@ impl ConversationView {
                 cx.new(|cx| {
                     ModelSelectorPopover::new(
                         selector,
+                        self.agent.clone(),
+                        self.project.read(cx).fs().clone(),
                         PopoverMenuHandle::default(),
                         self.focus_handle(cx),
                         window,
@@ -1629,6 +1669,14 @@ impl ConversationView {
                     cx.new(|_cx| ModeSelector::new(session_modes, self.agent.clone(), fs))
                 });
         }
+
+        let approval_selector = (config_options_view.is_none()
+            && mode_selector.is_none()
+            && agent_supports_approval(self.agent.agent_id().0.as_ref()))
+        .then(|| {
+            let fs = self.project.read(cx).fs().clone();
+            cx.new(|_cx| ApprovalSelector::new(self.agent.clone(), fs))
+        });
 
         let subscriptions = vec![
             cx.subscribe_in(&thread, window, Self::handle_thread_event),
@@ -1715,6 +1763,7 @@ impl ConversationView {
                 entry_view_state,
                 config_options_view,
                 mode_selector,
+                approval_selector,
                 model_selector,
                 profile_selector,
                 list_state,
@@ -1875,6 +1924,12 @@ impl ConversationView {
 
     pub fn parent_id(&self) -> ThreadId {
         self.thread_id
+    }
+
+    pub(crate) fn workspace_id(&self, cx: &App) -> Option<workspace::WorkspaceId> {
+        self.workspace
+            .upgrade()
+            .and_then(|workspace| workspace.read(cx).database_id())
     }
 
     pub fn is_loading(&self) -> bool {
@@ -3610,13 +3665,13 @@ impl ConversationView {
         had_notifications
     }
 
-    fn agent_ui_font_size_changed(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn agent_ui_font_size_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(entry_view_state) = self
             .active_thread()
             .map(|active| active.read(cx).entry_view_state.clone())
         {
             entry_view_state.update(cx, |entry_view_state, cx| {
-                entry_view_state.agent_ui_font_size_changed(cx);
+                entry_view_state.agent_ui_font_size_changed(window, cx);
             });
         }
     }
@@ -9823,6 +9878,7 @@ pub(crate) mod tests {
                             worktree_paths: WorktreePaths::from_folder_paths(&PathList::default()),
                             remote_connection: None,
                             archived: false,
+                            workspace_id: None,
                         },
                         cx,
                     );
@@ -10332,6 +10388,7 @@ pub(crate) mod tests {
                         agent_id: ProjectAgentId::new("Flaky"),
                         title: Some(stored_title.clone()),
                         title_override: None,
+                        workspace_id: None,
                         updated_at: Utc::now(),
                         created_at: Some(Utc::now()),
                         interacted_at: None,
@@ -10947,7 +11004,7 @@ pub(crate) mod tests {
         let cx = &mut VisualTestContext::from_window(multi_workspace_handle.into(), cx);
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
-            let panel = cx.new(|cx| crate::AgentPanel::new(workspace, window, cx));
+            let panel = cx.new(|cx| crate::AgentPanel::new(workspace, None, window, cx));
             workspace.add_panel(panel.clone(), window, cx);
             workspace.focus_panel::<crate::AgentPanel>(window, cx);
             panel
@@ -11303,7 +11360,7 @@ pub(crate) mod tests {
         let cx = &mut VisualTestContext::from_window(multi_workspace_handle.into(), cx);
 
         let panel = workspace1.update_in(cx, |workspace, window, cx| {
-            let panel = cx.new(|cx| crate::AgentPanel::new(workspace, window, cx));
+            let panel = cx.new(|cx| crate::AgentPanel::new(workspace, None, window, cx));
             workspace.add_panel(panel.clone(), window, cx);
 
             // Open the dock and activate the agent panel so it's visible

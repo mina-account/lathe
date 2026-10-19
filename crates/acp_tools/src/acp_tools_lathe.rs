@@ -21,13 +21,13 @@ pub enum StreamMessageDirection {
 #[derive(Clone)]
 pub enum StreamMessageContent {
     Request {
-        id: acp::RequestId,
+        id: RequestId,
         method: Arc<str>,
         params: Option<serde_json::Value>,
     },
     Response {
-        id: acp::RequestId,
-        result: Result<Option<serde_json::Value>, acp::Error>,
+        id: RequestId,
+        result: Result<Option<serde_json::Value>, Error>,
     },
     Notification {
         method: Arc<str>,
@@ -64,7 +64,7 @@ impl StreamMessage {
 
         let parsed_id = obj
             .get("id")
-            .map(|raw| serde_json::from_value::<acp::RequestId>(raw.clone()));
+            .map(|raw| serde_json::from_value::<RequestId>(raw.clone()));
 
         let message = if let Some(method) = obj.get("method").and_then(|m| m.as_str()) {
             match parsed_id {
@@ -92,9 +92,9 @@ impl StreamMessage {
             };
             if let Some(error) = obj.get("error") {
                 let acp_err =
-                    serde_json::from_value::<acp::Error>(error.clone()).unwrap_or_else(|err| {
+                    serde_json::from_value::<Error>(error.clone()).unwrap_or_else(|err| {
                         log::warn!("Failed to deserialize ACP error: {err}");
-                        acp::Error::internal_error().data(error.to_string())
+                        Error::internal_error().data(error.to_string())
                     });
                 StreamMessageContent::Response {
                     id,

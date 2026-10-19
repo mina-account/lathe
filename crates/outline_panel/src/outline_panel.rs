@@ -45,6 +45,7 @@ use project::{File, Fs, Project, ProjectPath};
 use search::{BufferSearchBar, ProjectSearchView};
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsStore};
+use smol::channel;
 use theme::{GlobalTheme, SyntaxTheme};
 use theme_settings::ThemeSettings;
 use ui::{
@@ -113,6 +114,11 @@ type OutlineChildren = HashMap<(Range<Anchor>, usize), bool>;
 type HighlightStyleData = Arc<OnceLock<Vec<(Range<usize>, HighlightStyle)>>>;
 
 pub struct OutlinePanel {
+    /// Set when this workspace put the panel in the bottom dock. The panel's
+    /// `dock` setting can only say left or right, so the bottom dock is
+    /// recorded as a per-workspace placement and mirrored here, since
+    /// `position` can't read the workspace while it is being updated.
+    bottom_docked: bool,
     fs: Arc<dyn Fs>,
     project: Entity<Project>,
     workspace: WeakEntity<Workspace>,
@@ -162,7 +168,7 @@ struct SearchState {
     kind: SearchKind,
     query: String,
     matches: Vec<(Range<editor::Anchor>, Arc<OnceLock<SearchData>>)>,
-    highlight_search_match_tx: async_channel::Sender<HighlightArguments>,
+    highlight_search_match_tx: channel::Sender<HighlightArguments>,
     _search_match_highlighter: Task<()>,
     _search_match_notify: Task<()>,
 }
@@ -183,8 +189,8 @@ impl SearchState {
         window: &mut Window,
         cx: &mut Context<OutlinePanel>,
     ) -> Self {
-        let (highlight_search_match_tx, highlight_search_match_rx) = async_channel::unbounded();
-        let (notify_tx, notify_rx) = async_channel::unbounded::<()>();
+        let (highlight_search_match_tx, highlight_search_match_rx) = channel::unbounded();
+        let (notify_tx, notify_rx) = channel::unbounded::<()>();
         Self {
             kind,
             query,
@@ -1068,8 +1074,22 @@ impl OutlinePanel {
     ) -> Entity<Self> {
         let project = workspace.project().clone();
         let workspace_handle = cx.entity().downgrade();
+        let bottom_docked = workspace.panel_dock_position(<Self as Panel>::panel_key(), cx)
+            == Some(DockPosition::Bottom);
+        let workspace_entity = cx.entity();
 
         cx.new(|cx| {
+            // Picks up "Use Default Position", which clears the placement on
+            // the workspace. Registered before the dock's own workspace
+            // observer, so the dock relocates with the updated value.
+            cx.observe(&workspace_entity, |this: &mut Self, workspace, cx| {
+                this.bottom_docked = workspace
+                    .read(cx)
+                    .panel_dock_position(<Self as Panel>::panel_key(), cx)
+                    == Some(DockPosition::Bottom);
+            })
+            .detach();
+
             let filter_editor = cx.new(|cx| {
                 let mut editor = Editor::single_line(window, cx);
                 editor.set_placeholder_text("Search buffer symbols…", window, cx);
@@ -1252,6 +1272,7 @@ impl OutlinePanel {
                 mode: ItemsDisplayMode::Outline,
                 active: serialized.and_then(|s| s.active).unwrap_or(false),
                 pinned: false,
+                bottom_docked,
                 workspace: workspace_handle,
                 project,
                 fs: workspace.app_state().fs.clone(),
@@ -5599,23 +5620,44 @@ impl Panel for OutlinePanel {
     }
 
     fn position(&self, _: &Window, cx: &App) -> DockPosition {
+        if self.bottom_docked {
+            return DockPosition::Bottom;
+        }
         match OutlinePanelSettings::get_global(cx).dock {
             DockSide::Left => DockPosition::Left,
             DockSide::Right => DockPosition::Right,
         }
     }
 
-    fn position_is_valid(&self, position: DockPosition) -> bool {
-        matches!(position, DockPosition::Left | DockPosition::Right)
+    fn position_is_valid(&self, _: DockPosition) -> bool {
+        true
     }
 
     fn set_position(&mut self, position: DockPosition, _: &mut Window, cx: &mut Context<Self>) {
+        let panel_key = <Self as Panel>::panel_key();
+        let side = match position {
+            DockPosition::Bottom => {
+                self.bottom_docked = true;
+                self.workspace
+                    .update(cx, |workspace, cx| {
+                        workspace.set_panel_dock_position(panel_key, position, cx)
+                    })
+                    .log_err();
+                return;
+            }
+            DockPosition::Left => DockSide::Left,
+            DockPosition::Right => DockSide::Right,
+        };
+        if self.bottom_docked {
+            self.bottom_docked = false;
+            self.workspace
+                .update(cx, |workspace, cx| {
+                    workspace.clear_panel_dock_position(panel_key, cx)
+                })
+                .log_err();
+        }
         settings::update_settings_file(self.fs.clone(), cx, move |settings, _| {
-            let dock = match position {
-                DockPosition::Left | DockPosition::Bottom => DockSide::Left,
-                DockPosition::Right => DockSide::Right,
-            };
-            settings.outline_panel.get_or_insert_default().dock = Some(dock);
+            settings.outline_panel.get_or_insert_default().dock = Some(side);
         });
     }
 

@@ -10,7 +10,7 @@ use futures::{
     channel::{mpsc, oneshot},
     future::{BoxFuture, LocalBoxFuture, Shared},
 };
-use gpui::{AppContext as _, AsyncApp, Task};
+use gpui::{AsyncApp, Task};
 use std::{process::ExitStatus, time::Duration};
 use util::ResultExt as _;
 
@@ -53,9 +53,14 @@ impl ClientRuntime {
         future: impl Future<Output = RpcResult<()>> + Send + 'static,
         cx: &AsyncApp,
     ) {
-        self.io_task = Some(cx.background_spawn(async move {
-            future.await.log_err();
-        }));
+        // ACP dispatch futures need more stack than macOS GCD workers provide.
+        self.io_task = Some(
+            cx.background_executor()
+                .scheduler_executor()
+                .spawn_dedicated(move |_executor| async move {
+                    future.await.log_err();
+                }),
+        );
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -193,7 +198,7 @@ mod tests {
     use acp_thread::{ElicitationStatus, ElicitationStore};
     use agent_client_protocol::schema::v2 as acp;
     use collections::HashMap;
-    use gpui::TestAppContext;
+    use gpui::{AppContext as _, TestAppContext};
     use std::{cell::RefCell, rc::Rc};
 
     #[gpui::test]

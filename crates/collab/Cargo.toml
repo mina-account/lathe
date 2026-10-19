@@ -73,7 +73,6 @@ util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-async-channel.workspace = true
 async-trait.workspace = true
 
 buffer_diff.workspace = true
@@ -95,6 +94,7 @@ extension.workspace = true
 file_finder.workspace = true
 fs = { workspace = true, features = ["test-support"] }
 git = { workspace = true, features = ["test-support"] }
+git_graph = { workspace = true, features = ["test-support"] }
 git_hosting_providers.workspace = true
 git_ui = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
@@ -122,6 +122,7 @@ sea-orm.workspace = true
 serde_json.workspace = true
 session = { workspace = true, features = ["test-support"] }
 settings = { workspace = true, features = ["test-support"] }
+smol.workspace = true
 sqlx.workspace = true
 task.workspace = true
 theme.workspace = true

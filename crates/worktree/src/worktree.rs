@@ -7757,8 +7757,8 @@ mod tests {
                     fs_case_sensitive: tree.fs_case_sensitive,
                     status_updates_tx,
                     executor: cx.background_executor().clone(),
-                    scan_requests_rx: async_channel::unbounded().1,
-                    path_prefixes_to_scan_rx: async_channel::unbounded().1,
+                    scan_requests_rx: smol::channel::unbounded().1,
+                    path_prefixes_to_scan_rx: smol::channel::unbounded().1,
                     next_entry_id: tree.next_entry_id.clone(),
                     phase: BackgroundScannerPhase::Events,
                     watcher: Arc::new(NullWatcher),
@@ -7783,6 +7783,7 @@ mod tests {
                     ScanRequest {
                         relative_paths: vec![rel_path(".gitignore").into_arc()],
                         done: SmallVec::new(),
+                        recursive: false,
                     },
                     true,
                 )
@@ -7829,6 +7830,7 @@ mod tests {
                         .map(|path| rel_path(path).into_arc())
                         .to_vec(),
                         done: SmallVec::new(),
+                        recursive: false,
                     },
                     true,
                 )
@@ -7863,8 +7865,8 @@ mod tests {
                     .size,
                 11
             );
-            let (ignore_queue, ignore_jobs) = async_channel::unbounded();
-            let (scan_queue, _scan_jobs) = async_channel::unbounded();
+            let (ignore_queue, ignore_jobs) = smol::channel::unbounded();
+            let (scan_queue, _scan_jobs) = smol::channel::unbounded();
             scanner
                 .update_ignore_status(
                     UpdateIgnoreStatusJob {

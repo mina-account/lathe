@@ -1507,7 +1507,7 @@ mod tests {
                 ServerListeners::new(stdin_path.clone(), stdout_path.clone(), stderr_path.clone())
                     .expect("bind server sockets");
 
-            let (log_tx, log_rx) = async_channel::unbounded();
+            let (log_tx, log_rx) = smol::channel::unbounded();
 
             let handler = cx.new(|_| ());
             let server = cx.update(|cx| start_server(listeners, log_rx, cx, false));
@@ -1570,7 +1570,7 @@ mod tests {
                 ServerListeners::new(stdin_path.clone(), stdout_path.clone(), stderr_path.clone())
                     .expect("bind server sockets");
 
-            let (_log_tx, log_rx) = async_channel::unbounded();
+            let (_log_tx, log_rx) = smol::channel::unbounded();
             let (ping_tx, mut ping_rx) = mpsc::unbounded();
             let handler = cx.new(|_| ());
             let server = cx.update(|cx| start_server(listeners, log_rx, cx, false));

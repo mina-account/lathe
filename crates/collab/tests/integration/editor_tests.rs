@@ -3225,8 +3225,8 @@ async fn test_inlay_hint_refresh_is_forwarded(
     client_a.language_registry().add(rust_lang());
     let hint_phase = Arc::new(AtomicUsize::new(0));
     let closure_hint_phase = Arc::clone(&hint_phase);
-    let (resolve_started_tx, resolve_started_rx) = async_channel::unbounded();
-    let (release_resolve, resolve_gate) = async_channel::bounded(1);
+    let (resolve_started_tx, resolve_started_rx) = smol::channel::unbounded();
+    let (release_resolve, resolve_gate) = smol::channel::bounded(1);
     let mut fake_language_servers = client_a.language_registry().register_fake_lsp(
         "Rust",
         FakeLspAdapter {

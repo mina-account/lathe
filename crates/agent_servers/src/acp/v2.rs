@@ -160,6 +160,7 @@ fn shared_session_error(error: Arc<anyhow::Error>) -> anyhow::Error {
 
 /// An unselected v2 backend with auth, initial sessions/config and receipt-driven prompts.
 pub struct AcpV2Connection {
+    spawn_env: HashMap<String, String>,
     id: AgentId,
     connection: V2ConnectionTo<Agent>,
     initialize_request: acp::InitializeRequest,
@@ -185,13 +186,25 @@ impl AcpV2Connection {
         agent_server_store: WeakEntity<AgentServerStore>,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
+        let mut command = command;
+        let scrub_env = if project.read_with(cx, |project, _| project.is_local()) {
+            super::apply_ai_account_env(
+                &agent_id,
+                project.entity_id(),
+                command.env.get_or_insert_default(),
+                cx,
+            )
+        } else {
+            &[]
+        };
+        let spawn_env = command.env.clone().unwrap_or_default();
         let transport::StdioProcess {
             child,
             incoming,
             outgoing,
             stderr,
             debug_log,
-        } = transport::spawn_stdio(&project, command, cx)?;
+        } = transport::spawn_stdio(&project, command, scrub_env, cx)?;
         let mut child = transport::OwnedChild(child);
         let stderr_task = cx
             .background_spawn(async move {
@@ -249,6 +262,7 @@ impl AcpV2Connection {
             },
             cx,
         ));
+        connection.spawn_env = spawn_env;
         connection._child = Some(child);
         Ok(connection)
     }
@@ -317,6 +331,7 @@ impl AcpV2Connection {
             return Err(UnsupportedVersion.into());
         }
         Ok(Self {
+            spawn_env: HashMap::default(),
             id,
             connection,
             initialize_request,
@@ -377,6 +392,7 @@ impl AcpV2Connection {
                 self.id.clone(),
                 self.agent_server_store.clone(),
                 terminal.clone(),
+                self.spawn_env.clone(),
                 cx,
             )),
             _ => None,
@@ -6271,6 +6287,7 @@ done
                         args: vec!["--base".into()],
                         env: HashMap::from_iter([("BASE".into(), "1".into())]),
                         default_mode: None,
+                        approval: None,
                         default_config_options: HashMap::default(),
                         favorite_config_option_values: HashMap::default(),
                     }

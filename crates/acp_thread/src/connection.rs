@@ -542,7 +542,7 @@ pub trait AgentSessionList {
         Task::ready(Err(anyhow::anyhow!("delete_sessions not supported")))
     }
 
-    fn watch(&self, _cx: &mut App) -> Option<async_channel::Receiver<SessionListUpdate>> {
+    fn watch(&self, _cx: &mut App) -> Option<smol::channel::Receiver<SessionListUpdate>> {
         None
     }
 
@@ -1317,7 +1317,20 @@ mod test_support {
             if let Some(error) = self.next_load_error.lock().take() {
                 return Task::ready(Err(error));
             }
+
+            // Like a real agent, loading a session this connection still hosts
+            // restores its history rather than handing back an empty thread.
+            if let Some(thread) = self
+                .sessions
+                .lock()
+                .get(&session_id)
+                .and_then(|session| session.thread.upgrade())
+            {
+                return Task::ready(Ok(thread));
+            }
+
             let thread = self.create_session(session_id, project, work_dirs, title, cx);
+            thread.update(cx, |thread, _cx| thread.mark_as_restored_session());
             Task::ready(Ok(thread))
         }
 

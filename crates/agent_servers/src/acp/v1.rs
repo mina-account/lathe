@@ -79,6 +79,7 @@ pub struct AcpConnection {
     agent_server_store: WeakEntity<AgentServerStore>,
     agent_capabilities: acp::AgentCapabilities,
     request_elicitations: Entity<ElicitationStore>,
+    spawn_env: HashMap<String, String>,
     defaults: AcpConnectionDefaults,
     _child: Option<transport::OwnedChild>,
     session_list: Option<Rc<AcpSessionList>>,
@@ -504,6 +505,18 @@ impl AcpConnection {
         default_config_options: HashMap<String, AgentConfigOptionValue>,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
+        let mut command = command;
+        let scrub_env = if project.read_with(cx, |project, _| project.is_local()) {
+            super::apply_ai_account_env(
+                &agent_id,
+                project.entity_id(),
+                command.env.get_or_insert_default(),
+                cx,
+            )
+        } else {
+            &[]
+        };
+        let spawn_env = command.env.clone().unwrap_or_default();
         let original_command = command.clone();
         let transport::StdioProcess {
             child,
@@ -511,7 +524,7 @@ impl AcpConnection {
             outgoing,
             stderr,
             debug_log,
-        } = transport::spawn_stdio(&project, command, cx)?;
+        } = transport::spawn_stdio(&project, command, scrub_env, cx)?;
         let mut child = transport::OwnedChild(child);
         let sessions = Rc::new(RefCell::new(HashMap::default()));
 
@@ -684,6 +697,7 @@ impl AcpConnection {
             pending_sessions: RefCell::new(HashMap::default()),
             agent_capabilities: response.agent_capabilities,
             request_elicitations,
+            spawn_env,
             defaults,
             session_list,
             debug_log,
@@ -729,6 +743,7 @@ impl AcpConnection {
             agent_server_store,
             agent_capabilities,
             request_elicitations,
+            spawn_env: HashMap::default(),
             defaults,
             _child: None,
             session_list: None,
@@ -1196,10 +1211,27 @@ fn emit_load_error_to_all_sessions(
 }
 
 /// Used to support the _meta method prior to stabilization
+/// Local-only truncate for ACP connections.
+///
+/// The ACP protocol does not yet have a truncate/rewind primitive, so this
+/// implementation only succeeds on the Zed side. The remote agent is unaware
+/// of the truncation: subsequent prompts will be sent as new turns, and the
+/// agent may still retain its own history. Git checkpoint restoration and
+/// local entry removal are handled by `AcpThread::rewind` / `restore_checkpoint`
+/// independently of this trait.
+struct AcpSessionTruncate;
+
+impl acp_thread::AgentSessionTruncate for AcpSessionTruncate {
+    fn run(&self, _message_id: acp_thread::ClientUserMessageId, _cx: &mut App) -> Task<Result<()>> {
+        Task::ready(Ok(()))
+    }
+}
+
 fn meta_terminal_auth_task(
     agent_id: &AgentId,
     method_id: &acp_v2::AuthMethodId,
     method: &acp_v2::AuthMethod,
+    spawn_env: &HashMap<String, String>,
 ) -> Option<SpawnInTerminal> {
     #[derive(Deserialize)]
     struct MetaTerminalAuth {
@@ -1215,12 +1247,14 @@ fn meta_terminal_auth_task(
     let terminal_auth =
         serde_json::from_value::<MetaTerminalAuth>(meta.get("terminal-auth")?.clone()).ok()?;
 
+    let mut environment = spawn_env.clone();
+    environment.extend(terminal_auth.env);
     Some(acp_thread::build_terminal_auth_task(
         terminal_auth_task_id(agent_id, method_id),
         terminal_auth.label.clone(),
         terminal_auth.command,
         terminal_auth.args,
-        terminal_auth.env,
+        environment,
     ))
 }
 
@@ -1520,10 +1554,13 @@ impl AgentConnection for AcpConnection {
                 self.id.clone(),
                 self.agent_server_store.clone(),
                 terminal.clone(),
+                self.spawn_env.clone(),
                 cx,
             )),
-            acp_v2::AuthMethod::Agent(_) => meta_terminal_auth_task(&self.id, method_id, method)
-                .map(|task| Task::ready(Ok(task))),
+            acp_v2::AuthMethod::Agent(_) => {
+                meta_terminal_auth_task(&self.id, method_id, method, &self.spawn_env)
+                    .map(|task| Task::ready(Ok(task)))
+            }
             _ => None,
         }
     }
@@ -1682,6 +1719,17 @@ impl AgentConnection for AcpConnection {
             connection: self.connection.clone(),
             config_options: config_opts.clone(),
         }) as _)
+    }
+
+    fn truncate(
+        &self,
+        session_id: &acp_v2::SessionId,
+        _cx: &App,
+    ) -> Option<Rc<dyn acp_thread::AgentSessionTruncate>> {
+        self.sessions
+            .borrow()
+            .contains_key(session_id)
+            .then(|| Rc::new(AcpSessionTruncate) as Rc<dyn acp_thread::AgentSessionTruncate>)
     }
 
     fn session_list(&self, _cx: &mut App) -> Option<Rc<dyn AgentSessionList>> {
@@ -5596,6 +5644,7 @@ mod tests {
                             ("SHARED".into(), "base".into()),
                         ]),
                         default_mode: None,
+                        approval: None,
                         default_config_options: HashMap::default(),
                         favorite_config_option_values: HashMap::default(),
                     }
@@ -5756,8 +5805,13 @@ mod tests {
             )),
         );
 
-        let task = meta_terminal_auth_task(&AgentId::new("test-agent"), &method_id, &method)
-            .expect("expected legacy terminal auth task");
+        let task = meta_terminal_auth_task(
+            &AgentId::new("test-agent"),
+            &method_id,
+            &method,
+            &HashMap::default(),
+        )
+        .expect("expected legacy terminal auth task");
 
         assert_eq!(task.id.0, "external-agent-test-agent-legacy-login-login");
         assert_eq!(task.command.as_deref(), Some("legacy-agent"));
@@ -5784,7 +5838,13 @@ mod tests {
         );
 
         assert!(
-            meta_terminal_auth_task(&AgentId::new("test-agent"), &method_id, &method).is_none()
+            meta_terminal_auth_task(
+                &AgentId::new("test-agent"),
+                &method_id,
+                &method,
+                &HashMap::default()
+            )
+            .is_none()
         );
     }
 
@@ -6232,6 +6292,7 @@ mod tests {
                         args: Vec::new(),
                         env: HashMap::default(),
                         default_mode: Some("manual".to_string()),
+                        approval: None,
                         default_config_options: HashMap::from_iter([(
                             "mode".to_string(),
                             AgentConfigOptionValue::from("config-value"),

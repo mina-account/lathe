@@ -116,13 +116,13 @@ pub fn read_credentials(server: &str) -> Result<Option<(String, Vec<u8>)>, Keych
     let result = unsafe { result.cast_unchecked::<CFType, CFType>() };
     // SAFETY: Reading immutable constants exported by the Security framework.
     let (account_key, data_key) = unsafe { (kSecAttrAccount, kSecValueData) };
-    let account = result
-        .get(account_key)
-        .ok_or(KeychainError::InvalidResponse(
-            "account was missing from keychain item",
-        ))?
-        .downcast::<CFString>()
-        .map_err(|_| KeychainError::InvalidResponse("account was not a string"))?;
+    let account = match result.get(account_key) {
+        Some(account) => account
+            .downcast::<CFString>()
+            .map_err(|_| KeychainError::InvalidResponse("account was not a string"))?
+            .to_string(),
+        None => String::new(),
+    };
     let password = result
         .get(data_key)
         .ok_or(KeychainError::InvalidResponse(
@@ -130,7 +130,7 @@ pub fn read_credentials(server: &str) -> Result<Option<(String, Vec<u8>)>, Keych
         ))?
         .downcast::<CFData>()
         .map_err(|_| KeychainError::InvalidResponse("password was not data"))?;
-    Ok(Some((account.to_string(), password.to_vec())))
+    Ok(Some((account, password.to_vec())))
 }
 
 pub fn delete_credentials(server: &str) -> Result<(), KeychainError> {
@@ -144,7 +144,11 @@ pub fn delete_credentials(server: &str) -> Result<(), KeychainError> {
     );
     // SAFETY: The query maps Security attribute keys to CF values.
     let status = unsafe { SecItemDelete(query.as_opaque()) };
-    check_status(KeychainOperation::Delete, status)
+    if status == errSecItemNotFound {
+        Ok(())
+    } else {
+        check_status(KeychainOperation::Delete, status)
+    }
 }
 
 fn read_status(status: i32) -> Result<bool, KeychainError> {

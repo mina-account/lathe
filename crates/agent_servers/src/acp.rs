@@ -15,6 +15,7 @@ pub use v1::test_support;
 pub use v1::{AcpConnection, AcpSessionList, GEMINI_TERMINAL_AUTH_METHOD_ID, connect};
 pub use v2::AcpV2Connection;
 
+use crate::GEMINI_ID;
 use acp_thread::{AcpThread, AuthRequired, ElicitationStore, LoadError};
 use agent_client_protocol::schema::{
     v1::{self as acp, ErrorCode},
@@ -24,13 +25,17 @@ use agent_client_protocol::{
     Agent, Client, HandleDispatchFrom, Handled, JsonRpcMessage, JsonRpcResponse, Responder,
     UntypedMessage, V2Builder, V2ConnectionTo,
 };
+use ai_accounts::{
+    AiAccountsSettings, WorkspaceAccountBindings, descriptor_for, load_index, mark_account_used,
+};
 use anyhow::{Context as _, Result, anyhow};
 use collections::{HashMap, HashSet};
 use futures::{Future, channel::mpsc};
-use gpui::{App, AsyncApp, Entity, SharedString, Subscription, Task, WeakEntity};
+use gpui::{App, AsyncApp, Entity, EntityId, SharedString, Subscription, Task, WeakEntity};
 use project::agent_server_store::{AgentServerCommand, AgentServerStore};
 use project::context_server_store::ContextServerConfiguration;
 use project::{AgentId, Project};
+use settings::SettingsStore;
 use std::{cell::RefCell, path::PathBuf, process::ExitStatus, rc::Rc, sync::Arc};
 use task::SpawnInTerminal;
 use thiserror::Error;
@@ -554,6 +559,7 @@ fn first_class_terminal_auth_task(
     agent_id: AgentId,
     store: WeakEntity<AgentServerStore>,
     terminal: acp_v2::AuthMethodTerminal,
+    spawn_env: HashMap<String, String>,
     cx: &App,
 ) -> Task<Result<SpawnInTerminal>> {
     cx.spawn(async move |cx| {
@@ -562,11 +568,13 @@ fn first_class_terminal_auth_task(
                 let agent = store
                     .get_external_agent(&agent_id)
                     .context("Agent server not found")?;
-                let environment = terminal
-                    .env
-                    .iter()
-                    .map(|variable| (variable.name.clone(), variable.value.clone()))
-                    .collect();
+                let mut environment = spawn_env;
+                environment.extend(
+                    terminal
+                        .env
+                        .iter()
+                        .map(|variable| (variable.name.clone(), variable.value.clone())),
+                );
                 anyhow::Ok(agent.get_command(
                     terminal.args.clone(),
                     environment,
@@ -577,6 +585,75 @@ fn first_class_terminal_auth_task(
             .await?;
         Ok(terminal_auth_task(&command, &agent_id, &terminal))
     })
+}
+
+/// Injects the config-dir env var of the Lathe AI account bound to this agent,
+/// resolved from the project's workspace binding, then the `ai_accounts`
+/// setting, then the agent's global default, then an implicit single-account
+/// default. Agents without a known descriptor are left alone. Returns the env
+/// var names that must also be removed from the child's inherited environment.
+fn apply_ai_account_env(
+    agent_id: &AgentId,
+    project: EntityId,
+    env: &mut HashMap<String, String>,
+    cx: &AsyncApp,
+) -> &'static [&'static str] {
+    let agent_id = agent_id.0.as_ref();
+    let Some(descriptor) = descriptor_for(agent_id) else {
+        return &[];
+    };
+    let mut scrub_env: &'static [&'static str] = &[];
+    let settings_and_binding = cx.try_read_global::<SettingsStore, _>(|store, cx| {
+        (
+            store.get::<AiAccountsSettings>(None).clone(),
+            WorkspaceAccountBindings::binding_for(project, agent_id, cx),
+        )
+    });
+    if let Some((settings, workspace_binding)) = settings_and_binding
+        && let Some(account) =
+            settings.resolve_account(agent_id, workspace_binding.as_deref(), &load_index())
+    {
+        env.insert(
+            descriptor.config_dir_env_var.to_string(),
+            account.config_dir.display().to_string(),
+        );
+        // For Gemini, make sure the relocated config dir selects AI Studio
+        // API-key auth. Accounts created before this was written at create time
+        // would otherwise launch with no selected auth type and fail with
+        // AuthRequired.
+        if agent_id == GEMINI_ID
+            && let Err(error) =
+                ai_accounts::ensure_gemini_api_key_auth_selected(&account.config_dir)
+        {
+            log::warn!(
+                "ai_accounts: failed to ensure Gemini settings.json for {}: {error:#}",
+                account.id
+            );
+        }
+        // Touch last_used_at so the account floats to the top of the Manage
+        // modal's per-agent list. Failure here is benign, so log it rather than
+        // blocking the thread spawn.
+        if let Err(error) = mark_account_used(&account.id) {
+            log::warn!(
+                "ai_accounts: failed to update last_used_at for {}: {error:#}",
+                account.id
+            );
+        }
+        // Strip API-key env vars that would override the account's
+        // subscription login.
+        scrub_env = descriptor.scrub_env;
+        for key in scrub_env {
+            env.remove(*key);
+        }
+    }
+    // Apply the descriptor's protective defaults (e.g. cloud-MCP disable, MCP
+    // startup timeout) only when the user hasn't explicitly set the var:
+    // workspace settings, shell env, or a remote-client template all win.
+    for (key, value) in descriptor.default_env {
+        env.entry(key.to_string())
+            .or_insert_with(|| value.to_string());
+    }
+    scrub_env
 }
 
 fn map_acp_error(err: acp::Error) -> anyhow::Error {
