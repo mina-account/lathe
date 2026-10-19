@@ -629,6 +629,31 @@ test("top controls support keyboard activation and Find focus without document e
     for(const mode of ['ir','wysiwyg','sv','preview']) {
         const {page,context}=await open(source,mode);
         assert(await page.locator('#status').isHidden(),`${mode}: no idle status row`);
+        for(const control of await page.locator('#controls button:not(:disabled), #controls select, #inline-toolbar').all()) {
+            await control.hover();
+            assert.equal(await page.locator('#control-tooltip').innerText(),await control.getAttribute('aria-label'));
+            assert(await page.locator('#control-tooltip').isVisible());
+            const bounds=await page.locator('#control-tooltip').boundingBox();
+            assert(bounds.x>=0 && bounds.x+bounds.width<=page.viewportSize().width);
+        }
+        assert.equal(await page.locator('#inline-toolbar').isChecked(),false);
+        if(mode==='wysiwyg') {
+            await page.locator('.vditor-wysiwyg h1').click();
+            const popover=page.locator('.vditor-wysiwyg .vditor-panel').first();
+            assert(await popover.isHidden());
+            await page.evaluate(()=>{window.originalToolbarEditor=window.latheRich.editor;});
+            await page.locator('#inline-toolbar').check();
+            await page.locator('.vditor-wysiwyg h1').click();
+            await popover.waitFor({state:'visible',timeout:3000});
+            assert.equal(await page.evaluate(()=>window.latheRich.editor===window.originalToolbarEditor),true);
+            assert.equal(await page.evaluate(()=>window.testMessages.filter(message=>message.kind==='preferences').at(-1).preferences.inline_toolbar),true);
+            await page.locator('#inline-toolbar').uncheck();
+            assert(await popover.isHidden());
+            await page.evaluate(()=>window.latheMarkdown.receive({kind:'preferences',preferences:{mode:'wysiwyg',outline:false,wrap:true,scroll:0,inline_toolbar:true}}));
+            assert(await page.locator('#inline-toolbar').isChecked());
+            await page.locator('.vditor-wysiwyg h1').click();
+            await popover.waitFor({state:'visible',timeout:3000});
+        }
         for(const [selector,result] of [['#outline-toggle',()=>!document.getElementById('outline').hidden],['#wrap',()=>document.body.classList.contains('nowrap')]]) {
             await page.focus(selector);await page.keyboard.press('Enter');
             assert.equal(await page.evaluate(result),true,`${mode}/${selector}/Enter`);
@@ -655,6 +680,7 @@ test("top controls support keyboard activation and Find focus without document e
         await page.keyboard.press('ControlOrMeta+f');assert.equal(await page.evaluate(()=>document.activeElement.id),'query',mode);
         await page.keyboard.press('Escape');assert(await page.locator('#find').isHidden(),mode);
         await page.focus('#reset');await page.keyboard.press('Enter');await page.waitForFunction(()=>window.latheRich.ready&&document.getElementById('mode').value==='ir');
+        assert.equal(await page.locator('#inline-toolbar').isChecked(),false);
         assert(await page.locator('#status').isHidden(),`${mode}: reset leaves no idle status row`);
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source,mode);
         assert.equal(await page.evaluate(()=>window.testMessages.some(message=>['edit','draft','undo','redo'].includes(message.kind))),false,mode);
@@ -869,6 +895,7 @@ test("table cells and row/column operations retain adjacent source and use Vdito
         await page.click("#wrap"); assert.equal(await cell.evaluate(cell=>getComputedStyle(cell).whiteSpace),"normal");
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace("Alpha","Edited cell"));
         if (mode==="wysiwyg") {
+            await page.locator('#inline-toolbar').check();
             await page.locator('.vditor-wysiwyg td').filter({hasText:"Edited cell"}).click();
             try { await page.locator('.vditor-wysiwyg .vditor-panel [data-type=insertRow]').last().click({timeout:3000}); }
             catch(error) { throw new Error(JSON.stringify(await page.evaluate(()=>({style:window.latheRich.editor.vditor.wysiwyg.popover.getAttribute('style'),rect:window.latheRich.editor.vditor.wysiwyg.popover.getBoundingClientRect().toJSON(),selection:window.getSelection()?.anchorNode?.parentElement?.outerHTML,dom:window.latheRich.editor.vditor.wysiwyg.element.parentElement.outerHTML}))),{cause:error}); }

@@ -88,6 +88,7 @@ struct WindowsPlatformInner {
 
 pub(crate) struct WindowsPlatformState {
     callbacks: PlatformCallbacks,
+    quit_requested: Cell<bool>,
     menus: RefCell<Vec<OwnedMenu>>,
     jump_list: RefCell<JumpList>,
     // NOTE: standard cursor handles don't need to close.
@@ -122,6 +123,7 @@ impl WindowsPlatformState {
 
         Self {
             callbacks,
+            quit_requested: Cell::new(false),
             jump_list: RefCell::new(jump_list),
             current_cursor: Cell::new(current_cursor),
             cursor_visible: Arc::new(AtomicBool::new(true)),
@@ -129,6 +131,12 @@ impl WindowsPlatformState {
             directx_devices: RefCell::new(directx_devices),
             menus: RefCell::new(Vec::new()),
         }
+    }
+
+    fn request_quit(&self) {
+        // Embedded message pumps such as CEF can consume WM_QUIT before our main loop sees it.
+        self.quit_requested.set(true);
+        unsafe { PostQuitMessage(0) };
     }
 }
 
@@ -602,7 +610,9 @@ impl Platform for WindowsPlatform {
 
         let mut msg = MSG::default();
         unsafe {
-            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            while !self.inner.state.quit_requested.get()
+                && GetMessageW(&mut msg, None, 0, 0).as_bool()
+            {
                 if translate_accelerator(&msg).is_none() {
                     _ = TranslateMessage(&msg);
                     DispatchMessageW(&msg);
@@ -619,8 +629,9 @@ impl Platform for WindowsPlatform {
     }
 
     fn quit(&self) {
+        let inner = self.inner.clone();
         self.foreground_executor()
-            .spawn(async { unsafe { PostQuitMessage(0) } })
+            .spawn(async move { inner.state.request_quit() })
             .detach();
     }
 
@@ -689,6 +700,7 @@ impl Platform for WindowsPlatform {
             log::error!("failed to restart: PowerShell is unavailable");
             return;
         };
+        let inner = self.inner.clone();
         self.foreground_executor
             .spawn(async move {
                 let mut command = new_std_command(powershell);
@@ -706,7 +718,7 @@ impl Platform for WindowsPlatform {
                 let restart_process = command.spawn();
 
                 match restart_process {
-                    Ok(_) => unsafe { PostQuitMessage(0) },
+                    Ok(_) => inner.state.request_quit(),
                     Err(e) => log::error!("failed to spawn restart script: {:?}", e),
                 }
             })
@@ -1262,7 +1274,7 @@ impl WindowsPlatformInner {
         // Shutdown couldn't run synchronously, since the AppCell is already borrowed.
         // Windows may terminate the application as soon as we return from this handler, but if we post a WM_QUIT message now,
         // we may get to gracefully shut down the app before we're terminated by the OS.
-        unsafe { PostQuitMessage(0) };
+        self.state.request_quit();
         Some(0)
     }
 
@@ -1868,17 +1880,69 @@ unsafe fn username_and_password(credential: &CREDENTIALW) -> Result<(String, Vec
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::{OsStr, OsString};
+    use std::{
+        cell::Cell,
+        ffi::{OsStr, OsString},
+        rc::Rc,
+    };
 
     use crate::{read_from_clipboard, write_to_clipboard};
-    use gpui::ClipboardItem;
+    use gpui::{ClipboardItem, Platform};
     use windows::Win32::Security::Credentials::{
         CRED_PERSIST_SESSION, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW,
         CredWriteW,
     };
     use windows::core::{PCWSTR, PWSTR};
 
-    use super::{encode_restart_arguments, username_and_password};
+    use super::{WindowsPlatform, encode_restart_arguments, username_and_password};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MSG, PM_REMOVE, PeekMessageW, PostQuitMessage, WM_QUIT,
+    };
+
+    #[test]
+    fn test_quit_survives_nested_message_pump() -> anyhow::Result<()> {
+        let platform = Rc::new(WindowsPlatform::new(true)?);
+        let quit_message_consumed = Rc::new(Cell::new(false));
+        let shutdown_called = Rc::new(Cell::new(false));
+        platform.on_quit(Box::new({
+            let shutdown_called = shutdown_called.clone();
+            move || {
+                shutdown_called.set(true);
+                true
+            }
+        }));
+        platform.run(Box::new({
+            let platform = platform.clone();
+            let quit_message_consumed = quit_message_consumed.clone();
+            move || {
+                platform.quit();
+                platform
+                    .foreground_executor()
+                    .spawn(async move {
+                        let mut message = MSG::default();
+                        quit_message_consumed.set(unsafe {
+                            PeekMessageW(&mut message, None, WM_QUIT, WM_QUIT, PM_REMOVE).as_bool()
+                                && message.message == WM_QUIT
+                        });
+                        // Keep a broken event loop from hanging the test after the original quit is consumed.
+                        unsafe { PostQuitMessage(42) };
+                    })
+                    .detach();
+            }
+        }));
+        assert!(quit_message_consumed.get());
+        assert!(shutdown_called.get());
+        let mut message = MSG::default();
+        unsafe {
+            assert!(
+                PeekMessageW(&mut message, None, WM_QUIT, WM_QUIT, PM_REMOVE).as_bool(),
+                "the main loop should exit without consuming the fallback quit message"
+            );
+        }
+        assert_eq!(message.message, WM_QUIT);
+        assert_eq!(message.wParam.0, 42);
+        Ok(())
+    }
 
     #[test]
     fn test_read_credential_with_username() {
