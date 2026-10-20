@@ -45,7 +45,7 @@ DOMPurify.addHook("uponSanitizeAttribute", (_node:Element, attribute:any,configu
     }
     if (attribute.attrName.startsWith("data-lathe-") && !configuration.LATHE_IMAGES) attribute.keepAttr=false;
     if(configuration.LATHE_IMAGES && ["data-lathe-image","data-lathe-original"].includes(attribute.attrName))attribute.forceKeepAttr=true;
-    if (attribute.attrName === "class") attribute.attrValue = attribute.attrValue.replace(/\blanguage-math\b/g,"lathe-math").replace(/\blanguage-(?:mermaid|graphviz|echarts|abc|flowchart|plantuml|markmap|mindmap|smiles)\b/g,"language-text");
+    if (attribute.attrName === "class") attribute.attrValue = attribute.attrValue.replace(/\blanguage-math\b/g,"lathe-math").replace(/\blanguage-(mermaid|graphviz|echarts|abc|flowchart|plantuml|markmap|mindmap|smiles)\b/g,"lathe-renderer-$1");
 });
 DOMPurify.addHook("afterSanitizeAttributes", (node:Element, _data:any, configuration:any) => {
     if (node.tagName==="IMG") {
@@ -95,6 +95,7 @@ Lute.New = (...arguments_: any[]) => {
         lute[method]=(html:string,...parameters:any[])=>{
             const template=document.createElement("template"); template.innerHTML=html;
             for(const preview of template.content.querySelectorAll('.vditor-ir__preview,.vditor-wysiwyg__preview')) preview.remove();
+            for(const code of template.content.querySelectorAll('code[class*="lathe-renderer-"]')) code.className=code.className.replace(/\blathe-renderer-([\w-]+)\b/g,"language-$1");
             return original(durableImageSources(template.innerHTML),...parameters);
         };
     }
@@ -552,7 +553,7 @@ function build(selected = selection(), oldText = active().textContent ?? "") {
         preview:{delay:0,mode:"both",actions:[],hljs:{enable:false,lineNumber:false,style:preferences.code_theme ?? appearance.code_theme ?? (appearance.dark?"github-dark":"github")},
             math:{engine:"KaTeX",inlineDigit:true},
             markdown:{sanitize:true,codeBlockPreview:false,mathBlockPreview:false,footnotes:true,toc:false},
-            theme:{current:"",path:location.origin + "/vendor"},render:{media:{enable:false}},transform:(html:string) => sanitize(html,false,true),parse:() => { if(currentGeneration!==generation)return;splitPreviewReady=true;renderOutline();if(ready) { renderMath(editor.vditor.preview.previewElement);void loadImages(editor.vditor.preview.previewElement);void highlightCode(editor.vditor.preview.previewElement);navigatePendingFragment(); } }},
+            theme:{current:"",path:location.origin + "/vendor"},render:{media:{enable:false}},transform:(html:string) => sanitize(html,false,true),parse:() => { if(currentGeneration!==generation)return;splitPreviewReady=true;renderOutline();if(ready) { renderMath(editor.vditor.preview.previewElement);renderCode(editor.vditor.preview.previewElement);void loadImages(editor.vditor.preview.previewElement);void highlightCode(editor.vditor.preview.previewElement);navigatePendingFragment(); } }},
         hint:{emojiPath:"",parse:false}, link:{isOpen:false,click:(element:HTMLElement) => openLink(linkDestination(element))}, image:{isPreview:false},
         input:() => commit(),
         after:() => {
@@ -580,6 +581,7 @@ function renderViewer() {
     if (preferences.mode === "preview") {
         viewer.innerHTML = sanitize(editor.vditor.lute.Md2HTML(display(latest)),false,true);
         renderMath(viewer);
+        renderCode(viewer);
         void loadImages(viewer);
         void highlightCode(viewer);
     }
@@ -642,19 +644,49 @@ function fencedSourceSpans():{start:number;end:number;label:string}[] {
     }
     return result;
 }
-function renderCode() {
-    if(preferences.mode==="sv" || preferences.mode==="preview")return;
-    for(const block of active().querySelectorAll<HTMLElement>('[data-type="code-block"]')){
-        const code=block.querySelector<HTMLElement>('pre code'),language=code?.className.match(/language-([^\s]+)/)?.[1];
-        if(!code || rendererLanguages.includes(language??""))continue;
+function renderCode(root=renderedRoot()) {
+    if(preferences.mode==="sv" || preferences.mode==="preview") {
+        for(const code of root.querySelectorAll<HTMLElement>('pre > code[class*="lathe-renderer-"], div[class*="lathe-renderer-"]')) {
+            const language=code.className.match(/lathe-renderer-([^\s]+)/)?.[1];
+            if(!language || !rendererLanguages.includes(language))continue;
+            const preview=document.createElement('div');preview.className="renderer-output";
+            const target=code.tagName==="CODE" && code.parentElement?.tagName==="PRE" ? code.parentElement : code;
+            target.replaceWith(preview);
+            preview.dataset.codeLanguage=language;preview.dataset.codeSource=code.textContent??"";
+        }
+        for(const preview of root.querySelectorAll<HTMLElement>('.renderer-output[data-code-language]'))renderDiagram(preview,preview.dataset.codeLanguage!,preview.dataset.codeSource??"");
+        return;
+    }
+    for(const block of root.querySelectorAll<HTMLElement>('[data-type="code-block"]')){
+        const code=block.querySelector<HTMLElement>('pre code'),language=code?.className.match(/(?:language-|lathe-renderer-)([^\s]+)/)?.[1];
+        if(!code)continue;
+        const renderer=rendererLanguages.includes(language??"");
         let preview=block.querySelector<HTMLElement>(':scope > .vditor-ir__preview,:scope > .vditor-wysiwyg__preview');
-        if(!preview){preview=document.createElement('pre');preview.className=preferences.mode==="ir"?'vditor-ir__preview':'vditor-wysiwyg__preview';preview.dataset.render="1";block.append(preview);}
+        if(!preview){
+            preview=document.createElement(renderer?'div':'pre');preview.className=preferences.mode==="ir"?'vditor-ir__preview':'vditor-wysiwyg__preview';preview.dataset.render="1";code.parentElement!.after(preview);
+            if(preferences.mode==="wysiwyg")code.parentElement!.style.display="none";
+        }
+        if(preferences.mode==="ir")code.parentElement!.classList.add("vditor-ir__marker");
         preview.contentEditable="false";
         const source=code.textContent??"";
-        if(preview.dataset.codeSource===source)continue;
-        preview.dataset.codeSource=source;const rendered=document.createElement('code');rendered.className=code.className;rendered.textContent=source;preview.replaceChildren(rendered);
-        void highlightCode(preview);
+        if(renderer) {
+            preview.classList.add("renderer-output");
+            renderDiagram(preview,language!,source);
+        } else {
+            if(preview.dataset.codeSource===source && preview.dataset.codeLanguage===(language??""))continue;
+            preview.classList.remove("renderer-output");
+            for(const name of ["renderer","state","renderToken","source","dark","service"])delete preview.dataset[name];
+            const rendered=document.createElement('code');rendered.className=code.className;rendered.textContent=source;preview.replaceChildren(rendered);
+            if(preview.tagName!=="PRE"){const pre=document.createElement('pre');pre.append(rendered);preview.replaceChildren(pre);}
+            void highlightCode(preview);
+        }
+        preview.dataset.codeSource=source;preview.dataset.codeLanguage=language??"";
     }
+}
+function renderDiagram(preview:HTMLElement,language:string,source:string) {
+    if(preview.dataset.source===source && preview.dataset.renderer===language && preview.dataset.dark===String(appearance.dark) && (language!=="plantuml" || preview.dataset.service===(appearance.plantuml_service??"")))return;
+    preview.dataset.source=source;preview.dataset.dark=String(appearance.dark);preview.dataset.service=appearance.plantuml_service??"";
+    void renderFence(preview,language,source,plantuml,appearance.dark).then(()=>refreshRenderedFind(preview));
 }
 function renderSourceFence(details:HTMLElement,span:{start:number;end:number}) {
     const source=latest.slice(span.start,span.end);
@@ -663,13 +695,11 @@ function renderSourceFence(details:HTMLElement,span:{start:number;end:number}) {
     const match=fence ?? (source.startsWith("$") ? [source,"math",source.replace(/^\${1,2}|\${1,2}$/g,"").trim()] : null);
     if (!match || !rendererLanguages.includes(match[1])) return;
     let output=details.querySelector<HTMLElement>(".renderer-output");
-    if (output?.dataset.source===source && (match[1]!=="plantuml" || output.dataset.service===(appearance.plantuml_service ?? ""))) return;
+    if (output?.dataset.fenceSource===source && output.dataset.dark===String(appearance.dark) && (match[1]!=="plantuml" || output.dataset.service===(appearance.plantuml_service ?? ""))) return;
     if (!output) { output=document.createElement("div"); output.className="renderer-output vditor-reset"; details.append(output); }
-    output.dataset.source=source; details.open=true;
-    output.dataset.service=appearance.plantuml_service ?? "";
-    if (!document.body.classList.contains("has-renderers")) get("source-blocks").setAttribute("open","");
+    output.dataset.fenceSource=source;details.open=true;
     document.body.classList.add("has-renderers");
-    void renderFence(output,match[1],match[2],plantuml).then(()=>refreshRenderedFind(output!));
+    renderDiagram(output,match[1],match[2]);
 }
 function headingElements() { return [...(preferences.mode === "sv" ? editor.vditor.preview.previewElement : active()).querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")]; }
 function renderOutline() {

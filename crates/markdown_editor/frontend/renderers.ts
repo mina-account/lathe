@@ -74,7 +74,28 @@ function tree(source:string):any {
     if (root.children.length !== 1) throw new Error("Mindmap expects one root.");
     return root.children[0];
 }
-export async function renderFence(element:HTMLElement,language:string,source:string,plantuml:(source:string)=>Promise<string>):Promise<void> {
+function svgPresentation(html:string):string {
+    // Keep diagram colors and fonts when sanitization removes the renderer's stylesheet.
+    const template=document.createElement("template");template.innerHTML=html;
+    const properties=["color","fill","fill-opacity","stroke","stroke-width","stroke-opacity","stroke-dasharray","stroke-linecap","stroke-linejoin","opacity","font-family","font-size","font-weight","font-style","text-anchor","dominant-baseline","visibility"];
+    for(const style of template.content.querySelectorAll("svg style")) {
+        const svg=style.closest("svg")!,stylesheet=new CSSStyleSheet();
+        stylesheet.replaceSync(style.textContent??"");
+        for(const rule of stylesheet.cssRules) {
+            if(!(rule instanceof CSSStyleRule))continue;
+            const elements=[...svg.querySelectorAll(rule.selectorText)];
+            if(svg.matches(rule.selectorText))elements.push(svg);
+            for(const property of properties) {
+                const value=rule.style.getPropertyValue(property).trim();
+                if(!value || (/url\s*\(/i.test(value) && !/^url\(#[\w-]+\)$/.test(value)))continue;
+                for(const element of elements)element.setAttribute(property,value);
+            }
+        }
+        style.remove();
+    }
+    return template.innerHTML;
+}
+export async function renderFence(element:HTMLElement,language:string,source:string,plantuml:(source:string)=>Promise<string>,dark=false):Promise<void> {
     const token=String(++identifier); element.dataset.renderToken=token;
     element.dataset.renderer=language; element.dataset.state="pending"; element.textContent="Rendering…";
     if (!dependencies[language]) return;
@@ -90,8 +111,8 @@ export async function renderFence(element:HTMLElement,language:string,source:str
             switch (language) {
                 case "math": output.innerHTML=pinnedMath.renderToString(source,{displayMode:element.tagName!=="SPAN",throwOnError:true,trust:false,output:"html",maxExpand:1000,maxSize:100}); break;
                 case "mermaid": {
-                    runtime.mermaid.initialize({startOnLoad:false,securityLevel:"strict",suppressErrorRendering:true,maxTextSize:128*1024,flowchart:{htmlLabels:false},theme:"default"});
-                    const result=await runtime.mermaid.render(`lathe-diagram-${++identifier}`,source); output.innerHTML=sanitizedOutput(result.svg); break;
+                    runtime.mermaid.initialize({startOnLoad:false,securityLevel:"strict",suppressErrorRendering:true,maxTextSize:128*1024,htmlLabels:false,flowchart:{htmlLabels:false},theme:dark?"dark":"default"});
+                    const result=await runtime.mermaid.render(`lathe-diagram-${++identifier}`,source); output.innerHTML=sanitizedOutput(svgPresentation(result.svg)); break;
                 }
                 case "graphviz": {
                     const worker=new Worker("/vendor/dist/js/graphviz/full.render.js");

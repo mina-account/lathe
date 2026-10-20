@@ -2,6 +2,16 @@
 
 Most recent releases first. Beta releases (`-beta` suffix) ship as GitHub pre-releases and typically batch new features ahead of a stable cut.
 
+## v1.10.13-beta - 2026-10-19
+
+- Fixed blurry code blocks by removing conflicting text shadows and duplicate code previews.
+- Fixed Mermaid charts to render inside the Markdown document in WYSIWYG, instant rendering, split view, and viewer modes.
+- Preserved readable diagram colors, labels, and arrows in light and dark themes while keeping rendered content sanitized.
+- Changed Edit Markdown source blocks to start collapsed and remain collapsed after renderer updates.
+- Preserved Markdown source while editing code, diagrams, and surrounding text.
+
+Windows x64 Beta only. The installer and portable ZIP include the pinned browser runtime. This local build is unsigned; Windows may show a SmartScreen warning.
+
 ## v1.10.12-beta - 2026-10-19
 
 - Updated to upstream Zed main at `60e8c18598`, including 125 commits since the previous upstream sync.

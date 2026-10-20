@@ -116,10 +116,12 @@ test("every frozen local renderer has output beside its preserved editable sourc
     const inputs={mermaid:"graph TD; A-->B",graphviz:"digraph G { a -> b; }",echarts:'{"xAxis":{"data":["A","B"]},"yAxis":{},"series":[{"type":"bar","data":[1,2]}]}',abc:"X:1\nT:Example\nM:4/4\nK:C\nCDEF GABc|",flowchart:"st=>start: Start\ne=>end: End\nst->e",markmap:"# Root\n\n- Child",smiles:"CCO",math:"\\ce{H2O} + x^2",mindmap:"- Root\n    - Child"};
     for (const [language,input] of Object.entries(inputs)) {
         const source=`Before\n\n\`\`\`${language}\n${input}\n\`\`\`\n\nTail`, {page,context,external}=await open(source,"preview");
-        await page.waitForSelector(`[data-renderer="${language}"][data-state="ready"]`,{timeout:20000});
+        assert.equal(await page.locator('#source-blocks').evaluate(details=>details.open),false);
+        await page.locator('#source-blocks > summary').click();
+        await page.waitForSelector(`#blocks [data-renderer="${language}"][data-state="ready"]`,{timeout:20000});
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
-        assert.equal(await page.locator(`[data-renderer="${language}"] svg, [data-renderer="${language}"] .katex`).count()>0,true,language);
-        const text=await page.locator(`[data-renderer="${language}"]`).textContent();
+        assert.equal(await page.locator(`#blocks [data-renderer="${language}"] svg, #blocks [data-renderer="${language}"] .katex`).count()>0,true,language);
+        const text=await page.locator(`#blocks [data-renderer="${language}"]`).textContent();
         if(language==="mermaid" || language==="graphviz") { assert.match(text,/a|A/,language); assert.match(text,/b|B/,language); }
         if(language==="markmap" || language==="mindmap") { assert.match(text,/Root/); assert.match(text,/Child/); }
         if(language==="flowchart") { assert.match(text,/Start/); assert.match(text,/End/); }
@@ -127,18 +129,19 @@ test("every frozen local renderer has output beside its preserved editable sourc
         if(language==="smiles") assert.match(text,/O/);
         if(language==="math") assert.match(text,/H.*2.*O/);
         if(language==="math" || language==="markmap") assert.equal(await page.evaluate(()=>window.katex.version),"0.16.9");
-        if(language==="echarts") { assert.match(text,/A/); assert.match(text,/B/); assert(await page.locator('[data-renderer="echarts"] svg path').count()>2); }
+        if(language==="echarts") { assert.match(text,/A/); assert.match(text,/B/); assert(await page.locator('#blocks [data-renderer="echarts"] svg path').count()>2); }
         assert.deepEqual(external,[]); await context.close();
     }
     for(const combined of ["```math\n\\ce{H2O}\n```\n\n```markmap\n# Root\n- Child\n```\n\n```math\nx^2\n```","```markmap\n# Root\n- Child\n```\n\n```math\n\\ce{H2O}\n```\n\n```math\nx^2\n```"]) {
         const {page,context}=await open(combined,"ir");
         await page.waitForFunction(()=>document.querySelectorAll('#blocks [data-renderer][data-state="ready"]').length===3);
         assert.equal(await page.evaluate(()=>window.katex.version),"0.16.9");
-        assert.match(await page.locator('[data-renderer="math"]').first().textContent(),/H.*2.*O/);
+        assert.match(await page.locator('#blocks [data-renderer="math"]').first().textContent(),/H.*2.*O/);
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),combined);
+        await page.locator('#source-blocks > summary').click();
         const field=page.locator('#blocks textarea').nth(combined.startsWith('```math')?0:1);
         await field.fill("```math\n\\ce{CO2}\n```");await field.blur();await acknowledge(page);
-        await page.waitForFunction(()=>document.querySelector('[data-renderer="math"]')?.dataset.state==="ready" && /C.*O.*2/.test(document.querySelector('[data-renderer="math"]').textContent));
+        await page.waitForFunction(()=>document.querySelector('#blocks [data-renderer="math"]')?.dataset.state==="ready" && /C.*O.*2/.test(document.querySelector('#blocks [data-renderer="math"]').textContent));
         assert.equal(await page.evaluate(()=>window.katex.version),"0.16.9");
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),combined.replace('H2O','CO2'));await context.close();
     }
@@ -148,6 +151,7 @@ test("malformed renderers report errors beside exact source and never execute ch
     const invalid={mermaid:"graph TD { ???",graphviz:"digraph { a ->",echarts:'({series:[],run:()=>{window.hostileExecuted=true}})',abc:"invalid",flowchart:"INVALID -> ???",markmap:"invalid",smiles:"invalid ???",math:"{ INVALID",mindmap:"# Root\n- Child",plantuml:"INVALID -> ???"};
     for(const [language,input] of Object.entries(invalid)) {
         const source=`\`\`\`${language}\n${input}\n\`\`\``,{page,context}=await open(source,"preview");
+        await page.locator('#source-blocks > summary').click();
         await page.waitForSelector(`[data-renderer="${language}"][data-state="error"]`,{timeout:20000});
         assert.equal(await page.locator("#blocks textarea").inputValue(),source);
         assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
@@ -254,15 +258,16 @@ test("loaded inline images keep durable destinations and titles through paragrap
 
 test("PlantUML is explicitly service backed and sanitizes configured service output",async()=>{
     const source="```plantuml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```",{page,context,external}=await open(source,"preview");
-    await page.waitForSelector('[data-renderer="plantuml"][data-state="error"]');
-    assert.match(await page.locator('[data-renderer="plantuml"]').textContent(),/cannot render offline/);
+    await page.locator('#source-blocks > summary').click();
+    await page.waitForSelector('#blocks [data-renderer="plantuml"][data-state="error"]');
+    assert.match(await page.locator('#blocks [data-renderer="plantuml"]').textContent(),/cannot render offline/);
     await page.evaluate(()=>{
         window.latheMarkdown.receive({kind:"appearance",plantuml_service:"https://configured.invalid/plantuml",dark:false,show_line_numbers:true});
         window.latheMarkdown.send=message=>{window.testMessages.push(message);if(message.kind==="plantuml")window.latheMarkdown.receive({kind:"resource",request:message.request,mime:"image/svg+xml",bytes:btoa('<svg onload="window.hostileExecuted=true" xmlns="http://www.w3.org/2000/svg"><script>window.hostileExecuted=true</script><text onclick="window.hostileExecuted=true">Alice and Bob</text><a href="javascript:evil()">unsafe</a></svg>'),error:null});};
         window.latheMarkdown.receive({kind:"document",revision:1,text:window.latheMarkdown.draft+"\n",writable:true,draft:null});
     });
-    await page.waitForSelector('[data-renderer="plantuml"][data-state="ready"]');
-    assert.equal(await page.locator('[data-renderer="plantuml"] script,[data-renderer="plantuml"] [onclick],[data-renderer="plantuml"] a').count(),0);
+    await page.waitForSelector('#blocks [data-renderer="plantuml"][data-state="ready"]');
+    assert.equal(await page.locator('#blocks [data-renderer="plantuml"] script,#blocks [data-renderer="plantuml"] [onclick],#blocks [data-renderer="plantuml"] a').count(),0);
     assert.equal(await page.evaluate(()=>window.hostileExecuted),undefined);assert.deepEqual(external,[]);await context.close();
 });
 
@@ -706,6 +711,7 @@ test("reference formatting controls edit selected blocks through real Vditor too
 test("WYSIWYG link popup fields accept repeated typing while preserving surrounding source",async()=>{
     const source="[Existing](https://existing.invalid)\r\n\r\nBefore intact\r\n\r\nTarget\r\n\r\nAfter intact";
     const {page,context}=await open(source,'wysiwyg');
+    await page.locator('#inline-toolbar').check();
     await selectText(page,'Target');await page.locator('[data-type=link]').first().click();
     await page.waitForFunction(()=>window.latheMarkdown.pending);await acknowledge(page);
     for(const [placeholder,text] of [['Link','https://example.invalid/path'],['Tooltip text','A title'],['text(no empty)','Changed label'],['Link','https://second.invalid/updated']]) {
@@ -1197,7 +1203,7 @@ test("raw drive and UNC image destinations reach host validation without DOM fet
 test("CommonMark renderer fences render every presentation while source stays exact",async()=>{
     for(const mode of ["ir","wysiwyg","sv","preview"])for(const fence of ['~~~mermaid\ngraph TD; A-->B\n~~~','````mermaid\ngraph TD; A-->B\n````','  ```mermaid\n  graph TD; A-->B\n  ```','> ```mermaid\n> graph TD; A-->B\n> ```','- Parent\n  - Child\n\n    ~~~mermaid\n    graph TD; A-->B\n    ~~~']){
         const source=`Before\r\n\r\n${fence.replaceAll('\n','\r\n')}\r\n\r\nTail`,{page,context}=await open(source,mode);
-        await page.waitForSelector('[data-renderer="mermaid"][data-state="ready"]',{timeout:10000});
+        await page.waitForSelector('[data-renderer="mermaid"][data-state="ready"]',{state:'attached',timeout:10000});
         const expected=fence.startsWith('- Parent')?fence.slice(fence.indexOf('    ~~~')):fence;
         assert.equal(await page.locator('#blocks textarea').first().inputValue(),expected);
         await page.evaluate(()=>window.latheRich.commit());assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source);
@@ -1245,6 +1251,57 @@ test("keyboard image picker retains document and source carets across focus and 
         await page.locator('#insert-image').focus();
         await page.keyboard.press('Enter');
         const message=await page.evaluate(()=>window.testMessages.find(message=>message.kind==="pick_images"));assert.equal(message.position,7,`${mode}: document caret`);assert.equal(message.base_revision,1);assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),"New\n"+source);
+        await context.close();
+    }
+});
+
+test("code previews have crisp text and Mermaid renders in the document with source controls collapsed",async()=>{
+    const source='Before\n\n```rust\nfn main() { println!("Hello"); }\n```\n\n```mermaid\nflowchart LR\nBrowser[Browser] --> Web["Next.js / React / Tailwind<br/>localhost:9110"]\nWeb -->|/api/* proxy| API["NestJS API<br/>127.0.0.1:9111"]\nAPI --> DB[(PostgreSQL)]\n```\n\nFinal paragraph';
+    for(const mode of ['wysiwyg','ir','sv','preview']) {
+        const {page,context,external}=await open(source,mode);
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:'appearance',dark:true,use_app_theme_colors:true,show_line_numbers:false,background:'#1e1e1e',foreground:'#cccccc',accent:'#2670b7',custom_css:'',plantuml_service:null}));
+        const root=mode==='preview'?page.locator('#viewer'):mode==='sv'?page.locator('.vditor-preview'):page.locator(`.vditor-${mode}`);
+        await root.locator('pre code.hljs').first().waitFor();
+        const code=root.locator('pre code.hljs').first();
+        assert.equal(await code.evaluate(element=>getComputedStyle(element).textShadow),'none',`${mode}: no code text shadow`);
+        await root.locator('[data-renderer="mermaid"][data-state="ready"] svg').waitFor({timeout:5000});
+        const colors=await root.locator('[data-renderer="mermaid"] .node').first().evaluate(node=>({shape:getComputedStyle(node.querySelector('rect')).fill,text:getComputedStyle(node.querySelector('text')).fill}));
+        assert.notEqual(colors.shape,colors.text,`${mode}: diagram labels contrast with nodes`);
+        if(mode==='wysiwyg' || mode==='ir') {
+            const sourcePre=root.locator(mode==='wysiwyg'?'.vditor-wysiwyg__pre':'.vditor-ir__marker--pre').first();
+            assert((await sourcePre.boundingBox())?.height===0 || await sourcePre.isHidden());
+            await code.click();await selectText(page,'Hello');await page.keyboard.insertText('World');await page.evaluate(()=>window.latheRich.commit());
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),source.replace('Hello','World'));
+            await acknowledge(page);
+        }
+        assert.equal(await page.locator('#source-blocks').evaluate(element=>element.open),false);
+        const expected=['wysiwyg','ir'].includes(mode)?source.replace('Hello','World'):source;
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),expected);
+        await page.evaluate(()=>window.latheRich.commit());
+        assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),expected);
+        if(mode!=='preview') {
+            await selectText(page,'Final paragraph');await page.keyboard.insertText('Changed');await page.evaluate(()=>window.latheRich.commit());
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),expected.replace('Final paragraph','Changed'));
+            await acknowledge(page);
+            await page.locator('#source-blocks > summary').click();
+            const field=page.locator('#blocks textarea').last();
+            const oldDiagram=await field.inputValue(),newDiagram='```mermaid\nflowchart LR\nA[Updated]-->B[Diagram]\n```';
+            await field.fill(newDiagram);await field.blur();await acknowledge(page);
+            await page.waitForFunction(()=>{
+                const root=document.getElementById('mode').value==='sv'?document.querySelector('.vditor-preview'):window.latheRich.editor.vditor[window.latheRich.editor.getCurrentMode()].element;
+                return root.querySelector('[data-renderer="mermaid"][data-state="ready"] svg')?.textContent.includes('Updated');
+            });
+            assert.equal(await page.evaluate(()=>window.latheMarkdown.draft),expected.replace('Final paragraph','Changed').replace(oldDiagram,newDiagram));
+            await page.locator('#source-blocks > summary').click();
+        }
+        await page.evaluate(()=>window.latheMarkdown.receive({kind:'appearance',dark:false,use_app_theme_colors:true,show_line_numbers:false,background:'#fff',foreground:'#222',accent:'#2670b7',custom_css:'',plantuml_service:null}));
+        await root.locator('[data-renderer="mermaid"][data-dark="false"][data-state="ready"] svg').waitFor();
+        assert.equal(await root.locator('pre code.hljs').first().evaluate(element=>getComputedStyle(element).textShadow),'none');
+        const lightColors=await root.locator('[data-renderer="mermaid"] .node').first().evaluate(node=>({shape:getComputedStyle(node.querySelector('rect')).fill,text:getComputedStyle(node.querySelector('text')).fill}));
+        assert.notEqual(lightColors.shape,lightColors.text);
+        assert.notEqual(lightColors.shape,colors.shape);
+        assert.equal(await root.locator('[data-renderer="mermaid"] style, [data-renderer="mermaid"] foreignObject').count(),0);
+        assert.deepEqual(external,[]);
         await context.close();
     }
 });
