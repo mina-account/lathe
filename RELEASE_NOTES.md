@@ -2,6 +2,15 @@
 
 Most recent releases first. Beta releases (`-beta` suffix) ship as GitHub pre-releases and typically batch new features ahead of a stable cut.
 
+## v1.10.12-beta - 2026-10-19
+
+- Updated to upstream Zed main at `60e8c18598`, including 125 commits since the previous upstream sync.
+- Preserved Lathe's Markdown visual editor, AI chat display settings, account bindings, and other fork features alongside the upstream updates.
+- Fixed compatibility with upstream's refactored ACP connections, session recovery, and editor hover code.
+- [GPUI] Preserved Lathe's Windows shutdown and macOS credential handling fixes alongside upstream platform changes.
+
+Windows x64 Beta only. The installer and portable ZIP include the pinned browser runtime. This local build is unsigned; Windows may show a SmartScreen warning.
+
 ## v1.10.11-beta - 2026-10-19
 
 - Added the Markdown visual editor with WYSIWYG, instant rendering, split view, images, math, diagrams, and bundled themes since the previous public Beta.
