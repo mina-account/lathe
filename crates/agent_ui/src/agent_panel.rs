@@ -53,7 +53,8 @@ use crate::{
     ResetFastModeWarnings, ResetTrialEndUpsell, ResetTrialUpsell, ShowAllSidebarThreadMetadata,
     ShowThreadMetadata, ToggleNewThreadMenu, ToggleOptionsMenu,
     conversation_view::{
-        AcpThreadViewEvent, RootThreadUpdated, ThreadView, reset_fast_mode_warnings,
+        AcpServerViewEvent, AcpThreadViewEvent, RootThreadUpdated, ThreadView,
+        reset_fast_mode_warnings,
     },
     ui::{AgentNotification, AgentNotificationEvent, EndTrialUpsell},
 };
@@ -4373,14 +4374,19 @@ impl AgentPanel {
                     }));
                 let cv = conversation_view.clone();
                 self.observe_active_draft_for_empty_editor(&cv, cx);
-                Some(cx.observe_in(&cv, window, |this, server_view, window, cx| {
-                    this._thread_view_subscription =
-                        Self::subscribe_to_active_thread_view(&server_view, window, cx);
-                    this.observe_active_draft_for_empty_editor(&server_view, cx);
-                    cx.emit(AgentPanelEvent::ActiveViewChanged);
-                    this.serialize(cx);
-                    cx.notify();
-                }))
+                Some(
+                    cx.subscribe_in(&cv, window, |this, server_view, event, window, cx| {
+                        if !matches!(event, AcpServerViewEvent::ActiveThreadChanged) {
+                            return;
+                        }
+                        this._thread_view_subscription =
+                            Self::subscribe_to_active_thread_view(&server_view, window, cx);
+                        this.observe_active_draft_for_empty_editor(&server_view, cx);
+                        cx.emit(AgentPanelEvent::ActiveViewChanged);
+                        this.serialize(cx);
+                        cx.notify();
+                    }),
+                )
             }
             BaseView::Terminal { terminal_id } => {
                 self._thread_view_subscription = None;
@@ -4692,10 +4698,10 @@ impl AgentPanel {
             )
         });
 
-        cx.observe_in(
+        cx.subscribe_in(
             &conversation_view,
             window,
-            |this, server_view, window, cx| {
+            |this, server_view, _event: &AcpServerViewEvent, window, cx| {
                 let is_active = this
                     .active_conversation_view()
                     .is_some_and(|active| active.entity_id() == server_view.entity_id());
@@ -8818,6 +8824,113 @@ mod tests {
         });
         cx.run_until_parked();
         (session_id, thread_id)
+    }
+
+    #[gpui::test]
+    async fn test_streaming_updates_do_not_refresh_agent_panel(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        let connection = StubAgentConnection::new().with_supports_load_session(true);
+        let (session_id, _) =
+            open_generating_thread_with_loadable_connection(&panel, &connection, &mut cx);
+        let thread = panel.read_with(&cx, |panel, cx| {
+            panel.active_agent_thread(cx).expect("thread must exist")
+        });
+        let panel_updates = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            cx.subscribe(&panel, {
+                let panel_updates = panel_updates.clone();
+                move |_, event: &AgentPanelEvent, _| {
+                    if matches!(
+                        event,
+                        AgentPanelEvent::ActiveViewChanged | AgentPanelEvent::EntryChanged
+                    ) {
+                        panel_updates.set(panel_updates.get() + 1);
+                    }
+                }
+            })
+        });
+
+        for background in [false, true] {
+            if background {
+                open_thread_with_connection(&panel, StubAgentConnection::new(), &mut cx);
+            }
+            panel_updates.set(0);
+            for _ in 0..5 {
+                cx.update(|_, cx| {
+                    connection.send_update(
+                        session_id.clone(),
+                        acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                            " more".into(),
+                        )),
+                        cx,
+                    );
+                });
+                cx.run_until_parked();
+            }
+            assert_eq!(
+                panel_updates.get(),
+                0,
+                "streaming must not rebuild the sidebar"
+            );
+        }
+
+        panel_updates.set(0);
+        connection.end_turn(session_id, acp::StopReason::EndTurn);
+        cx.run_until_parked();
+        assert!(
+            panel_updates.get() > 0,
+            "completion must refresh the sidebar"
+        );
+        assert_eq!(
+            thread.read_with(&cx, |thread, _| thread.status()),
+            ThreadStatus::Idle
+        );
+        thread.read_with(&cx, |thread, cx| {
+            assert_eq!(thread.to_markdown(cx).matches("more").count(), 10);
+        });
+
+        panel_updates.set(0);
+        thread.update(&mut cx, |thread, cx| {
+            thread.update_session_info(acp_v2::SessionInfoUpdate::new().title("New title"), cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            panel_updates.get() > 0,
+            "title changes must refresh the sidebar"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_composer_edits_do_not_refresh_agent_panel(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        open_thread_with_connection(&panel, StubAgentConnection::new(), &mut cx);
+        send_message(&panel, &mut cx);
+        let (thread, message_editor) = panel.read_with(&cx, |panel, cx| {
+            let view = panel
+                .active_thread_view(cx)
+                .expect("thread view must exist");
+            let view = view.read(cx);
+            (view.thread.clone(), view.message_editor.clone())
+        });
+        let panel_updates = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            cx.subscribe(&panel, {
+                let panel_updates = panel_updates.clone();
+                move |_, _: &AgentPanelEvent, _| panel_updates.set(panel_updates.get() + 1)
+            })
+        });
+        for text in ["draft", "draf", "dra", "dr", "d", ""] {
+            message_editor.update_in(&mut cx, |editor, window, cx| {
+                editor.set_text(text, window, cx);
+            });
+            cx.run_until_parked();
+            thread.read_with(&cx, |thread, _| {
+                let expected = (!text.is_empty())
+                    .then(|| vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(text))]);
+                assert_eq!(thread.draft_prompt(), expected.as_deref());
+            });
+        }
+        assert_eq!(panel_updates.get(), 0);
     }
 
     fn open_idle_thread_with_non_loadable_connection(

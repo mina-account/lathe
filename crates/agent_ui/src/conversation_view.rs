@@ -786,6 +786,7 @@ fn affects_thread_metadata(event: &AcpThreadEvent) -> bool {
 
 pub enum AcpServerViewEvent {
     ActiveThreadChanged,
+    ThreadMetadataChanged,
 }
 
 impl EventEmitter<AcpServerViewEvent> for ConversationView {}
@@ -1980,6 +1981,20 @@ impl ConversationView {
         if !is_subagent && affects_thread_metadata(event) {
             cx.emit(RootThreadUpdated);
         }
+        // Streaming content changes only the transcript; rebuilding the panel and
+        // sidebar for each chunk competes with text input on the foreground thread.
+        if affects_thread_metadata(event)
+            || matches!(
+                event,
+                AcpThreadEvent::StatusChanged
+                    | AcpThreadEvent::SubmissionUpdated(_)
+                    | AcpThreadEvent::EntriesRemoved(_)
+                    | AcpThreadEvent::Retry(_)
+                    | AcpThreadEvent::SubagentSpawned(_)
+            )
+        {
+            cx.emit(AcpServerViewEvent::ThreadMetadataChanged);
+        }
         match event {
             AcpThreadEvent::ActivityConfirmedIdle => {
                 if !is_subagent {
@@ -2352,7 +2367,10 @@ impl ConversationView {
                 if !is_subagent && thread.read(cx).is_draft_thread() {
                     self.schedule_draft_prompt_persist(cx);
                 }
-                cx.notify();
+                if let Some(thread_view) = self.thread_view(&session_id) {
+                    thread_view.update(cx, |_, cx| cx.notify());
+                }
+                return;
             }
         }
         if let Some(active) = self.thread_view(&session_id) {
@@ -14204,6 +14222,7 @@ pub(crate) mod tests {
                 TurnOutcome::Interrupted,
                 TurnOutcome::Failed,
                 TurnOutcome::Unknown,
+                TurnOutcome::Success,
             ] {
                 view.update(cx, |view, cx| {
                     view.set_display_mode(mode, cx);
@@ -14214,8 +14233,9 @@ pub(crate) mod tests {
                     cx.notify();
                 });
                 cx.run_until_parked();
-                assert!(
+                assert_eq!(
                     cx.debug_bounds("response-outcome-1-1").is_some(),
+                    matches!(outcome, TurnOutcome::Interrupted | TurnOutcome::Failed),
                     "{mode:?} {outcome:?}"
                 );
                 assert!(cx.debug_bounds("response-outcome-1-0").is_none());

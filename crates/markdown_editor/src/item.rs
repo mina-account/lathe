@@ -382,8 +382,8 @@ impl MarkdownEditor {
                 if let Some(previous) = self.image.replace(frame) {
                     self.retired_images.push(previous);
                 }
+                cx.notify();
             }
-            cx.notify();
             anyhow::Ok(())
         })();
         if let Err(error) = result {
@@ -663,7 +663,6 @@ impl MarkdownEditor {
                     bail!("Flush visual edits before changing presentation");
                 }
                 self.preferences = preferences.clone();
-                self.synchronize(cx);
                 cx.emit(ItemEvent::UpdateTab);
             }
             ClientMessage::Copy { text, .. } => {
@@ -1419,6 +1418,95 @@ mod tests {
             let source = cx.new(|cx| Editor::for_buffer(buffer.clone(), None, window, cx));
             MarkdownEditor::new(source, buffer, window, cx)
         })
+    }
+
+    #[gpui::test]
+    fn idle_polls_and_scroll_preferences_do_not_repeat_document_work(cx: &mut TestAppContext) {
+        struct RecordingSurface {
+            sent: std::rc::Rc<std::cell::RefCell<Vec<HostMessage>>>,
+            frame: std::rc::Rc<std::cell::RefCell<Option<Arc<gpui::RenderImage>>>>,
+        }
+        impl BrowserSurface for RecordingSurface {
+            fn send(&mut self, message: &HostMessage) -> Result<()> {
+                self.sent.borrow_mut().push(message.clone());
+                Ok(())
+            }
+            fn poll(&mut self) -> Result<Vec<ClientMessage>> {
+                Ok(Vec::new())
+            }
+            fn dispose(&mut self) -> Result<()> {
+                Ok(())
+            }
+            fn frame(&mut self) -> Result<Option<Arc<gpui::RenderImage>>> {
+                Ok(self.frame.borrow_mut().take())
+            }
+        }
+        let (item, cx) = fixture(cx, "# Reading\n\nUnchanged source\n");
+        let sent = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let frame = std::rc::Rc::new(std::cell::RefCell::new(None));
+        item.update(cx, |item, cx| {
+            item.attach(
+                Box::new(RecordingSurface {
+                    sent: sent.clone(),
+                    frame: frame.clone(),
+                }),
+                cx,
+            )
+            .expect("surface");
+        });
+        cx.run_until_parked();
+        sent.borrow_mut().clear();
+        item.update(cx, |item, cx| {
+            item.receive(
+                ClientMessage::Preferences {
+                    session: item.protocol.session.clone(),
+                    document: item.protocol.document,
+                    preferences: ViewPreferences {
+                        scroll: 250,
+                        ..item.preferences.clone()
+                    },
+                },
+                cx,
+            )
+            .expect("scroll preferences");
+            assert_eq!(item.preferences.scroll, 250);
+            assert_eq!(
+                item.buffer.read(cx).snapshot().text(),
+                "# Reading\n\nUnchanged source\n"
+            );
+        });
+        cx.run_until_parked();
+        assert!(
+            sent.borrow().is_empty(),
+            "scrolling must not resend the document"
+        );
+
+        let notifications = std::rc::Rc::new(std::cell::Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            cx.observe(&item, {
+                let notifications = notifications.clone();
+                move |_, _| notifications.set(notifications.get() + 1)
+            })
+        });
+        for _ in 0..10 {
+            item.update(cx, |item, cx| item.pump_browser(cx));
+            cx.run_until_parked();
+        }
+        assert_eq!(notifications.get(), 0);
+        let image = Arc::new(gpui::RenderImage::new(vec![image::Frame::new(
+            image::RgbaImage::from_pixel(1, 1, image::Rgba([10, 20, 30, 255])),
+        )]));
+        *frame.borrow_mut() = Some(image.clone());
+        item.update(cx, |item, cx| item.pump_browser(cx));
+        cx.run_until_parked();
+        assert_eq!(notifications.get(), 1);
+        item.read_with(cx, |item, _| {
+            assert!(
+                item.image
+                    .as_ref()
+                    .is_some_and(|frame| Arc::ptr_eq(frame, &image))
+            );
+        });
     }
 
     #[gpui::test]

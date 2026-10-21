@@ -6479,6 +6479,44 @@ async fn test_new_thread_button_works_after_adding_folder(cx: &mut TestAppContex
 }
 
 #[gpui::test]
+async fn test_sent_thread_composer_edits_do_not_rebuild_sidebar(cx: &mut TestAppContext) {
+    let project = init_test_project_with_agent_panel("/my-project", cx).await;
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let (sidebar, panel) = setup_sidebar_with_agent_panel(&multi_workspace, cx);
+    let connection = StubAgentConnection::new();
+    connection.set_next_prompt_updates(vec![acp_v1::SessionUpdate::AgentMessageChunk(
+        acp_v1::ContentChunk::new("Done".into()),
+    )]);
+    agent_ui::test_support::open_draft_with_connection(&panel, connection, cx);
+    send_message(&panel, cx);
+    let message_editor = panel.read_with(cx, |panel, cx| {
+        panel
+            .active_conversation_view()
+            .and_then(|view| view.read(cx).active_thread())
+            .expect("thread view must exist")
+            .read(cx)
+            .message_editor
+            .clone()
+    });
+    let sidebar_updates = Rc::new(std::cell::Cell::new(0));
+    let _subscription = cx.update(|_, cx| {
+        cx.observe(&sidebar, {
+            let sidebar_updates = sidebar_updates.clone();
+            move |_, _| sidebar_updates.set(sidebar_updates.get() + 1)
+        })
+    });
+
+    for text in ["follow-up", "follow-u", "follow-", "follow", ""] {
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(text, window, cx);
+        });
+        cx.run_until_parked();
+    }
+    assert_eq!(sidebar_updates.get(), 0);
+}
+
+#[gpui::test]
 async fn test_draft_title_updates_from_editor_text(cx: &mut TestAppContext) {
     // When the user types into a draft, the parked draft entry's title in
     // the sidebar should reflect the editor's text — both while the

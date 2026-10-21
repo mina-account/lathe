@@ -724,7 +724,9 @@ function renderOutline() {
         button.addEventListener("click",() => heading.scrollIntoView({block:"start"})); outline.append(button);
     }
 }
+let sourceSpanCache:{source:string;generation:number;spans:{start:number;end:number;label:string}[]}|null=null;
 function sourceSpans(): {start:number;end:number;label:string}[] {
+    if(sourceSpanCache?.source===latest && sourceSpanCache.generation===generation)return sourceSpanCache.spans;
     const spans: {start:number;end:number;label:string}[] = [];
     const fences=fencedSourceSpans();
     const frontmatter = latest.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
@@ -746,7 +748,9 @@ function sourceSpans(): {start:number;end:number;label:string}[] {
             spans.push({start,end,label:match[0].startsWith("$$")?"Block math":"Inline math"});
         }
     }
-    return spans.sort((left,right)=>left.start-right.start);
+    spans.sort((left,right)=>left.start-right.start);
+    sourceSpanCache={source:latest,generation,spans};
+    return spans;
 }
 function updateSourceControls(text:string, edited?:{field:HTMLTextAreaElement;start:number;end:number;text:string}) {
     // Diffing identical adjacent source blocks can assign a textarea edit to the
@@ -773,7 +777,9 @@ function renderSourceBlocks() {
     if (sourceEditor && document.activeElement === sourceEditor) return;
     const blocks = get("blocks"), retained = new Map(sourceControls); sourceEditor = null;
     let index = 0;
-    for (const span of sourceSpans()) {
+    for (const cachedSpan of sourceSpans()) {
+        // Source-control callbacks move offsets during edits; cached analysis must stay immutable.
+        const span={...cachedSpan};
         const existing = [...retained].find(([_field,previous])=>previous.start===span.start && previous.end===span.end);
         if (existing) {
             const [field] = existing, details = field.parentElement!;

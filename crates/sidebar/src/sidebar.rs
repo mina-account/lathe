@@ -2189,11 +2189,19 @@ impl Sidebar {
         for cv in draft_conversation_views {
             if let Some(thread_view) = cv.read(cx).active_thread() {
                 let editor = thread_view.read(cx).message_editor.clone();
+                let conversation_view = cv.downgrade();
                 self._draft_editor_observations.push(cx.subscribe(
                     &editor,
-                    |this, _editor, event, cx| match event {
-                        MessageEditorEvent::Edited => this.schedule_update_entries(false, cx),
-                        _ => (),
+                    move |this, _editor, event, cx| {
+                        if matches!(event, MessageEditorEvent::Edited)
+                            && conversation_view.upgrade().is_some_and(|view| {
+                                view.read(cx).root_thread_view().is_some_and(|view| {
+                                    view.read(cx).thread.read(cx).is_draft_thread()
+                                })
+                            })
+                        {
+                            this.schedule_update_entries(false, cx);
+                        }
                     },
                 ));
             }

@@ -8433,7 +8433,6 @@ impl ThreadView {
                 ("Interrupted response", Color::Warning)
             }
             TurnLifecycle::Settled(TurnOutcome::Failed) => ("Failed response", Color::Error),
-            TurnLifecycle::Settled(TurnOutcome::Unknown) => ("Outcome unknown", Color::Muted),
             _ => return None,
         };
         let selector = format!(

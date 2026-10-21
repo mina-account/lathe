@@ -25,7 +25,7 @@ before(async () => {
     browser = await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM ? {executablePath:process.env.PLAYWRIGHT_CHROMIUM} : {})});
 });
 after(async () => {await browser?.close(); server?.closeAllConnections(); await new Promise(resolve => server?.close(resolve));});
-async function open(source,mode="ir",writable=true,fragment=null) {
+async function open(source,mode="ir",writable=true,fragment=null,measureParsing=false) {
     const context = await browser.newContext(), page = await context.newPage();
     const errors = [], external = [];
     page.on("pageerror",error => errors.push(error.stack));
@@ -35,6 +35,21 @@ async function open(source,mode="ir",writable=true,fragment=null) {
     });
     await page.goto(`${origin}/index.html?session=browser-test&document=1`);
     await page.waitForFunction(() => window.latheMarkdown);
+    if(measureParsing)await page.evaluate(source=>{
+        window.fullDocumentParses={};
+        const create=Lute.New;
+        Lute.New=(...arguments_)=>{
+            const lute=create(...arguments_);
+            for(const method of ["RenderJSON","Md2HTML","Md2VditorIRDOM"]){
+                const original=lute[method];
+                lute[method]=(...parameters)=>{
+                    if(parameters[0]===source)window.fullDocumentParses[method]=(window.fullDocumentParses[method]??0)+1;
+                    return original(...parameters);
+                };
+            }
+            return lute;
+        };
+    },source);
     await page.evaluate(({source,mode,writable,fragment}) => {
         window.testMessages=[];
         window.latheMarkdown.send = message => window.testMessages.push(message);
@@ -47,6 +62,20 @@ async function open(source,mode="ir",writable=true,fragment=null) {
     context.close=async()=>{await close();assert.deepEqual(errors,[],"Browser exceptions");};
     return {page,context,errors,external};
 }
+
+test("opening WYSIWYG analyzes unchanged source blocks once",async()=>{
+    const source=Array.from({length:40},(_,index)=>`## Heading ${index}\n\nParagraph ${index}.\n\n\`\`\`text\ncode ${index}\n\`\`\`\n\n`).join("");
+    const started=performance.now();
+    const {page,context}=await open(source,"wysiwyg",true,null,true);
+    const parses=await page.evaluate(()=>window.fullDocumentParses);
+    console.log(JSON.stringify({openingMilliseconds:Math.round(performance.now()-started),parses}));
+    assert.equal(parses.RenderJSON,1,"appearance setup must reuse source-block analysis");
+    for(const [revision,text,count] of [[1,source+"\n```text\nNew block\n```\n",41],[2,source,40]]){
+        await page.evaluate(({revision,text})=>window.latheMarkdown.receive({kind:"document",revision,text,writable:true,draft:null}),{revision,text});
+        assert.equal(await page.locator('#blocks textarea').count(),count,"source changes must invalidate cached block positions");
+    }
+    await context.close();
+});
 
 test("host fragments navigate the visible destination after initial rendering and release later user scroll",async()=>{
     const source="# Start\n\n"+"paragraph\n\n".repeat(80)+"# Target {#explicit}\n\n"+"paragraph\n\n".repeat(80)+"# Unicode Café 日本\n\n"+"tail\n\n".repeat(80);

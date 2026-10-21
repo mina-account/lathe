@@ -2,6 +2,16 @@
 
 Most recent releases first. Beta releases (`-beta` suffix) ship as GitHub pre-releases and typically batch new features ahead of a stable cut.
 
+## v1.10.15-beta - 2026-10-21
+
+- Removed the misleading "Outcome unknown" label from AI answers, including restored chat sessions. Failed and interrupted responses still show their status.
+- Improved chat editing responsiveness by avoiding repeated panel saves and sidebar rebuilds while another AI session streams responses.
+- Improved Markdown visual editor scrolling by removing full-document synchronization on scroll and avoiding idle redraws.
+- Reduced repeated source analysis when opening Markdown files and unnecessary pixel conversion during rendering.
+- Preserved draft recovery, source-block editing, reading positions, and presentation switching.
+
+Windows x64 Beta only. The installer and portable ZIP include the pinned browser runtime. This local build is unsigned; Windows may show a SmartScreen warning.
+
 ## v1.10.13-beta - 2026-10-19
 
 - Fixed blurry code blocks by removing conflicting text shadows and duplicate code previews.

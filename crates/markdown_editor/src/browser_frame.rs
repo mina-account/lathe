@@ -163,6 +163,13 @@ fn checked_pixels(width: i32, height: i32, bytes: &[u8]) -> Result<Pixels> {
 fn unpremultiply(bytes: &mut [u8]) {
     for pixel in bytes.as_chunks_mut::<4>().0 {
         let alpha = u32::from(pixel[3]);
+        if alpha == 255 {
+            continue;
+        }
+        if alpha == 0 {
+            pixel.fill(0);
+            continue;
+        }
         for channel in pixel.iter_mut().take(3) {
             *channel = (u32::from(*channel) * 255 + alpha / 2)
                 .checked_div(alpha)
@@ -223,6 +230,25 @@ pub(crate) fn frame_bytes(width: i32, height: i32) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alpha_conversion_matches_reference_for_every_channel_and_alpha() {
+        for alpha in 0..=255u8 {
+            for channel in 0..=255u8 {
+                let original = [channel, 255 - channel, channel / 2, alpha];
+                let mut expected = original;
+                for channel in expected.iter_mut().take(3) {
+                    *channel = (u32::from(*channel) * 255 + u32::from(alpha) / 2)
+                        .checked_div(u32::from(alpha))
+                        .unwrap_or(0)
+                        .min(255) as u8;
+                }
+                let mut actual = original;
+                unpremultiply(&mut actual);
+                assert_eq!(actual, expected);
+            }
+        }
+    }
 
     #[test]
     fn frame_validation_precedes_copy_and_preserves_alpha() -> Result<()> {
